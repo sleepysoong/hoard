@@ -1,0 +1,89 @@
+name: Build and Release
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Auto-increment Version Code & Name
+        id: version_bump
+        run: |
+          version_code=$(grep "versionCode=" version.properties | cut -d'=' -f2)
+          version_name=$(grep "versionName=" version.properties | cut -d'=' -f2)
+
+          new_version_code=$((version_code + 1))
+
+          IFS='.' read -r major minor patch <<< "$version_name"
+          new_patch=$((patch + 1))
+          new_version_name="${major}.${minor}.${new_patch}"
+
+          echo "versionCode=${new_version_code}" > version.properties
+          echo "versionName=${new_version_name}" >> version.properties
+
+          echo "Bumped version: ${version_name} (Code: ${version_code}) -> ${new_version_name} (Code: ${new_version_code})"
+
+          echo "version_name=${new_version_name}" >> $GITHUB_OUTPUT
+          echo "version_code=${new_version_code}" >> $GITHUB_OUTPUT
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Grant Execute Permission to Gradlew
+        run: chmod +x gradlew
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install compile SDK
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+
+      - name: Build Signed Release APK
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Commit and Push Version Bump
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add version.properties
+          git commit -m "chore(release): bump version to ${{ steps.version_bump.outputs.version_name }} (code: ${{ steps.version_bump.outputs.version_code }}) [skip ci]"
+          git push origin main
+
+      - name: Create Git Tag
+        run: |
+          git tag v${{ steps.version_bump.outputs.version_name }}
+          git push origin v${{ steps.version_bump.outputs.version_name }}
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ steps.version_bump.outputs.version_name }}
+          name: Release v${{ steps.version_bump.outputs.version_name }}
+          body: |
+            Automatically generated release for version ${{ steps.version_bump.outputs.version_name }} (code: ${{ steps.version_bump.outputs.version_code }}).
+            This APK is fully signed and supports seamless updates without reinstallation.
+          draft: false
+          prerelease: false
+          files: |
+            app/build/outputs/apk/release/app-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

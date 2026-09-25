@@ -1,0 +1,15 @@
+# ---> Hoard
+# Gradle
+.gradle/
+build/
+# Android
+local.properties
+*.keystore
+!app/release.keystore
+captures/
+.externalNativeBuild/
+.cxx/
+# IDE
+.idea/
+*.iml
+.DS_Store
