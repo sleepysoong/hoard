@@ -5,7 +5,6 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,10 +12,12 @@ import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
@@ -26,7 +27,7 @@ import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -34,6 +35,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
@@ -41,11 +43,19 @@ import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.UiAttachment
 import com.sleepysoong.hoard.ui.glass.GlassSurface
-import com.sleepysoong.hoard.ui.glass.GlassTextField
+import com.sleepysoong.hoard.ui.glass.GlassTone
+import com.sleepysoong.hoard.ui.glass.glassMaterial
+import com.sleepysoong.hoard.ui.glass.liquidClickable
 import java.util.UUID
 
+private val ControlSize = 44.dp
+
 /**
- * iMessage-style input: glass bar, solid field, blue round send button.
+ * iMessage-grade composer.
+ *
+ * Every control is the same 44dp box on a shared bottom baseline, so the attach
+ * buttons, the text field and the send button line up exactly. The field has no
+ * container of its own — it sits directly on the glass bar like iOS.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -58,13 +68,14 @@ fun ChatInputBar(
     modifier: Modifier = Modifier
 ) {
     val scheme = MaterialTheme.colorScheme
+    val haptics = LocalHapticFeedback.current
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) {
             onAttachmentsChange(
-                attachments + uris.map { uri: Uri ->
+                attachments + uris.mapIndexed { i, uri: Uri ->
                     UiAttachment(
                         id = "att-" + UUID.randomUUID().toString().take(6),
-                        name = "사진 ${attachments.size + 1}.jpg",
+                        name = "사진 ${attachments.size + i + 1}.jpg",
                         mime = "image/*",
                         sizeBytes = 0,
                         uri = uri
@@ -90,39 +101,48 @@ fun ChatInputBar(
     }
     val showSlash = value.trimStart().startsWith("/") && !value.contains(" ")
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
-    val haptics = LocalHapticFeedback.current
 
-    GlassSurface(modifier = modifier, shape = RoundedCornerShape(26.dp)) {
-        Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {
+        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             if (attachments.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     attachments.forEach { a ->
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                             modifier = Modifier
-                                .clip(RoundedCornerShape(10.dp))
+                                .clip(RoundedCornerShape(12.dp))
                                 .background(scheme.surfaceContainerHighest)
-                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                                .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
                         ) {
                             Text("📎 ${a.name}", style = MaterialTheme.typography.labelMedium)
-                            IconButton(
-                                onClick = { onAttachmentsChange(attachments.filterNot { it.id == a.id }) },
-                                modifier = Modifier.size(22.dp)
+                            Box(
+                                Modifier
+                                    .size(28.dp)
+                                    .clip(CircleShape)
+                                    .liquidClickable(haptic = false) {
+                                        onAttachmentsChange(attachments.filterNot { it.id == a.id })
+                                    },
+                                contentAlignment = Alignment.Center
                             ) {
-                                Icon(Icons.Rounded.Close, contentDescription = "제거", modifier = Modifier.size(14.dp))
+                                Icon(
+                                    Icons.Rounded.Close,
+                                    contentDescription = "첨부 제거",
+                                    modifier = Modifier.size(15.dp),
+                                    tint = scheme.onSurfaceVariant
+                                )
                             }
                         }
                     }
                 }
             }
+
             if (showSlash) {
                 val query = value.trimStart().removePrefix("/")
-                // iOS-style command suggestion list: solid inset, blue commands.
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(14.dp))
+                        .clip(RoundedCornerShape(16.dp))
                         .background(scheme.surfaceContainerHigh)
                         .padding(vertical = 4.dp)
                 ) {
@@ -135,14 +155,13 @@ fun ChatInputBar(
                                     HorizontalDivider(
                                         modifier = Modifier.padding(start = 12.dp),
                                         thickness = 0.5.dp,
-                                        color = scheme.outline.copy(alpha = 0.5f)
+                                        color = scheme.onSurface.copy(alpha = 0.08f)
                                     )
                                 }
                                 Row(
                                     Modifier
                                         .fillMaxWidth()
-                                        .clip(RoundedCornerShape(10.dp))
-                                        .clickable {
+                                        .liquidClickable {
                                             haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                             onValueChange(cmd.command + " ")
                                         }
@@ -165,53 +184,105 @@ fun ChatInputBar(
                     }
                 }
             }
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                IconButton(
-                    onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(Icons.Rounded.Add, contentDescription = "사진 첨부", tint = scheme.primary, modifier = Modifier.size(26.dp))
-                }
-                IconButton(
-                    onClick = { filePicker.launch(arrayOf("*/*")) },
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Icon(Icons.Rounded.AttachFile, contentDescription = "파일 첨부", tint = scheme.primary, modifier = Modifier.size(22.dp))
-                }
-                GlassTextField(
-                    value = value,
-                    onValueChange = onValueChange,
-                    modifier = Modifier.weight(1f),
-                    placeholder = { Text("메시지") },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(onSend = { onSend() }),
-                    maxLines = 6,
-                    shape = RoundedCornerShape(20.dp)
-                )
-                IconButton(
+
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                // Liquid-glass attach buttons, same footprint as the send button.
+                GlassAttachButton(
                     onClick = {
-                        if (canSend) {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onSend()
-                        }
-                    },
-                    enabled = canSend,
-                    modifier = Modifier
-                        .size(40.dp)
-                        .padding(2.dp)
-                        .background(
-                            if (canSend) scheme.primary else scheme.surfaceContainerHighest,
-                            CircleShape
+                        photoPicker.launch(
+                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                         )
+                    }
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = "사진 첨부", modifier = Modifier.size(22.dp))
+                }
+                GlassAttachButton(
+                    onClick = { filePicker.launch(arrayOf("*/*")) }
+                ) {
+                    Icon(Icons.Rounded.AttachFile, contentDescription = "파일 첨부", modifier = Modifier.size(20.dp))
+                }
+
+                // Plain field directly on the glass — no nested grey box.
+                Box(
+                    Modifier
+                        .weight(1f)
+                        .heightIn(min = ControlSize)
+                        .padding(horizontal = 4.dp, vertical = 11.dp),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    if (value.isEmpty()) {
+                        Text(
+                            "메시지",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = scheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    }
+                    BasicTextField(
+                        value = value,
+                        onValueChange = onValueChange,
+                        modifier = Modifier.fillMaxWidth(),
+                        textStyle = LocalTextStyle.current.merge(
+                            MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface)
+                        ),
+                        cursorBrush = SolidColor(scheme.primary),
+                        maxLines = 6,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (canSend) {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onSend()
+                                }
+                            }
+                        )
+                    )
+                }
+
+                // Send: solid blue when armed, glass when idle. Same 44dp footprint.
+                Box(
+                    Modifier
+                        .size(ControlSize)
+                        .clip(CircleShape)
+                        .then(
+                            if (canSend) Modifier.background(scheme.primary, CircleShape)
+                            else Modifier.glassMaterial(
+                                shape = CircleShape,
+                                tint = scheme.surface,
+                                tone = GlassTone.Thin
+                            )
+                        )
+                        .liquidClickable(enabled = canSend) { onSend() },
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         Icons.Rounded.ArrowUpward,
                         contentDescription = "보내기",
-                        tint = if (canSend) Color.White else scheme.onSurfaceVariant,
+                        tint = if (canSend) Color.White else scheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
             }
         }
     }
+}
+
+/** Circular liquid-glass icon button used for attachments. */
+@Composable
+private fun GlassAttachButton(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        Modifier
+            .size(ControlSize)
+            .clip(CircleShape)
+            .glassMaterial(
+                shape = CircleShape,
+                tint = scheme.surface,
+                tone = GlassTone.Thin
+            )
+            .liquidClickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) { content() }
 }

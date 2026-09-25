@@ -12,8 +12,8 @@ val IOSGreen = Color(0xFF34C759)
 val IOSRedLight = Color(0xFFFF3B30)
 val IOSRedDark = Color(0xFFFF453A)
 
-// Light: system grouped background + white cards.
-val IOSGroupedBgLight = Color(0xFFF2F2F7)
+// Light: white-first. The canvas is pure white — glass carries the depth.
+val IOSGroupedBgLight = Color(0xFFFFFFFF)
 val IOSCardLight = Color(0xFFFFFFFF)
 val IOSFieldGrayLight = Color(0xFFE5E5EA)
 val IOSSeparatorLight = Color(0xFFC6C6C8)

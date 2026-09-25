@@ -99,7 +99,8 @@ fun MessageBubble(
                 )
             }
 
-            // Hoard bubble = liquid glass; my bubble = solid iOS blue.
+            // Hoard bubble = liquid glass (frosted neutral so it reads on white);
+            // my bubble = solid iOS blue.
             val bubbleModifier = if (isUser) {
                 Modifier
                     .clip(shape)
@@ -107,7 +108,7 @@ fun MessageBubble(
             } else {
                 Modifier
                     .clip(shape)
-                    .glassMaterial(shape, scheme.surface, tone = GlassTone.Thin)
+                    .glassMaterial(shape, scheme.surfaceContainer, tone = GlassTone.Thin)
             }
 
             Column(
