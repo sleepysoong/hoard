@@ -4,36 +4,44 @@ import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AttachFile
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Image
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.FilterChip
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.AttachFile
+import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.UiAttachment
-import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassTextField
 import java.util.UUID
 
+/**
+ * iMessage-style input: glass bar, solid field, blue round send button.
+ */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun ChatInputBar(
@@ -46,13 +54,14 @@ fun ChatInputBar(
     onSend: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val scheme = MaterialTheme.colorScheme
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) {
             onAttachmentsChange(
                 attachments + uris.map { uri: Uri ->
                     UiAttachment(
                         id = "att-" + UUID.randomUUID().toString().take(6),
-                        name = "photo-${uris.indexOf(uri) + 1}.jpg",
+                        name = "사진 ${attachments.size + 1}.jpg",
                         mime = "image/*",
                         sizeBytes = 0,
                         uri = uri
@@ -67,7 +76,7 @@ fun ChatInputBar(
                 attachments + uris.map { uri ->
                     UiAttachment(
                         id = "att-" + UUID.randomUUID().toString().take(6),
-                        name = uri.lastPathSegment?.substringAfterLast('/') ?: "file",
+                        name = uri.lastPathSegment?.substringAfterLast('/') ?: "파일",
                         mime = "*/*",
                         sizeBytes = 0,
                         uri = uri
@@ -77,70 +86,104 @@ fun ChatInputBar(
         }
     }
     val showSlash = value.trimStart().startsWith("/") && !value.contains(" ")
+    val canSend = value.isNotBlank() || attachments.isNotEmpty()
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (attachments.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     attachments.forEach { a ->
-                        FilterChip(
-                            selected = false,
-                            onClick = {},
-                            label = { Text("📎 ${a.name}") },
-                            trailingIcon = {
-                                androidx.compose.material3.IconButton(
-                                    onClick = { onAttachmentsChange(attachments.filterNot { it.id == a.id }) }
-                                ) {
-                                    androidx.compose.material3.Icon(Icons.Default.Close, contentDescription = "제거")
-                                }
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(scheme.surfaceContainerHighest)
+                                .padding(horizontal = 8.dp, vertical = 6.dp)
+                        ) {
+                            Text("📎 ${a.name}", style = MaterialTheme.typography.labelMedium)
+                            IconButton(
+                                onClick = { onAttachmentsChange(attachments.filterNot { it.id == a.id }) },
+                                modifier = Modifier.size(22.dp)
+                            ) {
+                                Icon(Icons.Rounded.Close, contentDescription = "제거", modifier = Modifier.size(14.dp))
                             }
-                        )
+                        }
                     }
                 }
             }
             if (showSlash) {
                 val query = value.trimStart().removePrefix("/")
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Column {
                     MockData.slashCommands.filter { it.command.removePrefix("/").startsWith(query) }.take(5)
                         .forEach { cmd ->
-                            FilterChip(
-                                selected = false,
-                                onClick = { onValueChange(cmd.command + " ") },
-                                label = { Text("${cmd.command} — ${cmd.description}") }
+                            Text(
+                                "${cmd.command}  ${cmd.description}",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = scheme.primary,
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { onValueChange(cmd.command + " ") }
+                                    .padding(horizontal = 10.dp, vertical = 8.dp)
                             )
                         }
                 }
             }
-            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                GlassIconButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                    androidx.compose.material3.Icon(Icons.Default.Image, contentDescription = "사진 첨부")
+            Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                IconButton(
+                    onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(Icons.Rounded.Add, contentDescription = "사진 첨부", tint = scheme.primary, modifier = Modifier.size(26.dp))
                 }
-                GlassIconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
-                    androidx.compose.material3.Icon(Icons.Default.AttachFile, contentDescription = "파일 첨부")
+                IconButton(
+                    onClick = { filePicker.launch(arrayOf("*/*")) },
+                    modifier = Modifier.size(40.dp)
+                ) {
+                    Icon(Icons.Rounded.AttachFile, contentDescription = "파일 첨부", tint = scheme.primary, modifier = Modifier.size(22.dp))
                 }
                 GlassTextField(
                     value = value,
                     onValueChange = onValueChange,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Hoard에게 메시지… (/ 입력 시 명령어)") },
+                    placeholder = { Text("메시지 입력  ( / 명령어 )") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
                     maxLines = 6
                 )
-                GlassIconButton(onClick = onSend, enabled = value.isNotBlank() || attachments.isNotEmpty()) {
-                    androidx.compose.material3.Icon(
-                        Icons.Default.Send,
+                IconButton(
+                    onClick = onSend,
+                    enabled = canSend,
+                    modifier = Modifier
+                        .size(40.dp)
+                        .padding(2.dp)
+                        .background(
+                            if (canSend) scheme.primary else scheme.surfaceContainerHighest,
+                            CircleShape
+                        )
+                ) {
+                    Icon(
+                        Icons.Rounded.ArrowUpward,
                         contentDescription = "보내기",
-                        tint = MaterialTheme.colorScheme.primary
+                        tint = if (canSend) Color.White else scheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                FilterChip(selected = true, onClick = onModelClick, label = { Text(modelName) })
+                Text(
+                    modelName,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = scheme.primary,
+                    modifier = Modifier
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { onModelClick() }
+                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                )
                 Text(
                     "앱을 나가도 백그라운드에서 답변 계속",
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = scheme.onSurfaceVariant
                 )
             }
         }

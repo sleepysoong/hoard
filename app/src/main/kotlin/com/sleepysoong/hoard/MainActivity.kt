@@ -12,14 +12,10 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.ChatBubble
-import androidx.compose.material.icons.filled.Forum
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.outlined.Build
-import androidx.compose.material.icons.outlined.ChatBubbleOutline
-import androidx.compose.material.icons.outlined.Forum
-import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.rounded.Build
+import androidx.compose.material.icons.rounded.ChatBubble
+import androidx.compose.material.icons.rounded.Forum
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
@@ -59,10 +55,10 @@ private data class Tab(
 )
 
 private val TABS = listOf(
-    Tab("chat", "채팅", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline),
-    Tab("sessions", "세션", Icons.Filled.Forum, Icons.Outlined.Forum),
-    Tab("tools", "도구", Icons.Filled.Build, Icons.Outlined.Build),
-    Tab("settings", "설정", Icons.Filled.Settings, Icons.Outlined.Settings)
+    Tab("chat", "채팅", Icons.Rounded.ChatBubble, Icons.Rounded.ChatBubble),
+    Tab("sessions", "세션", Icons.Rounded.Forum, Icons.Rounded.Forum),
+    Tab("tools", "도구", Icons.Rounded.Build, Icons.Rounded.Build),
+    Tab("settings", "설정", Icons.Rounded.Settings, Icons.Rounded.Settings)
 )
 
 class MainActivity : ComponentActivity() {

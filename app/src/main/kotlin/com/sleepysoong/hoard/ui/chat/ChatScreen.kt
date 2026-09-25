@@ -13,8 +13,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -56,15 +56,22 @@ fun ChatScreen(
     }
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // Top floating bar: session name + live context usage.
+        // iOS-style nav bar: centered title, glass chrome.
         GlassSurface(shape = RoundedCornerShape(20.dp)) {
-            Column(Modifier.padding(horizontal = 14.dp, vertical = 10.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Column(Modifier.weight(1f)) {
+            Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    GlassIconButton(onClick = { vm.newSession() }) {
+                        androidx.compose.material3.Icon(Icons.Rounded.Add, contentDescription = "새 세션")
+                    }
+                    Column(
+                        Modifier.weight(1f),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
                         Text(
                             session?.name ?: "Hoard",
-                            style = MaterialTheme.typography.titleSmall,
-                            maxLines = 1
+                            style = MaterialTheme.typography.headlineSmall,
+                            maxLines = 1,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                         val limit = session?.contextLimit ?: 32_000
                         val ratio = (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f)
@@ -72,20 +79,18 @@ fun ChatScreen(
                             "${state.usedTokens} / $limit 토큰 (${(ratio * 100).toInt()}%) · ${session?.modelId}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1
+                            maxLines = 1,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
                         )
                     }
-                    GlassIconButton(onClick = { vm.newSession() }) {
-                        androidx.compose.material3.Icon(Icons.Default.Add, contentDescription = "새 세션")
-                    }
                     GlassIconButton(onClick = { showSettings = true }) {
-                        androidx.compose.material3.Icon(Icons.Default.Settings, contentDescription = "세션 설정")
+                        androidx.compose.material3.Icon(Icons.Rounded.Settings, contentDescription = "세션 설정")
                     }
                 }
                 val limit = session?.contextLimit ?: 32_000
                 LinearProgressIndicator(
                     progress = { (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 8.dp, end = 8.dp)
                 )
             }
         }

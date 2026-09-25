@@ -1,11 +1,20 @@
 package com.sleepysoong.hoard.ui.settings
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -14,59 +23,76 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.SettingsStore
-import com.sleepysoong.hoard.ui.glass.GlassCard
-import com.sleepysoong.hoard.ui.glass.GlassFilterChip
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassSwitch
+import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
+import com.sleepysoong.hoard.ui.glass.IOSRowDivider
+import com.sleepysoong.hoard.ui.glass.IOSSectionHeader
+import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
+import com.sleepysoong.hoard.ui.glass.LargeTitle
 import kotlinx.coroutines.launch
 
+/** iOS Settings-style: large title, grouped sections, segmented + checkmark rows. */
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by SettingsStore.flow(ctx).collectAsState(SettingsStore.Settings())
     val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
+    val scheme = MaterialTheme.colorScheme
+    val themeIndex = listOf("system", "light", "dark").indexOf(settings.theme).coerceAtLeast(0)
 
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("설정", style = MaterialTheme.typography.headlineSmall)
+    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LargeTitle("설정", modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
 
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("화면 스타일", style = MaterialTheme.typography.titleSmall)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("system" to "시스템", "light" to "라이트", "dark" to "다크").forEach { (id, label) ->
-                        GlassFilterChip(
-                            selected = settings.theme == id,
-                            onClick = { scope.launch { SettingsStore.setTheme(ctx, id) } },
-                            label = { Text(label) }
-                        )
+        IOSSectionHeader("화면 스타일")
+        IOSGroupedSection {
+            IOSSegmentedControl(
+                options = listOf("시스템", "라이트", "다크"),
+                selectedIndex = themeIndex,
+                onSelect = { scope.launch { SettingsStore.setTheme(ctx, listOf("system", "light", "dark")[it]) } },
+                modifier = Modifier.fillMaxWidth().padding(12.dp)
+            )
+        }
+
+        IOSSectionHeader("기본 모델 (목업)")
+        IOSGroupedSection {
+            MockData.models.forEachIndexed { i, m ->
+                if (i > 0) IOSRowDivider()
+                val selected = settings.defaultModel == m.id
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .clickable { scope.launch { SettingsStore.setDefaultModel(ctx, m.id) } }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Column(Modifier.weight(1f)) {
+                        Text(m.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
+                        Text(m.description, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1)
+                    }
+                    if (selected) {
+                        Icon(Icons.Rounded.Check, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(22.dp))
                     }
                 }
             }
         }
 
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("기본 모델 (목업)", style = MaterialTheme.typography.titleSmall)
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    MockData.models.forEach { m ->
-                        GlassFilterChip(
-                            selected = settings.defaultModel == m.id,
-                            onClick = { scope.launch { SettingsStore.setDefaultModel(ctx, m.id) } },
-                            label = { Text(m.displayName) }
-                        )
-                    }
+        IOSSectionHeader("기본 컨텍스트")
+        IOSGroupedSection {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("토큰 상한", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text("${settings.defaultContext}", style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant)
                 }
-            }
-        }
-
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("기본 컨텍스트: ${settings.defaultContext} 토큰", style = MaterialTheme.typography.titleSmall)
                 val idx = options.indexOf(settings.defaultContext).coerceAtLeast(0)
                 GlassSlider(
                     value = idx.toFloat(),
@@ -77,14 +103,19 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        GlassCard(Modifier.fillMaxWidth()) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        IOSSectionHeader("백그라운드")
+        IOSGroupedSection {
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Column(Modifier.weight(1f)) {
-                    Text("백그라운드 답변", style = MaterialTheme.typography.titleSmall)
+                    Text("백그라운드 답변", style = MaterialTheme.typography.bodyLarge)
                     Text(
                         "앱을 나가도 답변을 계속 생성합니다 (목업 워커).",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        style = MaterialTheme.typography.labelSmall,
+                        color = scheme.onSurfaceVariant
                     )
                 }
                 GlassSwitch(
@@ -94,11 +125,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             }
         }
 
-        GlassCard(Modifier.fillMaxWidth()) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("Hoard", style = MaterialTheme.typography.titleSmall)
-                Text("sleepysoong 제작 · https://github.com/sleepysoong/hoard", style = MaterialTheme.typography.bodySmall)
-                Text("리퀴드 글래스 껍데기 · 목업 데이터 전용 · 그라데이션 없음", style = MaterialTheme.typography.labelSmall)
+        IOSSectionHeader("정보")
+        IOSGroupedSection {
+            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text("Hoard", style = MaterialTheme.typography.bodyLarge)
+                Text("sleepysoong 제작 · github.com/sleepysoong/hoard", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text("리퀴드 글래스 껍데기 · 목업 데이터 전용 · 그라데이션 없음", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             }
         }
     }
