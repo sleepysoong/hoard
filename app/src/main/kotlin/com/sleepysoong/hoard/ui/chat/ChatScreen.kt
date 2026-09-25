@@ -53,6 +53,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -64,7 +65,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.MockData
-import com.sleepysoong.hoard.ui.glass.GlassActionSheet
+import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
@@ -92,6 +93,7 @@ fun ChatScreen(
     var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var menuTargetId by rememberSaveable { mutableStateOf<String?>(null) }
+    var menuAnchorRect by remember { mutableStateOf<Rect?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -248,7 +250,7 @@ fun ChatScreen(
                                 groupedWithPrevious = grouped,
                                 showFooter = footer,
                                 isLastUserMessage = msg.id == lastUserMessageId,
-                                onLongPress = { menuTargetId = msg.id },
+                                onLongPress = { rect -> menuTargetId = msg.id; menuAnchorRect = rect },
                                 modifier = Modifier.padding(
                                     top = if (grouped) 2.dp else 10.dp
                                 )
@@ -300,7 +302,8 @@ fun ChatScreen(
         ) {
             if (menuTarget != null) {
                 val isUser = menuTarget.role == MessageRole.User
-                GlassActionSheet(
+                GlassAnchoredMenu(
+                    anchor = menuAnchorRect,
                     title = if (isUser) "내 메시지" else "Hoard의 메시지",
                     message = menuTarget.text.take(80).ifBlank { "(첨부파일)" }
                         .let { if (menuTarget.text.length > 80) "$it…" else it },
@@ -345,7 +348,7 @@ fun ChatScreen(
                             )
                         )
                     },
-                    onDismiss = { menuTargetId = null }
+                    onDismiss = { menuTargetId = null; menuAnchorRect = null }
                 )
             }
         }

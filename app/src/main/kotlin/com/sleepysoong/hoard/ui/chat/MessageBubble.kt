@@ -35,6 +35,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -69,13 +74,14 @@ fun MessageBubble(
     groupedWithPrevious: Boolean,
     showFooter: Boolean,
     isLastUserMessage: Boolean,
-    onLongPress: () -> Unit,
+    onLongPress: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val isUser = message.role == MessageRole.User
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
     var thinkingOpen by remember { mutableStateOf(false) }
+    var bubbleBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
 
     val shape = RoundedCornerShape(
         topStart = 19.dp,
@@ -113,13 +119,14 @@ fun MessageBubble(
 
             Column(
                 bubbleModifier
-                    .combinedClickable(
+                    .onGloballyPositioned { bubbleBoundsInRoot = it.boundsInRoot() }
+            .combinedClickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
                         onClick = {},
                         onLongClick = {
                             haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                            onLongPress()
+                            onLongPress(bubbleBoundsInRoot)
                         },
                         onLongClickLabel = "메시지 메뉴"
                     )
