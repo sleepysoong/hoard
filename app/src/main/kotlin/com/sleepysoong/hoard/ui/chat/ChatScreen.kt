@@ -69,6 +69,7 @@ import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
+import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
 import com.sleepysoong.hoard.ui.glass.GlassSurface
@@ -132,59 +133,40 @@ fun ChatScreen(
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            // iOS-style nav bar: compact centered title, glass chrome.
-            GlassSurface(shape = RoundedCornerShape(20.dp)) {
-                Column {
-                    Row(
-                        Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
-                        verticalAlignment = Alignment.CenterVertically
+            // Shared floating bar; overrides via slots (back/title/action).
+            GlassFloatingBar(
+                title = session?.name ?: "Hoard",
+                subtitle = "${session?.modelId ?: "hoard"} · ${state.usedTokens}/${session?.contextLimit ?: 32_000} 토큰",
+                onTitleClick = { showModels = true },
+                navigationIcon = {
+                    GlassIconButton(
+                        onClick = onBack,
+                        enabled = showBackButton
                     ) {
-                        GlassIconButton(
-                            onClick = onBack,
-                            enabled = showBackButton
-                        ) {
-                            Icon(
-                                Icons.AutoMirrored.Rounded.ArrowBack,
-                                contentDescription = "세션 목록으로"
-                            )
-                        }
-                        Column(
-                            Modifier.weight(1f),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                session?.name ?: "Hoard",
-                                style = MaterialTheme.typography.headlineSmall,
-                                maxLines = 1,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.noRippleClickable { showModels = true }
-                            )
-                            val limit = session?.contextLimit ?: 32_000
-                            Text(
-                                "${session?.modelId ?: "hoard"} · ${state.usedTokens}/$limit 토큰",
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.noRippleClickable { showModels = true }
-                            )
-                        }
-                        GlassIconButton(
-                            onClick = { showSettings = true },
-                            modifier = Modifier.onGloballyPositioned { settingsAnchor = it.boundsInRoot() }
-                        ) {
+                        Icon(
+                            Icons.AutoMirrored.Rounded.ArrowBack,
+                            contentDescription = "세션 목록으로"
+                        )
+                    }
+                },
+                actions = {
+                    Box(
+                        Modifier.onGloballyPositioned { settingsAnchor = it.boundsInRoot() }
+                    ) {
+                        GlassIconButton(onClick = { showSettings = true }) {
                             Icon(Icons.Rounded.Settings, contentDescription = "세션 설정")
                         }
                     }
-                    val limit = session?.contextLimit ?: 32_000
-                    LinearProgressIndicator(
-                        progress = { (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f) },
-                        modifier = Modifier.fillMaxWidth().height(2.dp),
-                        trackColor = Color.Transparent,
-                        drawStopIndicator = {}
-                    )
                 }
-            }
+            )
+            LinearProgressIndicator(
+                progress = {
+                    (state.usedTokens.toFloat() / (session?.contextLimit ?: 32_000).toFloat()).coerceIn(0f, 1f)
+                },
+                modifier = Modifier.fillMaxWidth().height(2.dp),
+                trackColor = Color.Transparent,
+                drawStopIndicator = {}
+            )
 
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val maxBubbleWidth = maxWidth * 0.78f

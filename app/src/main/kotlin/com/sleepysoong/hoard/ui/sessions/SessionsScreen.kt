@@ -46,6 +46,7 @@ import com.sleepysoong.hoard.ui.chat.RenameSessionDialog
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import com.sleepysoong.hoard.ui.glass.GlassButton
 import com.sleepysoong.hoard.ui.glass.GlassEmptyState
+import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
 import com.sleepysoong.hoard.ui.glass.GlassSurface
@@ -76,28 +77,16 @@ fun SessionsScreen(
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            // Same floating glass bar as chat: centered title, glass "+" on the right.
-            GlassSurface(shape = RoundedCornerShape(20.dp), tone = GlassTone.Thick) {
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Spacer matches the icon button width so the title centers.
-                    Box(Modifier.size(44.dp))
-                    Text(
-                        "세션",
-                        style = MaterialTheme.typography.headlineSmall,
-                        maxLines = 1,
-                        modifier = Modifier.weight(1f),
-                        textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                    )
+            // Shared floating bar — same as chat's header. No left icon (this is home),
+            // title centered, glass "+" button on the right.
+            GlassFloatingBar(
+                title = "세션",
+                actions = {
                     GlassIconButton(onClick = { vm.newSession(); onOpenChat() }) {
                         Icon(Icons.Rounded.Add, contentDescription = "새 세션")
                     }
                 }
-            }
+            )
 
             if (state.sessions.isEmpty()) {
                 GlassEmptyState(

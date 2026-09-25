@@ -60,6 +60,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -124,6 +125,79 @@ fun GlassTopAppBar(
         ),
         colors = colors.copy(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)
     )
+}
+
+/**
+ * Floating navigation bar — the iOS-grade header used by all top-level screens.
+ *
+ * Layout contract:
+ * - Left slot is always 44dp wide (nav icon or a blank spacer), so the centered
+ *   title stays optically centered.
+ * - Title is `headlineSmall`, subtitle `labelSmall` — same style everywhere.
+ * - Content of `actions` should use [GlassIconButton] with the same tint scheme.
+ *
+ * Call sites overriding defaults tune via [navigationIcon], [title]*, and
+ * [actions]. Prefer this over composing a new top bar per screen.
+ */
+@Composable
+fun GlassFloatingBar(
+    title: String,
+    subtitle: String? = null,
+    onTitleClick: (() -> Unit)? = null,
+    navigationIcon: (@Composable () -> Unit)? = null,
+    actions: (@Composable RowScope.() -> Unit)? = null,
+    modifier: Modifier = Modifier,
+    tone: GlassTone = GlassTone.Thick
+) {
+    GlassSurface(modifier = modifier, shape = RoundedCornerShape(20.dp), tone = tone) {
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                navigationIcon?.invoke()
+            }
+            Column(
+                Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.headlineSmall,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    modifier = if (onTitleClick != null) {
+                        Modifier.clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = onTitleClick
+                        )
+                    } else Modifier
+                )
+                if (subtitle != null) {
+                    Text(
+                        subtitle,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                        modifier = if (onTitleClick != null) {
+                            Modifier.clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onTitleClick
+                            )
+                        } else Modifier
+                    )
+                }
+            }
+            Box(Modifier.size(44.dp), contentAlignment = Alignment.Center) {
+                actions?.let { Row(content = it) }
+            }
+        }
+    }
 }
 
 /**
