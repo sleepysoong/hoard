@@ -1,5 +1,6 @@
 package com.sleepysoong.hoard.ui.glass
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Column
@@ -10,6 +11,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
@@ -111,14 +113,17 @@ fun GlassModalBottomSheet(
                 .imePadding()
                 .padding(horizontal = 20.dp, vertical = 12.dp)
         ) {
-            // Solid drag handle (no gradient).
+            // Solid grabber (no gradient). Note: ModalBottomSheet lives in its own
+            // window, so it must NOT sample the Activity backdrop (cross-window
+            // GraphicsLayer access). Keep this grabber solid.
             Box(
                 Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(bottom = 12.dp)
-                    .glassMaterial(RoundedCornerShape(50), scheme.surfaceContainerHighest, tone = GlassTone.Thin)
-                    .padding(horizontal = 20.dp, vertical = 4.dp)
-            ) { Spacer(Modifier.height(0.dp)) }
+                    .size(width = 36.dp, height = 5.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(scheme.onSurface.copy(alpha = 0.25f))
+            )
             content()
             Spacer(Modifier.height(12.dp))
         }
