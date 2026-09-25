@@ -1,5 +1,7 @@
 package com.sleepysoong.hoard.ui.glass
 
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
@@ -7,6 +9,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -145,6 +149,66 @@ fun IOSSegmentedControl(
                         ),
                         color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
                         maxLines = 1
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * Scope-agnostic AnimatedVisibility. Inside a Column/Row lambda the stock
+ * `AnimatedVisibility` resolves to the scoped extension, so overlays that are
+ * placed in a Box inside a Column need this wrapper.
+ */
+@Composable
+fun GlassAnimatedVisibility(
+    visible: Boolean,
+    modifier: Modifier = Modifier,
+    enter: EnterTransition = fadeIn(),
+    exit: ExitTransition = fadeOut(),
+    content: @Composable () -> Unit
+) {
+    androidx.compose.animation.AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = enter,
+        exit = exit
+    ) { content() }
+}
+
+/**
+ * Floating liquid-glass context/action capsule (iMessage long-press menu shape).
+ * Rendered inline above a bubble, so it stays in the same window as the backdrop.
+ */
+@Composable
+fun GlassActionCapsule(
+    actions: List<Pair<androidx.compose.ui.graphics.vector.ImageVector, () -> Unit>>,
+    modifier: Modifier = Modifier
+) {
+    val scheme = MaterialTheme.colorScheme
+    Box(
+        modifier
+            .height(48.dp)
+            .shadow(14.dp, RoundedCornerShape(50), clip = false)
+            .glassMaterial(RoundedCornerShape(50), scheme.surface, compact = true)
+            .padding(horizontal = 4.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            actions.forEach { (icon, onClick) ->
+                Box(
+                    Modifier
+                        .size(44.dp)
+                        .clip(CircleShape)
+                        .clickable(onClick = onClick),
+                    contentAlignment = Alignment.Center
+                ) {
+                    androidx.compose.material3.Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = scheme.onSurface,
+                        modifier = Modifier.size(19.dp)
                     )
                 }
             }

@@ -4,13 +4,24 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
@@ -71,7 +82,7 @@ private val TABS = listOf(
 )
 
 class MainActivity : ComponentActivity() {
-    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class, ExperimentalLayoutApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -93,6 +104,14 @@ class MainActivity : ComponentActivity() {
                 val windowSizeClass = calculateWindowSizeClass(this)
                 val twoPane = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
 
+                // iOS-style: tab bar yields to the keyboard, content rides the IME.
+                val imeVisible = WindowInsets.isImeVisible
+                val bottomReserve by animateDpAsState(
+                    targetValue = if (imeVisible) 12.dp else 108.dp,
+                    animationSpec = tween(220),
+                    label = "ime-bottom-reserve"
+                )
+
                 Box(Modifier.fillMaxSize()) {
                     NavHost(
                         navController = nav,
@@ -100,8 +119,9 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .statusBarsPadding()
+                            .imePadding()
                             .padding(horizontal = if (twoPane) 20.dp else 12.dp)
-                            .padding(bottom = 108.dp, top = 8.dp)
+                            .padding(bottom = bottomReserve, top = 8.dp)
                     ) {
                         composable("chat") {
                             if (twoPane) {
@@ -129,42 +149,48 @@ class MainActivity : ComponentActivity() {
                         composable("tools") { ToolsScreen() }
                         composable("settings") { SettingsScreen() }
                     }
-                    // Interactive liquid bottom tabs floating above the system bar.
-                    GlassBottomBar(
-                        selectedTabIndex = selected,
-                        tabsCount = TABS.size,
-                        backdrop = backdrop,
-                        pressedTabIndex = pressed,
-                        modifier = Modifier
-                            .align(Alignment.BottomCenter)
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                    // Interactive liquid bottom tabs — hidden while the keyboard is up.
+                    AnimatedVisibility(
+                        visible = !imeVisible,
+                        enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
+                        exit = fadeOut(tween(140)) + slideOutVertically(tween(200)) { it / 2 },
+                        modifier = Modifier.align(Alignment.BottomCenter)
                     ) {
-                        TABS.forEachIndexed { i, tab ->
-                            NavigationBarItem(
-                                selected = selected == i,
-                                onClick = {
-                                    pressed = i
-                                    selected = i
-                                    nav.navigate(tab.route) { launchSingleTop = true }
-                                    pressed = -1
-                                },
-                                icon = {
-                                    Icon(
-                                        if (selected == i) tab.selectedIcon else tab.unselectedIcon,
-                                        contentDescription = tab.title
+                        GlassBottomBar(
+                            selectedTabIndex = selected,
+                            tabsCount = TABS.size,
+                            backdrop = backdrop,
+                            pressedTabIndex = pressed,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .navigationBarsPadding()
+                                .padding(horizontal = 16.dp, vertical = 12.dp)
+                        ) {
+                            TABS.forEachIndexed { i, tab ->
+                                NavigationBarItem(
+                                    selected = selected == i,
+                                    onClick = {
+                                        pressed = i
+                                        selected = i
+                                        nav.navigate(tab.route) { launchSingleTop = true }
+                                        pressed = -1
+                                    },
+                                    icon = {
+                                        Icon(
+                                            if (selected == i) tab.selectedIcon else tab.unselectedIcon,
+                                            contentDescription = tab.title
+                                        )
+                                    },
+                                    label = { Text(tab.title) },
+                                    colors = NavigationBarItemDefaults.colors(
+                                        selectedIconColor = MaterialTheme.colorScheme.primary,
+                                        selectedTextColor = MaterialTheme.colorScheme.primary,
+                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        indicatorColor = Color.Transparent
                                     )
-                                },
-                                label = { Text(tab.title) },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    indicatorColor = Color.Transparent
                                 )
-                            )
+                            }
                         }
                     }
                 }

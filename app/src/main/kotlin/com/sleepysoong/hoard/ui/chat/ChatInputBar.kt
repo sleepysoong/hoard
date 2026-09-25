@@ -7,10 +7,12 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -22,6 +24,7 @@ import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -31,6 +34,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
@@ -87,6 +92,7 @@ fun ChatInputBar(
     }
     val showSlash = value.trimStart().startsWith("/") && !value.contains(" ")
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
+    val haptics = LocalHapticFeedback.current
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(24.dp)) {
         Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -114,19 +120,51 @@ fun ChatInputBar(
             }
             if (showSlash) {
                 val query = value.trimStart().removePrefix("/")
-                Column {
-                    MockData.slashCommands.filter { it.command.removePrefix("/").startsWith(query) }.take(5)
-                        .forEach { cmd ->
-                            Text(
-                                "${cmd.command}  ${cmd.description}",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = scheme.primary,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .clickable { onValueChange(cmd.command + " ") }
-                                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                            )
-                        }
+                // iOS-style command suggestion list: solid inset, blue commands.
+                Box(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(scheme.surfaceContainerHigh)
+                        .padding(vertical = 4.dp)
+                ) {
+                    Column {
+                        MockData.slashCommands
+                            .filter { it.command.removePrefix("/").startsWith(query) }
+                            .take(5)
+                            .forEachIndexed { i, cmd ->
+                                if (i > 0) {
+                                    HorizontalDivider(
+                                        modifier = Modifier.padding(start = 12.dp),
+                                        thickness = 0.5.dp,
+                                        color = scheme.outline.copy(alpha = 0.5f)
+                                    )
+                                }
+                                Row(
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                            onValueChange(cmd.command + " ")
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        cmd.command,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        color = scheme.primary
+                                    )
+                                    Text(
+                                        cmd.description,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = scheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                    }
                 }
             }
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(2.dp)) {
@@ -152,7 +190,12 @@ fun ChatInputBar(
                     maxLines = 6
                 )
                 IconButton(
-                    onClick = onSend,
+                    onClick = {
+                        if (canSend) {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onSend()
+                        }
+                    },
                     enabled = canSend,
                     modifier = Modifier
                         .size(40.dp)

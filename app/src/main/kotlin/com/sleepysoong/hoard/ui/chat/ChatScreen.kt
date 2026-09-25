@@ -1,5 +1,11 @@
 package com.sleepysoong.hoard.ui.chat
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,6 +20,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -21,17 +28,29 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import com.sleepysoong.hoard.data.MockData
+import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSurface
+import kotlinx.coroutines.launch
 
 @Composable
 fun ChatScreen(
@@ -47,9 +66,32 @@ fun ChatScreen(
     var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
+    val scope = rememberCoroutineScope()
+    // Background replies post a notification; ask once, when the first reply is sent.
+    val context = LocalContext.current
+    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
+    val sendReply: (String, String) -> Unit = { prompt, modelId ->
+        if (Build.VERSION.SDK_INT >= 33 &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        vm.send(prompt, vm.attachments, modelId)
+    }
+    // Follow new replies only while the user is already at the bottom.
+    val atBottom by remember {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val last = info.visibleItemsInfo.lastOrNull() ?: return@derivedStateOf true
+            last.index >= info.totalItemsCount - 1
+        }
+    }
 
-    LaunchedEffect(state.messages.size) {
-        if (state.messages.isNotEmpty()) listState.animateScrollToItem(state.messages.lastIndex)
+    LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.text) {
+        if (atBottom && state.messages.isNotEmpty()) {
+            listState.animateScrollToItem(state.messages.lastIndex)
+        }
     }
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -104,7 +146,7 @@ fun ChatScreen(
                 LazyColumn(
                     state = listState,
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(vertical = 4.dp),
+                    contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     items(state.messages, key = { it.id }) { msg ->
@@ -115,6 +157,30 @@ fun ChatScreen(
                             onDelete = { deleteTarget = msg.id },
                             onBranch = { branchTarget = msg.id },
                             onRetry = { vm.retryFrom(msg.id) }
+                        )
+                    }
+                }
+                // iOS-style floating glass scroll-to-bottom button.
+                GlassAnimatedVisibility(
+                    visible = !atBottom,
+                    enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.8f),
+                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.8f),
+                    modifier = Modifier.align(Alignment.BottomEnd)
+                ) {
+                    GlassIconButton(
+                        onClick = {
+                            scope.launch {
+                                if (state.messages.isNotEmpty()) {
+                                    listState.animateScrollToItem(state.messages.lastIndex)
+                                }
+                            }
+                        },
+                        modifier = Modifier.padding(8.dp)
+                    ) {
+                        androidx.compose.material3.Icon(
+                            Icons.Rounded.KeyboardArrowDown,
+                            contentDescription = "맨 아래로",
+                            tint = MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -131,7 +197,7 @@ fun ChatScreen(
             onModelClick = { showModels = true },
             onSend = {
                 if (session != null) {
-                    vm.send(vm.input, vm.attachments, session.modelId)
+                    sendReply(vm.input, session.modelId)
                 }
             }
         )

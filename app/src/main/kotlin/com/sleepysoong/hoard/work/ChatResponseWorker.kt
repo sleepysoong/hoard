@@ -32,13 +32,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val hasAttachments = inputData.getBoolean(KEY_ATTACH, false)
         val repo = HoardRepository.get()
 
-        setForeground(foregroundInfo("Hoard가 생각 중…"))
-        // Placeholder streaming bubble owned by the worker.
-        repo.appendMessage(
-            sessionId,
-            ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
-        )
         return try {
+            promote("Hoard가 생각 중…")
+            // Placeholder streaming bubble owned by the worker.
+            repo.appendMessage(
+                sessionId,
+                ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
+            )
             MockAiEngine.streamReply(prompt, modelId, hasAttachments) { ev ->
                 repo.updateMessage(sessionId, messageId) {
                     it.copy(
@@ -50,7 +50,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         isStreaming = !ev.done
                     )
                 }
-                if (!ev.done) setForeground(foregroundInfo("Hoard가 답변 중…"))
+                if (!ev.done) promote("Hoard가 답변 중…")
             }
             notifyDone(sessionId)
             Result.success()
@@ -62,12 +62,26 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         }
     }
 
+    /**
+     * Foreground promotion is best-effort. Some devices/OEMs refuse dataSync FGS
+     * (or the platform drops the type declaration), and a reply must never be
+     * lost because of a notification — WorkManager keeps running as background work.
+     */
+    private suspend fun promote(text: String) {
+        try {
+            setForeground(foregroundInfo(text))
+        } catch (_: Throwable) {
+            // Intentionally ignored: continue as regular background work.
+        }
+    }
+
     private fun foregroundInfo(text: String): ForegroundInfo {
         val notification = NotificationCompat.Builder(applicationContext, "hoard-replies")
             .setContentTitle("Hoard")
             .setContentText(text)
             .setSmallIcon(android.R.drawable.sym_def_app_icon)
             .setOngoing(true)
+            .setSilent(true)
             .build()
         return if (Build.VERSION.SDK_INT >= 29) {
             ForegroundInfo(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
