@@ -47,6 +47,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -98,29 +99,58 @@ class MainActivity : ComponentActivity() {
             HoardTheme(darkTheme = dark) {
                 val nav = rememberNavController()
                 val vm: ChatViewModel = viewModel()
-                var selected by rememberSaveable { mutableIntStateOf(0) }
+                // 0=채팅 1=세션 2=도구 3=설정. 앱은 세션 목록에서 시작한다.
+                var selected by rememberSaveable { mutableIntStateOf(1) }
                 var pressed by remember { mutableStateOf(-1) }
                 val backdrop = LocalGlassBackdrop.current
                 // Foldables / tablets: side-by-side sessions + chat, state stays in the VM.
                 val windowSizeClass = calculateWindowSizeClass(this)
                 val twoPane = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
 
-                // iOS-style: tab bar yields to the keyboard, content rides the IME.
+                // Chat and sessions are one flow: while chatting, the bottom bar IS the
+                // composer, so the floating tab bar steps aside (also while the IME is up).
+                val backStackEntry by nav.currentBackStackEntryAsState()
+                val route = backStackEntry?.destination?.route ?: "sessions"
+                val inChat = route == "chat"
                 val imeVisible = WindowInsets.isImeVisible
+                val showTabBar = !inChat && !imeVisible
+
                 val bottomReserve by animateDpAsState(
-                    targetValue = if (imeVisible) 12.dp else 108.dp,
+                    targetValue = when {
+                        inChat -> 0.dp
+                        imeVisible -> 12.dp
+                        else -> 108.dp
+                    },
                     animationSpec = tween(220),
-                    label = "ime-bottom-reserve"
+                    label = "bottom-reserve"
                 )
+
+                fun openChat() {
+                    selected = 0
+                    nav.navigate("chat") { launchSingleTop = true }
+                }
+
+                fun backToSessions() {
+                    selected = 1
+                    if (!nav.popBackStack()) {
+                        nav.navigate("sessions") { launchSingleTop = true }
+                    }
+                }
 
                 Box(Modifier.fillMaxSize()) {
                     NavHost(
                         navController = nav,
-                        startDestination = "chat",
+                        startDestination = "sessions",
                         modifier = Modifier
                             .fillMaxSize()
                             .statusBarsPadding()
                             .imePadding()
+                            // Nav-bar clearance only when the IME is down; with the
+                            // keyboard up, `ime` already spans the nav-bar area.
+                            .then(
+                                if (inChat && !imeVisible) Modifier.navigationBarsPadding()
+                                else Modifier
+                            )
                             .padding(horizontal = if (twoPane) 20.dp else 12.dp)
                             .padding(bottom = bottomReserve, top = 8.dp)
                     ) {
@@ -135,24 +165,23 @@ class MainActivity : ComponentActivity() {
                                         thickness = 0.5.dp,
                                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
                                     )
-                                    Box(Modifier.weight(1f).fillMaxHeight()) { ChatScreen(vm) }
+                                    Box(Modifier.weight(1f).fillMaxHeight()) {
+                                        ChatScreen(vm, showBackButton = false)
+                                    }
                                 }
                             } else {
-                                ChatScreen(vm)
+                                ChatScreen(vm, showBackButton = true, onBack = { backToSessions() })
                             }
                         }
                         composable("sessions") {
-                            SessionsScreen(vm, onOpenChat = {
-                                selected = 0
-                                nav.navigate("chat") { launchSingleTop = true }
-                            })
+                            SessionsScreen(vm, onOpenChat = { openChat() })
                         }
                         composable("tools") { ToolsScreen() }
                         composable("settings") { SettingsScreen() }
                     }
-                    // Interactive liquid bottom tabs — hidden while the keyboard is up.
+                    // Interactive liquid bottom tabs — only outside the chat composer.
                     AnimatedVisibility(
-                        visible = !imeVisible,
+                        visible = showTabBar,
                         enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
                         exit = fadeOut(tween(140)) + slideOutVertically(tween(200)) { it / 2 },
                         modifier = Modifier.align(Alignment.BottomCenter)

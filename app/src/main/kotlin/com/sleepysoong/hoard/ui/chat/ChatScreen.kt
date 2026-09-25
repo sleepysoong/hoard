@@ -29,7 +29,7 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ContentCopy
 import androidx.compose.material.icons.rounded.Delete
 import androidx.compose.material.icons.rounded.Edit
@@ -79,6 +79,8 @@ private const val GROUP_WINDOW_MS = 3 * 60 * 1000L
 @Composable
 fun ChatScreen(
     vm: ChatViewModel = viewModel(),
+    showBackButton: Boolean = true,
+    onBack: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state by vm.uiState.collectAsState()
@@ -132,8 +134,14 @@ fun ChatScreen(
                         Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        GlassIconButton(onClick = { vm.newSession() }) {
-                            Icon(Icons.Rounded.Add, contentDescription = "새 세션")
+                        GlassIconButton(
+                            onClick = onBack,
+                            enabled = showBackButton
+                        ) {
+                            Icon(
+                                Icons.AutoMirrored.Rounded.ArrowBack,
+                                contentDescription = "세션 목록으로"
+                            )
                         }
                         Column(
                             Modifier.weight(1f),

@@ -101,3 +101,23 @@ fun formatElapsed(ms: Long): String = when {
     ms < 60_000 -> String.format("%.1f초", ms / 1000f)
     else -> String.format("%d분 %d초", ms / 60_000, (ms % 60_000) / 1000)
 }
+
+/** Apple-style relative timestamp for list rows. */
+fun formatRelativeTime(epochMs: Long, now: Long = System.currentTimeMillis()): String {
+    val diff = (now - epochMs).coerceAtLeast(0L)
+    val minute = 60_000L
+    val hour = 60 * minute
+    val day = 24 * hour
+    val cal = java.util.Calendar.getInstance().apply { timeInMillis = epochMs }
+    val nowCal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+    return when {
+        diff < minute -> "방금"
+        diff < hour -> "${diff / minute}분 전"
+        diff < day && nowCal.get(java.util.Calendar.DAY_OF_YEAR) == cal.get(java.util.Calendar.DAY_OF_YEAR) ->
+            "${diff / hour}시간 전"
+        nowCal.get(java.util.Calendar.DAY_OF_YEAR) - cal.get(java.util.Calendar.DAY_OF_YEAR) == 1 -> "어제"
+        nowCal.get(java.util.Calendar.YEAR) == cal.get(java.util.Calendar.YEAR) ->
+            "${cal.get(java.util.Calendar.MONTH) + 1}월 ${cal.get(java.util.Calendar.DAY_OF_MONTH)}일"
+        else -> "${cal.get(java.util.Calendar.YEAR)}.${cal.get(java.util.Calendar.MONTH) + 1}.${cal.get(java.util.Calendar.DAY_OF_MONTH)}"
+    }
+}

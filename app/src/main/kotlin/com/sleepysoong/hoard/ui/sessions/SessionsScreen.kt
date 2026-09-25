@@ -33,6 +33,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.unit.dp
+import com.sleepysoong.hoard.data.formatRelativeTime
 import com.sleepysoong.hoard.ui.chat.ChatViewModel
 import com.sleepysoong.hoard.ui.chat.DeleteConfirmDialog
 import com.sleepysoong.hoard.ui.glass.GlassButton
@@ -64,6 +65,14 @@ fun SessionsScreen(
                 Icon(Icons.Rounded.Add, contentDescription = "새 세션", tint = scheme.primary, modifier = Modifier.size(26.dp))
             }
         }
+        if (state.sessions.isNotEmpty()) {
+            Text(
+                "최근 대화 ${state.sessions.size}개",
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 6.dp, top = 2.dp)
+            )
+        }
         if (state.sessions.isEmpty()) {
             GlassEmptyState(
                 title = "세션이 없어요",
@@ -83,12 +92,13 @@ fun SessionsScreen(
                         Row(
                             Modifier
                                 .fillMaxWidth()
-                                .heightIn(min = 60.dp)
+                                .heightIn(min = 68.dp)
                                 .liquidClickable { vm.selectSession(s.id); onOpenChat() }
-                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            val preview = state.previews[s.id]
                             Column(Modifier.weight(1f)) {
                                 Text(
                                     s.name,
@@ -97,10 +107,22 @@ fun SessionsScreen(
                                     maxLines = 1
                                 )
                                 Text(
-                                    "${s.modelId} · 컨텍스트 ${s.contextLimit}${s.branchedFrom?.let { " · 브랜치" } ?: ""}",
+                                    when {
+                                        preview == null -> "새 대화"
+                                        preview.isUser -> "나: ${preview.text}"
+                                        else -> preview.text
+                                    },
                                     style = MaterialTheme.typography.labelSmall,
                                     color = scheme.onSurfaceVariant,
                                     maxLines = 1
+                                )
+                            }
+                            if (preview != null) {
+                                Text(
+                                    formatRelativeTime(preview.timestamp),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = scheme.onSurfaceVariant,
+                                    modifier = Modifier.align(Alignment.Top)
                                 )
                             }
                             IconButton(

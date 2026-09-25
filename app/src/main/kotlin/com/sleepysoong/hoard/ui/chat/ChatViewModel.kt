@@ -20,11 +20,18 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.util.UUID
 
+data class SessionPreview(
+    val text: String,
+    val isUser: Boolean,
+    val timestamp: Long
+)
+
 data class ChatUiState(
     val session: ChatSession? = null,
     val messages: List<ChatMessage> = emptyList(),
     val usedTokens: Int = 0,
-    val sessions: List<ChatSession> = emptyList()
+    val sessions: List<ChatSession> = emptyList(),
+    val previews: Map<String, SessionPreview> = emptyMap()
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
@@ -40,11 +47,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     ) { sessions, allMessages, activeId ->
         val id = activeId.ifBlank { sessions.firstOrNull()?.id.orEmpty() }
         val msgs = allMessages[id].orEmpty()
+        val previews = allMessages.mapNotNull { (key, list) ->
+            list.lastOrNull()?.let {
+                key to SessionPreview(it.text, it.role == MessageRole.User, it.createdAt)
+            }
+        }.toMap()
         ChatUiState(
             session = sessions.firstOrNull { it.id == id },
             messages = msgs,
             usedTokens = msgs.sumOf { it.totalTokens },
-            sessions = sessions
+            sessions = sessions,
+            previews = previews
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ChatUiState())
 
