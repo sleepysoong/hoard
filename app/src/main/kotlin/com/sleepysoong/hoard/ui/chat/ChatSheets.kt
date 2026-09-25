@@ -1,13 +1,20 @@
 package com.sleepysoong.hoard.ui.chat
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.lazy.LazyColumn
@@ -28,7 +35,8 @@ import com.sleepysoong.hoard.ui.glass.GlassButton
 import com.sleepysoong.hoard.ui.glass.GlassCard
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredOverlay
 import com.sleepysoong.hoard.ui.glass.GlassDialog
-import com.sleepysoong.hoard.ui.glass.GlassModalBottomSheet
+import com.sleepysoong.hoard.ui.glass.GlassTone
+import com.sleepysoong.hoard.ui.glass.glassMaterial
 import com.sleepysoong.hoard.ui.glass.GlassSecondaryButton
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassTextField
@@ -102,29 +110,100 @@ fun SessionSettingsSheet(
     var prompt by remember(session.id) { mutableStateOf(session.systemPrompt) }
     var context by remember(session.id) { mutableFloatStateOf(session.contextLimit.toFloat()) }
     val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
+    val scheme = MaterialTheme.colorScheme
+    val cornerRad = 20.dp
 
-    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss, maxCardW = 360.dp) {
-        Text("세션 설정", style = MaterialTheme.typography.titleLarge)
-        GlassTextField(value = name, onValueChange = { name = it }, label = { Text("세션 이름") }, singleLine = true)
-        GlassTextField(
-            value = prompt, onValueChange = { prompt = it },
-            label = { Text("시스템 프롬프트") }, minLines = 3, maxLines = 8
-        )
-        Text("컨텍스트: ${context.toInt()} 토큰", style = MaterialTheme.typography.labelLarge)
-        GlassSlider(
-            value = options.indexOf(options.minByOrNull { kotlin.math.abs(it - context.toInt()) } ?: 32_000).toFloat(),
-            onValueChange = { idx -> context = options[idx.toInt().coerceIn(0, options.lastIndex)].toFloat() },
-            valueRange = 0f..(options.lastIndex.toFloat()),
-            steps = options.size - 2
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GlassSecondaryButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("취소") }
-            GlassButton(
-                onClick = {
-                    onRename(name); onSystemPrompt(prompt); onContextLimit(context.toInt()); onDismiss()
-                },
-                modifier = Modifier.weight(1f)
-            ) { Text("저장") }
+    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss, maxCardW = 380.dp) {
+        // Header card — matches the action menus.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(cornerRad))
+                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
+                .padding(horizontal = 18.dp, vertical = 16.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("세션 설정", style = MaterialTheme.typography.headlineSmall, maxLines = 1)
+                Text(
+                    "이 세션에만 적용됩니다 (목업).",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+
+        // Form card — one glass surface housing all editable rows.
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(cornerRad))
+                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
+                .padding(horizontal = 16.dp, vertical = 4.dp)
+        ) {
+            GlassTextField(
+                value = name, onValueChange = { name = it },
+                label = { Text("세션 이름") }, singleLine = true
+            )
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = scheme.onSurface.copy(alpha = 0.12f),
+                modifier = Modifier.padding(start = 16.dp)
+            )
+            GlassTextField(
+                value = prompt, onValueChange = { prompt = it },
+                label = { Text("시스템 프롬프트") }, minLines = 3, maxLines = 8
+            )
+            HorizontalDivider(
+                thickness = 0.5.dp,
+                color = scheme.onSurface.copy(alpha = 0.12f),
+                modifier = Modifier.padding(start = 16.dp)
+            )
+            Column(Modifier.padding(vertical = 8.dp)) {
+                Text(
+                    "컨텍스트: ${context.toInt()} 토큰",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurface
+                )
+                GlassSlider(
+                    value = options.indexOf(options.minByOrNull { kotlin.math.abs(it - context.toInt()) } ?: 32_000).toFloat(),
+                    onValueChange = { idx -> context = options[idx.toInt().coerceIn(0, options.lastIndex)].toFloat() },
+                    valueRange = 0f..(options.lastIndex.toFloat()),
+                    steps = options.size - 2
+                )
+            }
+        }
+
+        // Save / cancel — same split-capsule idiom as the action menus.
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(cornerRad))
+                    .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface, tone = GlassTone.Thin)
+                    .clickable { onDismiss() },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("취소", style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
+            }
+            Box(
+                Modifier
+                    .weight(1f)
+                    .height(54.dp)
+                    .clip(RoundedCornerShape(cornerRad))
+                    .glassMaterial(RoundedCornerShape(cornerRad), scheme.primaryContainer, tone = GlassTone.Regular)
+                    .liquidClickable {
+                        onRename(name); onSystemPrompt(prompt); onContextLimit(context.toInt()); onDismiss()
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Text("저장", style = MaterialTheme.typography.labelLarge, color = scheme.onPrimaryContainer)
+            }
         }
     }
 }
