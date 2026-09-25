@@ -120,19 +120,18 @@ private data class ToneSpec(
     val innerShadow: Float
 )
 
-private fun specFor(tone: GlassTone, mode: GlassMode): ToneSpec {
-    val capLens = mode != GlassMode.Full
-    return when (tone) {
+private fun specFor(tone: GlassTone, mode: GlassMode, dark: Boolean): ToneSpec {
+    // Dark mode needs higher tint / inner shadow so the glass still reads as
+    // physical material on a near-black canvas. Slightly densify there.
+    val base = when (tone) {
         GlassTone.Thin -> ToneSpec(5.dp, 8.dp, 14.dp, 0.26f, 0.05f)
         GlassTone.Regular -> ToneSpec(10.dp, 16.dp, 26.dp, 0.34f, 0.08f)
-        GlassTone.Thick -> ToneSpec(
-            blur = 16.dp,
-            lensHeight = if (capLens) 0.dp else 30.dp,
-            lensAmount = if (capLens) 0.dp else 52.dp,
-            tintAlpha = 0.52f,
-            innerShadow = 0.10f
-        )
+        GlassTone.Thick -> ToneSpec(16.dp, 30.dp, 52.dp, 0.52f, 0.10f)
     }
+    return if (!dark) base else base.copy(
+        tintAlpha = (base.tintAlpha * 1.22f).coerceAtMost(0.60f),
+        innerShadow = base.innerShadow * 1.4f
+    )
 }
 
 /**
@@ -155,13 +154,13 @@ internal fun Modifier.glassMaterial(
     val mode = LocalGlassMode.current
     val scheme = MaterialTheme.colorScheme
     val dark = isSystemInDarkTheme()
-    val spec = specFor(tone, mode)
+    val spec = specFor(tone, mode, dark)
     val surface = if (enabled) tint else scheme.surfaceContainerHighest
     val alpha = if (enabled) spec.tintAlpha else 0f
     // On a pure-white canvas the glass has nothing to tint, so the rim and the
     // inner/outer shadows do the work. Keep them crisp enough to read as glass.
     val outline = outlineColor ?: scheme.onSurface.copy(
-        alpha = if (enabled) (if (dark) 0.16f else 0.13f) else 0.08f
+        alpha = if (enabled) (if (dark) 0.18f else 0.13f) else 0.08f
     )
 
     val material = if (backdrop == null || mode == GlassMode.Off) {

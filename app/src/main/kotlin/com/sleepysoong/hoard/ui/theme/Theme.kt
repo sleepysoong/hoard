@@ -42,10 +42,14 @@ private val HoardLightScheme = lightColorScheme(
     onErrorContainer = Color(0xFFB3261E)
 )
 
+// Dark canvas is not pure black; near-black keeps glass "ice" readable.
+val IOSDarkCanvas = Color(0xFF0C0C0F)
+val IOSDarkCard = Color(0xFF1A1A1F)
+
 private val HoardDarkScheme = darkColorScheme(
     primary = IOSBlueDark,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFF1C3A5E),
+    primaryContainer = Color(0xFF1C3A66),
     onPrimaryContainer = Color(0xFFD6E9FF),
     secondary = IOSGreen,
     onSecondary = Color.White,
@@ -53,19 +57,19 @@ private val HoardDarkScheme = darkColorScheme(
     onSecondaryContainer = Color(0xFFDFF7E4),
     tertiary = IOSGreen,
     onTertiary = Color.White,
-    background = IOSGroupedBgDark,
+    background = IOSDarkCanvas,
     onBackground = Color.White,
-    surface = IOSCardDark,
+    surface = IOSDarkCard,
     onSurface = Color.White,
-    surfaceVariant = IOSCardDark,
+    surfaceVariant = Color(0xFF232328),
     onSurfaceVariant = IOSSecondaryLabelDark,
     surfaceContainerLowest = Color.Black,
-    surfaceContainerLow = Color.Black,
-    surfaceContainer = IOSCardDark,
-    surfaceContainerHigh = Color(0xFF2C2C2E),
+    surfaceContainerLow = Color(0xFF111114),
+    surfaceContainer = Color(0xFF19191C),
+    surfaceContainerHigh = Color(0xFF232328),
     surfaceContainerHighest = IOSFieldGrayDark,
-    outline = IOSSeparatorDark,
-    outlineVariant = Color(0xFF2C2C2E),
+    outline = Color(0xFF45454B),
+    outlineVariant = Color(0xFF2C2C31),
     error = IOSRedDark,
     onError = Color.White,
     errorContainer = Color(0xFF5A1712),

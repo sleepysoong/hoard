@@ -13,10 +13,13 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.runtime.SideEffect
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -26,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.ChatBubble
@@ -88,6 +92,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+
         setContent {
             val ctx = LocalContext.current
             val settings by SettingsStore.flow(ctx).collectAsState(SettingsStore.Settings())
@@ -96,6 +101,14 @@ class MainActivity : ComponentActivity() {
                 "dark" -> true
                 else -> isSystemInDarkTheme()
             }
+            // Status/nav bars should mirror the theme, not the wallpaper.
+            SideEffect {
+                WindowInsetsControllerCompat(window, window.decorView).apply {
+                    isAppearanceLightStatusBars = !dark
+                    isAppearanceLightNavigationBars = !dark
+                }
+            }
+
             HoardTheme(darkTheme = dark) {
                 val nav = rememberNavController()
                 val vm: ChatViewModel = viewModel()
@@ -115,11 +128,17 @@ class MainActivity : ComponentActivity() {
                 val imeVisible = WindowInsets.isImeVisible
                 val showTabBar = !inChat && !imeVisible
 
+                // fixed gap between content and system nav bar / IME.
+                // When the IME is up, cover it; else cover nav bar + 18dp.
+                // When inChat (tab bar retracted), leave extra 12dp over nav bar.
+                val navBarBottom = with(LocalDensity.current) {
+                    WindowInsets.navigationBars.getBottom(this).toDp()
+                }
                 val bottomReserve by animateDpAsState(
                     targetValue = when {
-                        inChat -> 0.dp
-                        imeVisible -> 12.dp
-                        else -> 108.dp
+                        inChat -> navBarBottom + 18.dp
+                        imeVisible -> 0.dp
+                        else -> navBarBottom + 108.dp
                     },
                     animationSpec = tween(220),
                     label = "bottom-reserve"
@@ -145,12 +164,6 @@ class MainActivity : ComponentActivity() {
                             .fillMaxSize()
                             .statusBarsPadding()
                             .imePadding()
-                            // Nav-bar clearance only when the IME is down; with the
-                            // keyboard up, `ime` already spans the nav-bar area.
-                            .then(
-                                if (inChat && !imeVisible) Modifier.navigationBarsPadding()
-                                else Modifier
-                            )
                             .padding(horizontal = if (twoPane) 20.dp else 12.dp)
                             .padding(bottom = bottomReserve, top = 8.dp)
                     ) {
