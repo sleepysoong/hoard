@@ -98,6 +98,6 @@ fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
 
 fun formatElapsed(ms: Long): String = when {
     ms < 1000 -> "${ms}ms"
-    ms < 60_000 -> String.format("%.1fs", ms / 1000f)
-    else -> String.format("%dm %ds", ms / 60_000, (ms % 60_000) / 1000)
+    ms < 60_000 -> String.format("%.1f초", ms / 1000f)
+    else -> String.format("%d분 %d초", ms / 60_000, (ms % 60_000) / 1000)
 }

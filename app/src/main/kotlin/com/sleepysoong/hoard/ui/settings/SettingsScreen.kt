@@ -32,13 +32,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Settings", style = MaterialTheme.typography.headlineSmall)
+        Text("설정", style = MaterialTheme.typography.headlineSmall)
 
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Appearance", style = MaterialTheme.typography.titleSmall)
+                Text("화면 스타일", style = MaterialTheme.typography.titleSmall)
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("system" to "System", "light" to "Light", "dark" to "Dark").forEach { (id, label) ->
+                    listOf("system" to "시스템", "light" to "라이트", "dark" to "다크").forEach { (id, label) ->
                         GlassFilterChip(
                             selected = settings.theme == id,
                             onClick = { scope.launch { SettingsStore.setTheme(ctx, id) } },
@@ -51,7 +51,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Default model (mock)", style = MaterialTheme.typography.titleSmall)
+                Text("기본 모델 (목업)", style = MaterialTheme.typography.titleSmall)
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     MockData.models.forEach { m ->
                         GlassFilterChip(
@@ -66,7 +66,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("Default context: ${settings.defaultContext} tokens", style = MaterialTheme.typography.titleSmall)
+                Text("기본 컨텍스트: ${settings.defaultContext} 토큰", style = MaterialTheme.typography.titleSmall)
                 val idx = options.indexOf(settings.defaultContext).coerceAtLeast(0)
                 GlassSlider(
                     value = idx.toFloat(),
@@ -80,9 +80,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         GlassCard(Modifier.fillMaxWidth()) {
             Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Column(Modifier.weight(1f)) {
-                    Text("Background replies", style = MaterialTheme.typography.titleSmall)
+                    Text("백그라운드 답변", style = MaterialTheme.typography.titleSmall)
                     Text(
-                        "Finish responses after leaving the app (mock worker).",
+                        "앱을 나가도 답변을 계속 생성합니다 (목업 워커).",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -97,8 +97,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         GlassCard(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("Hoard", style = MaterialTheme.typography.titleSmall)
-                Text("by sleepysoong · https://github.com/sleepysoong/hoard", style = MaterialTheme.typography.bodySmall)
-                Text("Liquid-glass shell · mock data only · no gradients", style = MaterialTheme.typography.labelSmall)
+                Text("sleepysoong 제작 · https://github.com/sleepysoong/hoard", style = MaterialTheme.typography.bodySmall)
+                Text("리퀴드 글래스 껍데기 · 목업 데이터 전용 · 그라데이션 없음", style = MaterialTheme.typography.labelSmall)
             }
         }
     }

@@ -87,7 +87,7 @@ fun MessageBubble(
                         horizontalArrangement = Arrangement.spacedBy(4.dp)
                     ) {
                         Text(
-                            "Thinking (${message.thinking.size} steps)",
+                            "생각 중 (${message.thinking.size}단계)",
                             style = MaterialTheme.typography.labelMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -113,35 +113,35 @@ fun MessageBubble(
                 }
                 if (message.text.isEmpty() && message.isStreaming) {
                     LinearProgressIndicator(Modifier.fillMaxWidth())
-                    Text("Thinking…", style = MaterialTheme.typography.bodySmall)
+                    Text("생각 중…", style = MaterialTheme.typography.bodySmall)
                 } else {
                     Text(message.text, style = MaterialTheme.typography.bodyMedium)
                 }
                 if (!isUser) {
                     Text(
-                        "${formatElapsed(message.elapsedMs)} · ${message.totalTokens} tokens",
+                        "${formatElapsed(message.elapsedMs)} · ${message.totalTokens} 토큰",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Row(horizontalArrangement = Arrangement.spacedBy(0.dp)) {
                     IconButton(onClick = { clipboard.setText(AnnotatedString(message.text)) }) {
-                        Icon(Icons.Default.ContentCopy, contentDescription = "Copy")
+                        Icon(Icons.Default.ContentCopy, contentDescription = "복사")
                     }
                     if (isUser) {
                         IconButton(onClick = onEdit) {
-                            Icon(Icons.Default.Edit, contentDescription = "Edit")
+                            Icon(Icons.Default.Edit, contentDescription = "수정")
                         }
                     } else {
                         IconButton(onClick = onRetry) {
-                            Icon(Icons.Default.Refresh, contentDescription = "Retry")
+                            Icon(Icons.Default.Refresh, contentDescription = "다시 생성")
                         }
                     }
                     IconButton(onClick = onBranch) {
-                        Icon(Icons.Default.ForkRight, contentDescription = "Branch")
+                        Icon(Icons.Default.ForkRight, contentDescription = "브랜치")
                     }
                     IconButton(onClick = onDelete) {
-                        Icon(Icons.Default.Delete, contentDescription = "Delete")
+                        Icon(Icons.Default.Delete, contentDescription = "삭제")
                     }
                 }
             }

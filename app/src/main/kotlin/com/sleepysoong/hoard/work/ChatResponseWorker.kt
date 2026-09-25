@@ -32,7 +32,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val hasAttachments = inputData.getBoolean(KEY_ATTACH, false)
         val repo = HoardRepository.get()
 
-        setForeground(foregroundInfo("Hoard is thinking…"))
+        setForeground(foregroundInfo("Hoard가 생각 중…"))
         // Placeholder streaming bubble owned by the worker.
         repo.appendMessage(
             sessionId,
@@ -50,13 +50,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         isStreaming = !ev.done
                     )
                 }
-                if (!ev.done) setForeground(foregroundInfo("Hoard is replying…"))
+                if (!ev.done) setForeground(foregroundInfo("Hoard가 답변 중…"))
             }
             notifyDone(sessionId)
             Result.success()
         } catch (e: Exception) {
             repo.updateMessage(sessionId, messageId) {
-                it.copy(text = it.text.ifBlank { "(mock) reply interrupted." }, isStreaming = false)
+                it.copy(text = it.text.ifBlank { "(목업) 답변이 중단됐습니다." }, isStreaming = false)
             }
             Result.retry()
         }
@@ -80,7 +80,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val session = HoardRepository.get().sessionOf(sessionId) ?: return
         val notification = NotificationCompat.Builder(applicationContext, "hoard-replies")
             .setContentTitle("Hoard — ${session.name}")
-            .setContentText("Your reply is ready (mock).")
+            .setContentText("답변이 준비됐습니다 (목업).")
             .setSmallIcon(android.R.drawable.sym_def_app_icon)
             .setAutoCancel(true)
             .build()

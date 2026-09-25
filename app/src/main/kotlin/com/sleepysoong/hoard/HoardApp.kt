@@ -13,7 +13,7 @@ class HoardApp : Application(), Configuration.Provider {
         super.onCreate()
         val channel = NotificationChannel(
             "hoard-replies",
-            "Hoard background replies",
+            "Hoard 백그라운드 답변",
             NotificationManager.IMPORTANCE_LOW
         )
         getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)

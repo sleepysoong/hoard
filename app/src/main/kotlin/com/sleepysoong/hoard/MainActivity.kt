@@ -59,10 +59,10 @@ private data class Tab(
 )
 
 private val TABS = listOf(
-    Tab("chat", "Chat", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline),
-    Tab("sessions", "Sessions", Icons.Filled.Forum, Icons.Outlined.Forum),
-    Tab("tools", "Tools", Icons.Filled.Build, Icons.Outlined.Build),
-    Tab("settings", "Settings", Icons.Filled.Settings, Icons.Outlined.Settings)
+    Tab("chat", "채팅", Icons.Filled.ChatBubble, Icons.Outlined.ChatBubbleOutline),
+    Tab("sessions", "세션", Icons.Filled.Forum, Icons.Outlined.Forum),
+    Tab("tools", "도구", Icons.Filled.Build, Icons.Outlined.Build),
+    Tab("settings", "설정", Icons.Filled.Settings, Icons.Outlined.Settings)
 )
 
 class MainActivity : ComponentActivity() {

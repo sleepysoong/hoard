@@ -91,7 +91,7 @@ fun ChatInputBar(
                                 androidx.compose.material3.IconButton(
                                     onClick = { onAttachmentsChange(attachments.filterNot { it.id == a.id }) }
                                 ) {
-                                    androidx.compose.material3.Icon(Icons.Default.Close, contentDescription = "Remove")
+                                    androidx.compose.material3.Icon(Icons.Default.Close, contentDescription = "제거")
                                 }
                             }
                         )
@@ -113,16 +113,16 @@ fun ChatInputBar(
             }
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 GlassIconButton(onClick = { photoPicker.launch(PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)) }) {
-                    androidx.compose.material3.Icon(Icons.Default.Image, contentDescription = "Attach photo")
+                    androidx.compose.material3.Icon(Icons.Default.Image, contentDescription = "사진 첨부")
                 }
                 GlassIconButton(onClick = { filePicker.launch(arrayOf("*/*")) }) {
-                    androidx.compose.material3.Icon(Icons.Default.AttachFile, contentDescription = "Attach file")
+                    androidx.compose.material3.Icon(Icons.Default.AttachFile, contentDescription = "파일 첨부")
                 }
                 GlassTextField(
                     value = value,
                     onValueChange = onValueChange,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("Message Hoard…  ( / for commands )") },
+                    placeholder = { Text("Hoard에게 메시지… (/ 입력 시 명령어)") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
                     maxLines = 6
@@ -130,7 +130,7 @@ fun ChatInputBar(
                 GlassIconButton(onClick = onSend, enabled = value.isNotBlank() || attachments.isNotEmpty()) {
                     androidx.compose.material3.Icon(
                         Icons.Default.Send,
-                        contentDescription = "Send",
+                        contentDescription = "보내기",
                         tint = MaterialTheme.colorScheme.primary
                     )
                 }
@@ -138,7 +138,7 @@ fun ChatInputBar(
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 FilterChip(selected = true, onClick = onModelClick, label = { Text(modelName) })
                 Text(
-                    "Replies continue in background",
+                    "앱을 나가도 백그라운드에서 답변 계속",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

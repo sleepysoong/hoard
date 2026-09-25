@@ -69,17 +69,17 @@ fun ChatScreen(
                         val limit = session?.contextLimit ?: 32_000
                         val ratio = (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f)
                         Text(
-                            "${state.usedTokens} / $limit tokens (${(ratio * 100).toInt()}%) · ${session?.modelId}",
+                            "${state.usedTokens} / $limit 토큰 (${(ratio * 100).toInt()}%) · ${session?.modelId}",
                             style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1
                         )
                     }
                     GlassIconButton(onClick = { vm.newSession() }) {
-                        androidx.compose.material3.Icon(Icons.Default.Add, contentDescription = "New session")
+                        androidx.compose.material3.Icon(Icons.Default.Add, contentDescription = "새 세션")
                     }
                     GlassIconButton(onClick = { showSettings = true }) {
-                        androidx.compose.material3.Icon(Icons.Default.Settings, contentDescription = "Session settings")
+                        androidx.compose.material3.Icon(Icons.Default.Settings, contentDescription = "세션 설정")
                     }
                 }
                 val limit = session?.contextLimit ?: 32_000
@@ -93,7 +93,7 @@ fun ChatScreen(
         Box(Modifier.weight(1f).fillMaxWidth()) {
             if (state.messages.isEmpty()) {
                 Text(
-                    "Start chatting — everything here is mock data.",
+                    "대화를 시작해 보세요 — 전부 목업 데이터입니다.",
                     modifier = Modifier.align(Alignment.Center),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -168,8 +168,8 @@ fun ChatScreen(
     }
     if (deleteTarget != null) {
         DeleteConfirmDialog(
-            title = "Delete message?",
-            message = "This removes the message from the session (mock).",
+            title = "메시지를 삭제할까요?",
+            message = "세션에서 메시지가 삭제됩니다 (목업).",
             onConfirm = { vm.deleteMessage(deleteTarget!!); deleteTarget = null },
             onDismiss = { deleteTarget = null }
         )

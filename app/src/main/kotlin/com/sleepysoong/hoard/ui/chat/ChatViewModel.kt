@@ -43,7 +43,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectSession(id: String) { _activeSessionId.value = id }
 
-    fun newSession(name: String = "New session"): String {
+    fun newSession(name: String = "새 세션"): String {
         val base = uiState.value.session
         val s = repo.createSession(name, base)
         _activeSessionId.value = s.id
@@ -57,7 +57,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val userMsg = ChatMessage(
             id = "msg-" + UUID.randomUUID().toString().take(8),
             role = MessageRole.User,
-            text = clean.ifEmpty { "(attachment)" },
+            text = clean.ifEmpty { "(첨부파일)" },
             attachments = attachments
         )
         repo.appendMessage(session.id, userMsg)
@@ -103,7 +103,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun renameSession(name: String) {
         val session = uiState.value.session ?: return
-        repo.renameSession(session.id, name.ifBlank { "Untitled" })
+        repo.renameSession(session.id, name.ifBlank { "제목 없음" })
     }
 
     fun deleteSession(id: String) {

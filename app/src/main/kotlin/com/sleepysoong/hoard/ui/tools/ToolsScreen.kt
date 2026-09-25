@@ -37,10 +37,10 @@ import com.sleepysoong.hoard.ui.glass.GlassTextField
 fun ToolsScreen(modifier: Modifier = Modifier) {
     val repo = remember { HoardRepository.get() }
     var tab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("MCP", "Plugins", "Skills", "Commands")
+    val tabs = listOf("MCP", "플러그인", "스킬", "명령어")
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("Tools (mock)", style = MaterialTheme.typography.headlineSmall)
+        Text("도구 (목업)", style = MaterialTheme.typography.headlineSmall)
         TabRow(selectedTabIndex = tab) {
             tabs.forEachIndexed { i, t -> Tab(selected = tab == i, onClick = { tab = i }, text = { Text(t) }) }
         }
@@ -98,7 +98,7 @@ private fun McpTab(repo: HoardRepository) {
     var showAdd by remember { mutableStateOf(false) }
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        GlassButton(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) { Text("Add MCP server (mock)") }
+        GlassButton(onClick = { showAdd = true }, modifier = Modifier.fillMaxWidth()) { Text("MCP 서버 추가 (목업)") }
         LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
             items(servers, key = { it.id }) { s ->
                 GlassCard(Modifier.fillMaxWidth()) {
@@ -109,14 +109,14 @@ private fun McpTab(repo: HoardRepository) {
                         }
                         Text(s.url, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GlassBadge("${s.toolCount} tools")
+                            GlassBadge("도구 ${s.toolCount}개")
                             Row(Modifier.weight(1f), horizontalArrangement = Arrangement.End) {
                                 GlassSwitch(checked = s.enabled, onCheckedChange = { repo.setMcpEnabled(s.id, it) })
                             }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GlassSecondaryButton(onClick = {}) { Text("Test") }
-                            GlassSecondaryButton(onClick = { repo.removeMcpServer(s.id) }) { Text("Remove") }
+                            GlassSecondaryButton(onClick = {}) { Text("테스트") }
+                            GlassSecondaryButton(onClick = { repo.removeMcpServer(s.id) }) { Text("제거") }
                         }
                     }
                 }
@@ -128,15 +128,15 @@ private fun McpTab(repo: HoardRepository) {
         var url by remember { mutableStateOf("") }
         GlassDialog(
             onDismissRequest = { showAdd = false },
-            title = { Text("Add MCP server") },
+            title = { Text("MCP 서버 추가") },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassTextField(value = name, onValueChange = { name = it }, label = { Text("Name") }, singleLine = true)
+                    GlassTextField(value = name, onValueChange = { name = it }, label = { Text("이름") }, singleLine = true)
                     GlassTextField(value = url, onValueChange = { url = it }, label = { Text("URL") }, singleLine = true)
                 }
             },
-            dismissButton = { GlassSecondaryButton(onClick = { showAdd = false }) { Text("Cancel") } },
-            confirmButton = { GlassButton(onClick = { repo.addMcpServer(name, url); showAdd = false }) { Text("Register") } }
+            dismissButton = { GlassSecondaryButton(onClick = { showAdd = false }) { Text("취소") } },
+            confirmButton = { GlassButton(onClick = { repo.addMcpServer(name, url); showAdd = false }) { Text("등록") } }
         )
     }
 }

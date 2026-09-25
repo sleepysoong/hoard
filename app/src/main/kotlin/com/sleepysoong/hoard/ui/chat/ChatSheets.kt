@@ -35,9 +35,9 @@ fun ModelPickerSheet(
     onDismiss: () -> Unit
 ) {
     GlassModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("Select model (mock)", style = MaterialTheme.typography.titleLarge)
+        Text("모델 선택 (목업)", style = MaterialTheme.typography.titleLarge)
         Text(
-            "Responses are generated locally as mock data.",
+            "응답은 목업 데이터로 생성됩니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
@@ -79,13 +79,13 @@ fun SessionSettingsSheet(
     val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
 
     GlassModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("Session settings", style = MaterialTheme.typography.titleLarge)
-        GlassTextField(value = name, onValueChange = { name = it }, label = { Text("Session name") }, singleLine = true)
+        Text("세션 설정", style = MaterialTheme.typography.titleLarge)
+        GlassTextField(value = name, onValueChange = { name = it }, label = { Text("세션 이름") }, singleLine = true)
         GlassTextField(
             value = prompt, onValueChange = { prompt = it },
-            label = { Text("System prompt") }, minLines = 3, maxLines = 8
+            label = { Text("시스템 프롬프트") }, minLines = 3, maxLines = 8
         )
-        Text("Context window: ${context.toInt()} tokens", style = MaterialTheme.typography.labelLarge)
+        Text("컨텍스트: ${context.toInt()} 토큰", style = MaterialTheme.typography.labelLarge)
         GlassSlider(
             value = options.indexOf(options.minByOrNull { kotlin.math.abs(it - context.toInt()) } ?: 32_000).toFloat(),
             onValueChange = { idx -> context = options[idx.toInt().coerceIn(0, options.lastIndex)].toFloat() },
@@ -93,13 +93,13 @@ fun SessionSettingsSheet(
             steps = options.size - 2
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            GlassSecondaryButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("Cancel") }
+            GlassSecondaryButton(onClick = onDismiss, modifier = Modifier.weight(1f)) { Text("취소") }
             GlassButton(
                 onClick = {
                     onRename(name); onSystemPrompt(prompt); onContextLimit(context.toInt()); onDismiss()
                 },
                 modifier = Modifier.weight(1f)
-            ) { Text("Save") }
+            ) { Text("저장") }
         }
     }
 }
@@ -113,12 +113,12 @@ fun EditMessageDialog(
     var text by remember { mutableStateOf(initial) }
     GlassDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Edit message") },
+        title = { Text("메시지 수정") },
         text = {
             GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3)
         },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = { GlassButton(onClick = { onConfirm(text) }) { Text("Save & regenerate") } }
+        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
+        confirmButton = { GlassButton(onClick = { onConfirm(text) }) { Text("저장하고 다시 생성") } }
     )
 }
 
@@ -127,15 +127,15 @@ fun BranchDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf("Branch") }
+    var name by remember { mutableStateOf("브랜치") }
     GlassDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Branch from here") },
+        title = { Text("여기서 브랜치 만들기") },
         text = {
-            GlassTextField(value = name, onValueChange = { name = it }, label = { Text("Branch name") }, singleLine = true)
+            GlassTextField(value = name, onValueChange = { name = it }, label = { Text("브랜치 이름") }, singleLine = true)
         },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = { GlassButton(onClick = { onConfirm(name) }) { Text("Create branch") } }
+        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
+        confirmButton = { GlassButton(onClick = { onConfirm(name) }) { Text("브랜치 만들기") } }
     )
 }
 
@@ -150,7 +150,7 @@ fun DeleteConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(message) },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("Cancel") } },
-        confirmButton = { GlassButton(onClick = onConfirm) { Text("Delete") } }
+        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
+        confirmButton = { GlassButton(onClick = onConfirm) { Text("삭제") } }
     )
 }

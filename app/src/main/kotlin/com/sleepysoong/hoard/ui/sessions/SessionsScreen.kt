@@ -43,16 +43,16 @@ fun SessionsScreen(
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text("Sessions", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+            Text("세션", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
             GlassIconButton(onClick = { vm.newSession(); onOpenChat() }) {
-                Icon(Icons.Default.Add, contentDescription = "New session")
+                Icon(Icons.Default.Add, contentDescription = "새 세션")
             }
         }
         if (state.sessions.isEmpty()) {
             GlassEmptyState(
-                title = "No sessions",
-                description = "Create your first mock session.",
-                action = { GlassButton(onClick = { vm.newSession(); onOpenChat() }) { Text("New session") } }
+                title = "세션이 없어요",
+                description = "첫 목업 세션을 만들어 보세요.",
+                action = { GlassButton(onClick = { vm.newSession(); onOpenChat() }) { Text("새 세션") } }
             )
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -73,13 +73,13 @@ fun SessionsScreen(
                                     color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    "${s.modelId} · ctx ${s.contextLimit}${s.branchedFrom?.let { " · branched" } ?: ""}",
+                                    "${s.modelId} · 컨텍스트 ${s.contextLimit}${s.branchedFrom?.let { " · 브랜치" } ?: ""}",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
                             GlassIconButton(onClick = { pendingDelete = s.id }) {
-                                Icon(Icons.Default.Delete, contentDescription = "Delete session")
+                                Icon(Icons.Default.Delete, contentDescription = "세션 삭제")
                             }
                         }
                     }
@@ -89,8 +89,8 @@ fun SessionsScreen(
     }
     if (pendingDelete != null) {
         DeleteConfirmDialog(
-            title = "Delete session?",
-            message = "All messages in this mock session will be removed.",
+            title = "세션을 삭제할까요?",
+            message = "이 세션의 모든 메시지가 삭제됩니다.",
             onConfirm = { vm.deleteSession(pendingDelete!!); pendingDelete = null },
             onDismiss = { pendingDelete = null }
         )

@@ -29,7 +29,7 @@ class HoardRepository {
 
     fun sessionOf(sessionId: String): ChatSession? = _sessions.value.firstOrNull { it.id == sessionId }
 
-    fun createSession(name: String = "New session", copyFrom: ChatSession? = null): ChatSession {
+    fun createSession(name: String = "새 세션", copyFrom: ChatSession? = null): ChatSession {
         val s = ChatSession(
             id = "session-" + UUID.randomUUID().toString().take(8),
             name = name,
@@ -107,11 +107,11 @@ class HoardRepository {
     fun addMcpServer(name: String, url: String) {
         val s = McpServer(
             id = "mcp-" + UUID.randomUUID().toString().take(6),
-            name = name.ifBlank { "Untitled MCP" },
+            name = name.ifBlank { "새 MCP" },
             url = url.ifBlank { "https://mcp.mock/untitled" },
             enabled = true,
             toolCount = 3,
-            status = "connected"
+            status = "연결됨"
         )
         _mcpServers.update { it + s }
     }
