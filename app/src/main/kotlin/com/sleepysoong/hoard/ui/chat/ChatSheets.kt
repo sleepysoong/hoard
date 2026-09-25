@@ -31,17 +31,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.MockData
-import com.sleepysoong.hoard.ui.glass.GlassButton
-import com.sleepysoong.hoard.ui.glass.GlassCard
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredOverlay
+import com.sleepysoong.hoard.ui.glass.GlassCapsuleButton
 import com.sleepysoong.hoard.ui.glass.GlassDialog
-import com.sleepysoong.hoard.ui.glass.GlassTone
-import com.sleepysoong.hoard.ui.glass.glassMaterial
-import com.sleepysoong.hoard.ui.glass.GlassSecondaryButton
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassTextField
-import com.sleepysoong.hoard.ui.glass.SheetGrabber
+import com.sleepysoong.hoard.ui.glass.GlassTone
 import com.sleepysoong.hoard.ui.glass.liquidClickable
+import com.sleepysoong.hoard.ui.glass.glassMaterial
 
 @Composable
 fun ModelPickerSheet(
@@ -221,8 +218,8 @@ fun EditMessageDialog(
         text = {
             GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3)
         },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
-        confirmButton = { GlassButton(onClick = { onConfirm(text) }) { Text("저장하고 다시 생성") } }
+        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
+        confirmButton = { GlassCapsuleButton(onClick = { onConfirm(text) }, label = "저장하고 다시 생성", primary = true) }
     )
 }
 
@@ -238,8 +235,8 @@ fun BranchDialog(
         text = {
             GlassTextField(value = name, onValueChange = { name = it }, label = { Text("브랜치 이름") }, singleLine = true)
         },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
-        confirmButton = { GlassButton(onClick = { onConfirm(name) }) { Text("브랜치 만들기") } }
+        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
+        confirmButton = { GlassCapsuleButton(onClick = { onConfirm(name) }, label = "브랜치 만들기", primary = true) }
     )
 }
 
@@ -256,8 +253,8 @@ fun RenameSessionDialog(
         text = {
             GlassTextField(value = text, onValueChange = { text = it }, label = { Text("이름") }, singleLine = true)
         },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
-        confirmButton = { GlassButton(onClick = { onConfirm(text) }) { Text("변경") } }
+        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
+        confirmButton = { GlassCapsuleButton(onClick = { onConfirm(text) }, label = "변경", primary = true) }
     )
 }
 
@@ -272,7 +269,7 @@ fun DeleteConfirmDialog(
         onDismissRequest = onDismiss,
         title = { Text(title) },
         text = { Text(message) },
-        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
-        confirmButton = { GlassButton(onClick = onConfirm) { Text("삭제") } }
+        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
+        confirmButton = { GlassCapsuleButton(onClick = onConfirm, label = "삭제", destructive = true) }
     )
 }

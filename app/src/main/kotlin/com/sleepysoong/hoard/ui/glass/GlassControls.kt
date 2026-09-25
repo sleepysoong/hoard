@@ -16,6 +16,7 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Text
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -42,24 +43,63 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.ui.theme.IOSGreen
 
-/** iOS-style filled button: 16dp continuous-ish corners, 50dp height. */
+/**
+ * Primary action button — iOS-style filled glass pill (primary container tint).
+ * 50dp default height, liquid press. All call sites should use this instead
+ * of building their own button; it keeps the visual grammar consistent.
+ */
 @Composable
 fun GlassButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    elevated: Boolean = true,
+    destructive: Boolean = false,
     shape: Shape = RoundedCornerShape(16.dp),
     content: @Composable RowScope.() -> Unit
-) = GlassAction(onClick, modifier, enabled, shape, true, content)
+) = GlassAction(onClick, modifier, enabled, shape, if (destructive) 2 else 1, elevated, content)
 
+/**
+ * Secondary (neutral) action — same form as [GlassButton], calm surface tint.
+ */
 @Composable
 fun GlassSecondaryButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
     enabled: Boolean = true,
+    elevated: Boolean = false,
     shape: Shape = RoundedCornerShape(16.dp),
     content: @Composable RowScope.() -> Unit
-) = GlassAction(onClick, modifier, enabled, shape, false, content)
+) = GlassAction(onClick, modifier, enabled, shape, 0, elevated, content)
+
+/**
+ * Pill-shaped action used by anchored menus / modal dialogs. Rounded to 50%
+ * (full capsule), 54dp tall. Used for the "취소" / "저장" pair pattern.
+ */
+@Composable
+fun GlassCapsuleButton(
+    onClick: () -> Unit,
+    label: String,
+    modifier: Modifier = Modifier,
+    destructive: Boolean = false,
+    primary: Boolean = false,
+    enabled: Boolean = true
+) {
+    GlassAction(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = GlassTokens.modalActionHeight),
+        enabled = enabled,
+        shape = RoundedCornerShape(50),
+        level = if (primary) 1 else if (destructive) 2 else 0,
+        elevated = false
+    ) {
+        Text(
+            label,
+            style = MaterialTheme.typography.labelLarge,
+            maxLines = 1
+        )
+    }
+}
 
 @Composable
 private fun GlassAction(
@@ -67,19 +107,31 @@ private fun GlassAction(
     modifier: Modifier,
     enabled: Boolean,
     shape: Shape,
-    primary: Boolean,
+    level: Int, // 0=secondary, 1=primary, 2=destructive
+    elevated: Boolean,
     content: @Composable RowScope.() -> Unit
 ) {
     val scheme = MaterialTheme.colorScheme
-    val tint = if (primary) scheme.primaryContainer else scheme.surfaceContainerHigh
+    val tint = when (level) {
+        0 -> scheme.surfaceContainerHigh
+        1 -> scheme.primaryContainer
+        else -> scheme.error
+    }
+    val contentColor = when (level) {
+        0 -> scheme.onSurface
+        1 -> scheme.onPrimaryContainer
+        else -> scheme.onErrorContainer
+    }
     Button(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 50.dp).glassMaterial(shape, tint, tone = GlassTone.Thin, enabled = enabled),
+        modifier = modifier
+            .heightIn(min = 50.dp)
+            .glassMaterial(shape, tint, tone = GlassTone.Thin, enabled = enabled),
         enabled = enabled,
         shape = shape,
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.Transparent,
-            contentColor = if (primary) scheme.onPrimaryContainer else scheme.onSurface,
+            contentColor = contentColor,
             disabledContainerColor = Color.Transparent,
             disabledContentColor = scheme.onSurfaceVariant
         ),
@@ -88,6 +140,10 @@ private fun GlassAction(
     )
 }
 
+/**
+ * Icon-only glass button — 44dp minimum touch, circular. Used in top bars
+ * and cards for the "back / add / gear" pattern.
+ */
 @Composable
 fun GlassIconButton(
     onClick: () -> Unit,
