@@ -306,7 +306,79 @@ javap -classpath classes com.kyant.backdrop.shadow.Shadow   # 실제 시그니�
 
 ---
 
-## 11. 디자인 토큰과 컴포지션 계약
+## 11. 디자인 시스템 — 정의한 다음 오버라이드로만 쓴다
+
+플로팅 바, 팝업, 버튼, 슬라이더처럼 여러 화면에서 반복되는 요소는 직접 화면에
+돌려놓지 말고, **공통 컴포넌트로 한 곳에 정의하고 재정의 파라미터만 넘긴다**.
+같은 버튼이 두 화면에 있으면 뭐가 한쪽이고 다른 쪽이냐를 알 수 없으므로,
+애플(및 일반적인 현대 앱) 전략이 아프게 반복됩니다.
+
+```kotlin
+shape = RoundedCornerShape(…)        // 코너는 여기만
+tint = MaterialTheme.colorScheme.surface
+tone = GlassTone.Thin / Regular / Thick
+enabled = true / false
+```
+
+### 11.1 컴포넌트 계층
+
+| 수준 | 컴포넌트 | 오버라이드 포인트 |
+| --- | --- | --- |
+| 표면 | `glassMaterial(...)` | shape · tone · tint · outlineColor · lifted |
+| 버튼 | `GlassButton` / `GlassSecondaryButton` | enabled · destructive · shape · content |
+| | `GlassCapsuleButton` | primary / destructive, 모달 하단(취소·확인) 쌍용 |
+| | `GlassIconButton` | 44dp 터치영역, 아이콘+onClick만 넘김 |
+| 입력 | `GlassTextField` | label·placeholder·singleLine·visualTransformation 등 Material 계약 그대로 |
+| | `GlassSlider` | value·onValueChange·steps·range, 기존 Slider 벡터 그대로 |
+| | `GlassSwitch` | checked·onCheckedChange·enabled |
+| 뷰 | `GlassCard` / `GlassSurface` | shape · tone · color(표면컨테이너) |
+| 상단 바 | `GlassFloatingBar` | navigationIcon · title/subtitle(onTitleClick) · actions 슬롯 |
+| 오버레이 | `GlassAnchoredOverlay` | anchor(Rect), 내용 슬롯 |
+| | `GlassAnchoredMenu` | header + 행렬 액션 + 분리 취소 버튼 |
+
+사용처 입장에서는 shape나 색상을 조정하지 않고 호출하는 슬롯만 채우면 됩니다. 채팅 상단과 세션 목록 상단이 지금 동일하게 이것으로 처리됩니다.
+
+### 11.2 실전 판례
+
+```kotlin
+// 채팅 상단바
+GlassFloatingBar(
+    title = session.name,
+    subtitle = "${session.modelId} · ${usedTokens}/${session.contextLimit} 토큰",
+    onTitleClick = { showModels = true },
+    navigationIcon = {
+        GlassIconButton(onClick = onBack) { Icon(ArrowBack, contentDescription = "뒤로") }
+    },
+    actions = {
+        Box(Modifier.onGloballyPositioned { settingsAnchor = it.boundsInRoot() }) {
+            GlassIconButton(onClick = { showSettings = true }) { Icon(Settings, contentDescription = "설정") }
+        }
+    }
+)
+
+// 세션 목록 상단바
+GlassFloatingBar(
+    title = "세션",
+    actions = { GlassIconButton(onClick = newSession) { Icon(Add, null) } }
+)
+```
+
+좌우 슬롯은 모두 44dp로 고정해서 타이틀이 자동으로 광학 가운데에 오게 하고,
+타이틀 클릭 영역은 `indication = null`의 ripple 없는 클릭으로 만드는 게 기본값입니다.
+이렇게 해 두면 제목을 누를 때만 모델 피커가 뜨고, 설정 버튼 옆에서 중복 스타일 복처이 줄어듭니다.
+
+### 11.3 공통 컴포넌트에서 안 하면 좋은 거
+
+- `Modifier.glassMaterial(...)`을 화면 코드에서 직접 호출. 위 계층의 컴포넌트를
+  쓰거나, 새 컴포넌트를 공통 파일에 추가한다.
+- Compose `Popup`/`Dialog`에 글래스 넣기 — 5장.
+- 같은 동작을 하는 컴포넌트를 두 화면에 따로 작성 (이 프로젝트에서 이미 했음).
+
+원리: 과정을 줄이려다 복제가 늘면, 디자인 통일성만이 아니라 수정할 때마다
+수정해야 하는 곳이 증해진다.**오버라이드로만 연결**
+라고 부르는 규칙을 세우면, 새로운 화면이 추가될 때 공간 매칭이 남아나지 않습니다.
+
+---
 
 모든 glass 표면은 토큰을 통해서만 만큰다:
 
