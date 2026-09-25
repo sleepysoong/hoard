@@ -66,6 +66,8 @@ import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
@@ -94,6 +96,7 @@ fun ChatScreen(
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var menuTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     var menuAnchorRect by remember { mutableStateOf<Rect?>(null) }
+    var settingsAnchor by remember { mutableStateOf<Rect?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -166,7 +169,10 @@ fun ChatScreen(
                                 modifier = Modifier.noRippleClickable { showModels = true }
                             )
                         }
-                        GlassIconButton(onClick = { showSettings = true }) {
+                        GlassIconButton(
+                            onClick = { showSettings = true },
+                            modifier = Modifier.onGloballyPositioned { settingsAnchor = it.boundsInRoot() }
+                        ) {
                             Icon(Icons.Rounded.Settings, contentDescription = "세션 설정")
                         }
                     }
@@ -357,6 +363,7 @@ fun ChatScreen(
     if (showModels && session != null) {
         ModelPickerSheet(
             currentModelId = session.modelId,
+            anchor = settingsAnchor,   // anchored right below the title bar
             onPick = { vm.setModel(it) },
             onDismiss = { showModels = false }
         )
@@ -364,10 +371,11 @@ fun ChatScreen(
     if (showSettings && session != null) {
         SessionSettingsSheet(
             session = session,
+            anchor = settingsAnchor,
             onRename = { vm.renameSession(it) },
             onSystemPrompt = { vm.setSystemPrompt(it) },
             onContextLimit = { vm.setContextLimit(it) },
-            onDismiss = { showSettings = false }
+            onDismiss = { showSettings = false; settingsAnchor = null }
         )
     }
     if (editTarget != null) {

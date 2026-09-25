@@ -32,7 +32,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Build
-import androidx.compose.material.icons.rounded.ChatBubble
 import androidx.compose.material.icons.rounded.Forum
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -81,7 +80,6 @@ private data class Tab(
 )
 
 private val TABS = listOf(
-    Tab("chat", "채팅", Icons.Rounded.ChatBubble, Icons.Rounded.ChatBubble),
     Tab("sessions", "세션", Icons.Rounded.Forum, Icons.Rounded.Forum),
     Tab("tools", "도구", Icons.Rounded.Build, Icons.Rounded.Build),
     Tab("settings", "설정", Icons.Rounded.Settings, Icons.Rounded.Settings)
@@ -126,11 +124,10 @@ class MainActivity : ComponentActivity() {
                 val route = backStackEntry?.destination?.route ?: "sessions"
                 val inChat = route == "chat"
                 val imeVisible = WindowInsets.isImeVisible
+                // Tab bar: Sessions / Tools / Settings only. Chat hides it —
+                // the composer takes over the bottom chrome there.
                 val showTabBar = !inChat && !imeVisible
 
-                // fixed gap between content and system nav bar / IME.
-                // When the IME is up, cover it; else cover nav bar + 18dp.
-                // When inChat (tab bar retracted), leave extra 12dp over nav bar.
                 val navBarBottom = with(LocalDensity.current) {
                     WindowInsets.navigationBars.getBottom(this).toDp()
                 }
@@ -145,12 +142,13 @@ class MainActivity : ComponentActivity() {
                 )
 
                 fun openChat() {
-                    selected = 0
+                    // Selecting a session opens chat; no tab index change — the
+                    // chat screen replaces the tab bar with the composer.
                     nav.navigate("chat") { launchSingleTop = true }
                 }
 
                 fun backToSessions() {
-                    selected = 1
+                    selected = 0
                     if (!nav.popBackStack()) {
                         nav.navigate("sessions") { launchSingleTop = true }
                     }

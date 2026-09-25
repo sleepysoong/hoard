@@ -26,6 +26,7 @@ import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.ui.glass.GlassButton
 import com.sleepysoong.hoard.ui.glass.GlassCard
+import com.sleepysoong.hoard.ui.glass.GlassAnchoredOverlay
 import com.sleepysoong.hoard.ui.glass.GlassDialog
 import com.sleepysoong.hoard.ui.glass.GlassModalBottomSheet
 import com.sleepysoong.hoard.ui.glass.GlassSecondaryButton
@@ -37,11 +38,12 @@ import com.sleepysoong.hoard.ui.glass.liquidClickable
 @Composable
 fun ModelPickerSheet(
     currentModelId: String,
+    anchor: androidx.compose.ui.geometry.Rect?,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    GlassModalBottomSheet(onDismissRequest = onDismiss) {
-        SheetGrabber(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
+    // Anchored glass popup (same overlay as settings/long-press menu).
+    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss) {
         Text("모델 선택", style = MaterialTheme.typography.titleLarge)
         Text(
             "응답은 목업 데이터로 생성됩니다.",
@@ -81,9 +83,16 @@ fun ModelPickerSheet(
     }
 }
 
+/**
+ * Session settings & model picker use the same in-window anchored glass
+ * overlay as the long-press menu. A ModalBottomSheet opens its own window,
+ * and that window cannot sample the Activity backdrop — so we render these
+ * settings as a real glass panel next to the gear instead.
+ */
 @Composable
 fun SessionSettingsSheet(
     session: ChatSession,
+    anchor: androidx.compose.ui.geometry.Rect?,
     onRename: (String) -> Unit,
     onSystemPrompt: (String) -> Unit,
     onContextLimit: (Int) -> Unit,
@@ -94,8 +103,7 @@ fun SessionSettingsSheet(
     var context by remember(session.id) { mutableFloatStateOf(session.contextLimit.toFloat()) }
     val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
 
-    GlassModalBottomSheet(onDismissRequest = onDismiss) {
-        SheetGrabber(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
+    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss, maxCardW = 360.dp) {
         Text("세션 설정", style = MaterialTheme.typography.titleLarge)
         GlassTextField(value = name, onValueChange = { name = it }, label = { Text("세션 이름") }, singleLine = true)
         GlassTextField(
@@ -153,6 +161,24 @@ fun BranchDialog(
         },
         dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
         confirmButton = { GlassButton(onClick = { onConfirm(name) }) { Text("브랜치 만들기") } }
+    )
+}
+
+@Composable
+fun RenameSessionDialog(
+    initial: String,
+    onConfirm: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    var text by remember { mutableStateOf(initial) }
+    GlassDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("세션 이름 변경") },
+        text = {
+            GlassTextField(value = text, onValueChange = { text = it }, label = { Text("이름") }, singleLine = true)
+        },
+        dismissButton = { GlassSecondaryButton(onClick = onDismiss) { Text("취소") } },
+        confirmButton = { GlassButton(onClick = { onConfirm(text) }) { Text("변경") } }
     )
 }
 

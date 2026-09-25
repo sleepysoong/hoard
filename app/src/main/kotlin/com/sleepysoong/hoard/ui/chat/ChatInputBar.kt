@@ -18,8 +18,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
-import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isAltPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowUpward
@@ -203,16 +209,17 @@ fun ChatInputBar(
                 }
 
                 // Plain field directly on the glass — no nested grey box.
+                // Enter inserts a newline; Alt + Enter (or the send button) sends.
                 Box(
                     Modifier
                         .weight(1f)
                         .heightIn(min = ControlSize)
-                        .padding(horizontal = 4.dp, vertical = 11.dp),
+                        .padding(horizontal = 4.dp, vertical = 10.dp),
                     contentAlignment = Alignment.CenterStart
                 ) {
                     if (value.isEmpty()) {
                         Text(
-                            "메시지",
+                            "메시지 (Alt+Enter 전송)",
                             style = MaterialTheme.typography.bodyLarge,
                             color = scheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
@@ -220,21 +227,25 @@ fun ChatInputBar(
                     BasicTextField(
                         value = value,
                         onValueChange = onValueChange,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onPreviewKeyEvent { ev ->
+                                val isSend = ev.type == KeyEventType.KeyDown &&
+                                    ev.key == Key.Enter &&
+                                    ev.isAltPressed
+                                if (isSend && canSend) {
+                                    onSend()
+                                    true
+                                } else {
+                                    false
+                                }
+                            },
                         textStyle = LocalTextStyle.current.merge(
                             MaterialTheme.typography.bodyLarge.copy(color = scheme.onSurface)
                         ),
                         cursorBrush = SolidColor(scheme.primary),
                         maxLines = 6,
-                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                        keyboardActions = KeyboardActions(
-                            onSend = {
-                                if (canSend) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    onSend()
-                                }
-                            }
-                        )
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Default)
                     )
                 }
 

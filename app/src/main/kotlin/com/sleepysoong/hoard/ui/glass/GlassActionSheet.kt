@@ -7,9 +7,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,6 +42,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
@@ -53,48 +55,40 @@ data class GlassSheetAction(
 )
 
 /**
- * An iPadOS/iOS-style action menu that appears right next to the pressed
- * element (like iMessage long-press), rendered with real liquid glass.
+ * Shared anchor-aware glass overlay.
  *
- * It is an in-window overlay (not a `Popup`) by design — Backdrop's captured
- * layer belongs to the Activity window, so a separate window would see nothing.
- * On the first pass we measure the card off-screen, then on subsequent passes
- * position it anchored above/below the bubble it belongs to.
+ * In-window overlay (never a `Popup`) so the Backdrop shader stays valid:
+ * a separate window cannot sample the Activity's captured layer. The card is
+ * measured first, then anchored above/below the pressed element and clamped
+ * to the screen. The dimmed scrim swallows outside taps.
  */
 @Composable
-fun BoxScope.GlassAnchoredMenu(
+fun GlassAnchoredOverlay(
     anchor: Rect?,
-    title: String?,
-    message: String?,
-    actions: List<GlassSheetAction>,
-    onDismiss: () -> Unit
+    onDismiss: () -> Unit,
+    maxCardW: Dp = 340.dp,
+    content: @Composable ColumnScope.() -> Unit
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val haptics = LocalHapticFeedback.current
     val density = LocalDensity.current
-
     val gapPx = with(density) { 8.dp.toPx() }
-    val minMarginPx = with(density) { 16.dp.toPx() }
-    val maxCardW = 340.dp
-    val cornerRad = 20.dp
+    val minMarginPx = with(density) { 12.dp.toPx() }
 
-    var cardW by remember { mutableStateOf(0f) }
-    var cardH by remember { mutableStateOf(0f) }
-    var placedOrigin by remember { mutableStateOf(TransformOrigin(0.5f, 0.5f)) }
+    var cardW by remember { mutableStateOf(0) }
+    var cardH by remember { mutableStateOf(0) }
     var placedX by remember { mutableStateOf(0) }
     var placedY by remember { mutableStateOf(0) }
+    var origin by remember { mutableStateOf(TransformOrigin(0.5f, 0.5f)) }
 
     val appear by animateFloatAsState(
         targetValue = 1f,
         animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
-        label = "anchor-menu-appear"
+        label = "anchor-overlay-appear"
     )
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val totalW = constraints.maxWidth.toFloat()
         val totalH = constraints.maxHeight.toFloat()
 
-        // Scrim — tap outside dismisses.
         Box(
             Modifier
                 .fillMaxSize()
@@ -111,30 +105,33 @@ fun BoxScope.GlassAnchoredMenu(
             modifier = Modifier
                 .align(Alignment.TopStart)
                 .widthIn(max = maxCardW)
-                .padding(horizontal = 24.dp, vertical = 8.dp)
+                .padding(horizontal = 10.dp)
                 .onGloballyPositioned {
-                    cardW = it.size.width.toFloat()
-                    cardH = it.size.height.toFloat()
+                    cardW = it.size.width
+                    cardH = it.size.height
                     if (anchor != null) {
                         val spaceAbove = anchor.top
                         val spaceBelow = totalH - anchor.bottom
                         val showAbove = spaceAbove >= cardH + gapPx ||
                             (spaceAbove >= spaceBelow && spaceBelow < cardH + gapPx)
-                        val yTop = if (showAbove) {
+                        val y = if (showAbove) {
                             (anchor.top - gapPx - cardH).coerceAtLeast(minMarginPx)
                         } else {
                             (anchor.bottom + gapPx).coerceAtLeast(minMarginPx)
                         }.coerceAtMost(totalH - cardH - minMarginPx)
                         val anchorCenterX = anchor.left + anchor.width / 2f
-                        val xLeft = (anchorCenterX - cardW / 2f).coerceIn(minMarginPx, totalW - cardW - minMarginPx)
-                        placedOrigin = TransformOrigin(
-                            pivotFractionX = ((anchorCenterX - xLeft) / cardW).coerceIn(0f, 1f),
+                        val x = (anchorCenterX - cardW / 2f)
+                            .coerceIn(minMarginPx, totalW - cardW - minMarginPx)
+                        origin = TransformOrigin(
+                            pivotFractionX = if (cardW > 0) {
+                                ((anchorCenterX - x) / cardW).coerceIn(0f, 1f)
+                            } else 0.5f,
                             pivotFractionY = if (showAbove) 1f else 0f
                         )
-                        placedX = xLeft.roundToInt()
-                        placedY = yTop.roundToInt()
+                        placedX = x.roundToInt()
+                        placedY = y.roundToInt()
                     } else {
-                        placedOrigin = TransformOrigin(0.5f, 0.5f)
+                        origin = TransformOrigin(0.5f, 0.5f)
                         placedX = ((totalW - cardW) / 2f).roundToInt()
                         placedY = ((totalH - cardH) / 2f).roundToInt()
                     }
@@ -142,93 +139,111 @@ fun BoxScope.GlassAnchoredMenu(
                 .offset { IntOffset(placedX, placedY) }
                 .alpha(appear)
                 .graphicsLayer {
-                    scaleX = 0.90f + 0.10f * appear
-                    scaleY = 0.90f + 0.10f * appear
-                    transformOrigin = placedOrigin
+                    scaleX = 0.92f + 0.08f * appear
+                    scaleY = 0.92f + 0.08f * appear
+                    transformOrigin = origin
                 },
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            if (title != null || message != null) {
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(cornerRad))
-                        .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-                        .padding(horizontal = 18.dp, vertical = 14.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        title?.let {
-                            Text(it, style = MaterialTheme.typography.headlineSmall)
-                        }
-                        message?.let {
-                            Text(
-                                it,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = scheme.onSurfaceVariant,
-                                modifier = Modifier.padding(top = if (title != null) 4.dp else 0.dp)
-                            )
-                        }
-                    }
-                }
-            }
-            Column(
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            content = content
+        )
+    }
+}
+
+/** Standard iOS-style action list menu, anchored near its source element. */
+@Composable
+fun GlassAnchoredMenu(
+    anchor: Rect?,
+    title: String?,
+    message: String?,
+    actions: List<GlassSheetAction>,
+    onDismiss: () -> Unit
+) {
+    val scheme = MaterialTheme.colorScheme
+    val haptics = LocalHapticFeedback.current
+    val cornerRad = 20.dp
+
+    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss) {
+        if (title != null || message != null) {
+            Box(
                 Modifier
                     .fillMaxWidth()
                     .clip(RoundedCornerShape(cornerRad))
                     .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+                contentAlignment = Alignment.Center
             ) {
-                actions.forEachIndexed { i, action ->
-                    if (i > 0) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(start = 58.dp),
-                            thickness = 0.5.dp,
-                            color = scheme.onSurface.copy(alpha = 0.12f)
-                        )
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    title?.let {
+                        Text(it, style = MaterialTheme.typography.headlineSmall, maxLines = 1)
                     }
-                    val tint = if (action.destructive) scheme.error else scheme.onSurface
-                    Row(
-                        Modifier
-                            .fillMaxWidth()
-                            .heightIn(min = 54.dp)
-                            .clickable {
-                                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                onDismiss()
-                                action.onClick()
-                            }
-                            .padding(horizontal = 16.dp, vertical = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Icon(
-                            action.icon,
-                            contentDescription = null,
-                            tint = tint,
-                            modifier = Modifier.size(21.dp)
-                        )
+                    message?.let {
                         Text(
-                            action.label,
-                            style = MaterialTheme.typography.bodyLarge,
-                            color = tint,
-                            maxLines = 1
+                            it,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 2,
+                            modifier = Modifier.padding(top = if (title != null) 4.dp else 0.dp)
                         )
                     }
                 }
             }
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .height(54.dp)
-                    .clip(RoundedCornerShape(cornerRad))
-                    .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface, tone = GlassTone.Thin)
-                    .clickable {
-                        haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                        onDismiss()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("취소", style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
+        }
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(cornerRad))
+                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
+        ) {
+            actions.forEachIndexed { i, action ->
+                if (i > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 58.dp),
+                        thickness = 0.5.dp,
+                        color = scheme.onSurface.copy(alpha = 0.12f)
+                    )
+                }
+                val tint = if (action.destructive) scheme.error else scheme.onSurface
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 54.dp)
+                        .clickable {
+                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                            onDismiss()
+                            action.onClick()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                ) {
+                    Icon(
+                        action.icon,
+                        contentDescription = null,
+                        tint = tint,
+                        modifier = Modifier.size(21.dp)
+                    )
+                    Text(
+                        action.label,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = tint,
+                        maxLines = 1
+                    )
+                }
             }
+        }
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .height(54.dp)
+                .clip(RoundedCornerShape(cornerRad))
+                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface, tone = GlassTone.Thin)
+                .clickable {
+                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                    onDismiss()
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Text("취소", style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
         }
     }
 }
