@@ -21,11 +21,14 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
+import kotlinx.coroutines.flow.collect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,9 +37,11 @@ import com.sleepysoong.hoard.ui.chat.ChatViewModel
 import com.sleepysoong.hoard.ui.chat.DeleteConfirmDialog
 import com.sleepysoong.hoard.ui.glass.GlassButton
 import com.sleepysoong.hoard.ui.glass.GlassEmptyState
+import com.sleepysoong.hoard.ui.glass.CollapsingLargeTitle
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
-import com.sleepysoong.hoard.ui.glass.LargeTitle
+import com.sleepysoong.hoard.ui.glass.liquidClickable
+import com.sleepysoong.hoard.ui.glass.rememberLargeTitleCollapseState
 
 /** iOS Settings-style session list: large title, grouped rows, chevrons. */
 @Composable
@@ -48,10 +53,13 @@ fun SessionsScreen(
     val state by vm.uiState.collectAsState()
     var pendingDelete by remember { mutableStateOf<String?>(null) }
     val scheme = MaterialTheme.colorScheme
+    val titleState = rememberLargeTitleCollapseState()
+    val scroll = rememberScrollState()
+    LaunchedEffect(scroll) { snapshotFlow { scroll.value }.collect { titleState.onScroll(it.toFloat()) } }
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-            LargeTitle("세션", modifier = Modifier.weight(1f).padding(start = 4.dp))
+            CollapsingLargeTitle("세션", titleState, modifier = Modifier.weight(1f).padding(start = 4.dp))
             IconButton(onClick = { vm.newSession(); onOpenChat() }) {
                 Icon(Icons.Rounded.Add, contentDescription = "새 세션", tint = scheme.primary, modifier = Modifier.size(26.dp))
             }
@@ -64,7 +72,11 @@ fun SessionsScreen(
             )
         } else {
             IOSGroupedSection(Modifier.weight(1f)) {
-                Column(Modifier.verticalScroll(rememberScrollState())) {
+                Column(
+                    Modifier
+                        .verticalScroll(scroll)
+                        .padding(top = 2.dp, bottom = 12.dp)
+                ) {
                     state.sessions.forEachIndexed { i, s ->
                         if (i > 0) IOSRowDivider()
                         val selected = s.id == state.session?.id
@@ -72,8 +84,7 @@ fun SessionsScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 60.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { vm.selectSession(s.id); onOpenChat() }
+                                .liquidClickable { vm.selectSession(s.id); onOpenChat() }
                                 .padding(horizontal = 16.dp, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp)

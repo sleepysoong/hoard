@@ -47,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.formatElapsed
+import com.sleepysoong.hoard.ui.glass.GlassTone
 import com.sleepysoong.hoard.ui.glass.IOSTypingDots
 import com.sleepysoong.hoard.ui.glass.glassMaterial
 import java.text.SimpleDateFormat
@@ -106,7 +107,7 @@ fun MessageBubble(
             } else {
                 Modifier
                     .clip(shape)
-                    .glassMaterial(shape, scheme.surface, compact = true)
+                    .glassMaterial(shape, scheme.surface, tone = GlassTone.Thin)
             }
 
             Column(

@@ -74,7 +74,7 @@ private fun GlassAction(
     val tint = if (primary) scheme.primaryContainer else scheme.surfaceContainerHigh
     Button(
         onClick = onClick,
-        modifier = modifier.heightIn(min = 50.dp).glassMaterial(shape, tint, compact = true, enabled = enabled),
+        modifier = modifier.heightIn(min = 50.dp).glassMaterial(shape, tint, tone = GlassTone.Thin, enabled = enabled),
         enabled = enabled,
         shape = shape,
         colors = ButtonDefaults.buttonColors(
@@ -98,7 +98,7 @@ fun GlassIconButton(
     IconButton(
         onClick = onClick, enabled = enabled,
         modifier = modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
-            .glassMaterial(RoundedCornerShape(50), compact = true, enabled = enabled),
+            .glassMaterial(RoundedCornerShape(50), tone = GlassTone.Thin, enabled = enabled),
         content = content
     )
 }
@@ -118,7 +118,7 @@ fun GlassFilterChip(
         leadingIcon = if (selected) { { Icon(Icons.Rounded.Check, contentDescription = null) } } else null,
         modifier = modifier.heightIn(min = 44.dp).glassMaterial(
             shape, if (selected) colors.primaryContainer else colors.surfaceContainer,
-            compact = true, enabled = enabled
+            tone = GlassTone.Thin, enabled = enabled
         ),
         shape = shape,
         border = null,

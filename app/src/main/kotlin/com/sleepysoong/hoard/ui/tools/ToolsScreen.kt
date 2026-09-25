@@ -35,6 +35,7 @@ import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
 import com.sleepysoong.hoard.ui.glass.LargeTitle
+import com.sleepysoong.hoard.ui.glass.liquidClickable
 
 /** iOS-style tools: large title, segmented tabs, grouped switch rows. */
 @Composable
@@ -106,6 +107,7 @@ private fun SwitchRow(name: String, desc: String, enabled: Boolean, onToggle: (B
         Modifier
             .fillMaxWidth()
             .heightIn(min = 60.dp)
+            .liquidClickable(enabled = false) {}
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -157,18 +159,16 @@ private fun McpTab(repo: HoardRepository) {
                         style = MaterialTheme.typography.bodyLarge,
                         color = scheme.primary,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { }
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                            .liquidClickable(haptic = false) { }
+                            .padding(horizontal = 10.dp, vertical = 10.dp)
                     )
                     Text(
                         "제거",
                         style = MaterialTheme.typography.bodyLarge,
                         color = scheme.error,
                         modifier = Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { repo.removeMcpServer(s.id) }
-                            .padding(horizontal = 8.dp, vertical = 8.dp)
+                            .liquidClickable { repo.removeMcpServer(s.id) }
+                            .padding(horizontal = 10.dp, vertical = 10.dp)
                     )
                 }
             }

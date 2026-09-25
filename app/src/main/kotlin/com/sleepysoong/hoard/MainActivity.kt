@@ -61,6 +61,7 @@ import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.ui.chat.ChatScreen
 import com.sleepysoong.hoard.ui.chat.ChatViewModel
 import com.sleepysoong.hoard.ui.glass.GlassBottomBar
+import com.sleepysoong.hoard.ui.glass.GlassTabItem
 import com.sleepysoong.hoard.ui.glass.LocalGlassBackdrop
 import com.sleepysoong.hoard.ui.sessions.SessionsScreen
 import com.sleepysoong.hoard.ui.settings.SettingsScreen
@@ -167,28 +168,17 @@ class MainActivity : ComponentActivity() {
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {
                             TABS.forEachIndexed { i, tab ->
-                                NavigationBarItem(
+                                GlassTabItem(
                                     selected = selected == i,
+                                    icon = tab.selectedIcon,
+                                    title = tab.title,
+                                    onPressedChange = { isPressed -> pressed = if (isPressed) i else -1 },
                                     onClick = {
-                                        pressed = i
-                                        selected = i
-                                        nav.navigate(tab.route) { launchSingleTop = true }
-                                        pressed = -1
-                                    },
-                                    icon = {
-                                        Icon(
-                                            if (selected == i) tab.selectedIcon else tab.unselectedIcon,
-                                            contentDescription = tab.title
-                                        )
-                                    },
-                                    label = { Text(tab.title) },
-                                    colors = NavigationBarItemDefaults.colors(
-                                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                                        unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        indicatorColor = Color.Transparent
-                                    )
+                                        if (selected != i) {
+                                            selected = i
+                                            nav.navigate(tab.route) { launchSingleTop = true }
+                                        }
+                                    }
                                 )
                             }
                         }

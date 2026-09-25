@@ -166,7 +166,7 @@ fun BoxScope.GlassActionSheet(
                 .fillMaxWidth()
                 .height(54.dp)
                 .clip(RoundedCornerShape(20.dp))
-                .glassMaterial(RoundedCornerShape(20.dp), scheme.surface, compact = true)
+                .glassMaterial(RoundedCornerShape(20.dp), scheme.surface, tone = GlassTone.Thin)
                 .clickable {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onDismiss()

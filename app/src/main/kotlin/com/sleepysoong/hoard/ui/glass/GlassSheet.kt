@@ -116,7 +116,7 @@ fun GlassModalBottomSheet(
                 Modifier
                     .align(Alignment.CenterHorizontally)
                     .padding(bottom = 12.dp)
-                    .glassMaterial(RoundedCornerShape(50), scheme.surfaceContainerHighest, compact = true)
+                    .glassMaterial(RoundedCornerShape(50), scheme.surfaceContainerHighest, tone = GlassTone.Thin)
                     .padding(horizontal = 20.dp, vertical = 4.dp)
             ) { Spacer(Modifier.height(0.dp)) }
             content()

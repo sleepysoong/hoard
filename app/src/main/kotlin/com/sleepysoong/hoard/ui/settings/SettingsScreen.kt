@@ -35,6 +35,7 @@ import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSectionHeader
 import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
 import com.sleepysoong.hoard.ui.glass.LargeTitle
+import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.launch
 
 /** iOS Settings-style: large title, grouped sections, segmented + checkmark rows. */
@@ -69,8 +70,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     Modifier
                         .fillMaxWidth()
                         .heightIn(min = 52.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { scope.launch { SettingsStore.setDefaultModel(ctx, m.id) } }
+                        .liquidClickable { scope.launch { SettingsStore.setDefaultModel(ctx, m.id) } }
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp)

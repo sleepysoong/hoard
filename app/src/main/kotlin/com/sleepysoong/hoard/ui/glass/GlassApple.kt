@@ -5,6 +5,7 @@ import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -35,7 +36,9 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -51,6 +54,55 @@ import com.sleepysoong.hoard.ui.theme.IOSSegmentThumbDark
 @Composable
 fun LargeTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.displaySmall, modifier = modifier)
+}
+
+/**
+ * iOS large-title collapse: 34pt bold shrinks into a 17pt inline title as the
+ * content scrolls up. Drive it with the scroll offset of the page content.
+ */
+class LargeTitleCollapseState {
+    var progress by mutableFloatStateOf(0f)
+        internal set
+
+    fun onScroll(offsetPx: Float) {
+        val target = (offsetPx / COLLAPSE_RANGE_PX).coerceIn(0f, 1f)
+        progress = target
+    }
+
+    companion object {
+        const val COLLAPSE_RANGE_PX = 56f
+    }
+}
+
+@Composable
+fun rememberLargeTitleCollapseState() = remember { LargeTitleCollapseState() }
+
+/** Animated large title driven by [state]; also renders the inline title when collapsed. */
+@Composable
+fun CollapsingLargeTitle(
+    title: String,
+    state: LargeTitleCollapseState,
+    modifier: Modifier = Modifier
+) {
+    val progress by animateFloatAsState(
+        targetValue = state.progress,
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 500f),
+        label = "large-title"
+    )
+    // 34sp -> 22sp, tracking tightens like the real thing.
+    val size = androidx.compose.ui.unit.TextUnit(
+        value = 34f - 12f * progress,
+        type = androidx.compose.ui.unit.TextUnitType.Sp
+    )
+    Text(
+        title,
+        modifier = modifier,
+        maxLines = 1,
+        style = MaterialTheme.typography.displaySmall.copy(
+            fontSize = size,
+            lineHeight = size * 1.2f
+        )
+    )
 }
 
 /** iOS section header: small gray label above a grouped section. */

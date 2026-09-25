@@ -1,8 +1,13 @@
 package com.sleepysoong.hoard.ui.glass
 
 import android.os.Build
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -15,14 +20,21 @@ import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalInspectionMode
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -33,8 +45,26 @@ import com.kyant.backdrop.effects.colorControls
 import com.kyant.backdrop.effects.lens
 import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
+import com.kyant.backdrop.shadow.InnerShadow
+import com.kyant.backdrop.shadow.Shadow
 
 enum class GlassMode { Full, BlurOnly, Off }
+
+/** Material weight. Drives blur radius, lens strength, tint density and depth. */
+enum class GlassTone { Thin, Regular, Thick }
+
+/** Single source of truth for the liquid-glass material metrics. */
+object GlassTokens {
+    val cardRadius: Dp = 22.dp
+    val sheetRadius: Dp = 28.dp
+    val fieldRadius: Dp = 20.dp
+    val controlRadius: Dp = 16.dp
+    val bubbleRadius: Dp = 19.dp
+    val tailRadius: Dp = 5.dp
+    val touchMin: Dp = 44.dp
+    val barHeight: Dp = 64.dp
+    val hairline: Dp = 0.5.dp
+}
 
 /** Always choose the strongest effect supported by the running Android version. */
 fun resolveGlassMode(sdk: Int): GlassMode = when {
@@ -95,86 +125,183 @@ fun GlassHost(
 @Composable
 private fun GlassBackdropArt() {
     val dark = isSystemInDarkTheme()
-    fun blob(color: Color, alpha: Float) = color.copy(alpha = if (dark) alpha * 0.55f else alpha)
+    fun blob(color: Color, alpha: Float) = color.copy(alpha = if (dark) alpha * 0.5f else alpha)
     Box(Modifier.fillMaxSize()) {
         Box(
             Modifier
-                .size(340.dp)
-                .offset(x = (-70).dp, y = (-60).dp)
-                .blur(70.dp)
-                .background(blob(Color(0xFF0A84FF), 0.30f), CircleShape)
-        )
-        Box(
-            Modifier
-                .size(280.dp)
-                .align(Alignment.TopEnd)
-                .offset(x = 60.dp, y = 120.dp)
+                .size(360.dp)
+                .offset(x = (-80).dp, y = (-70).dp)
                 .blur(80.dp)
-                .background(blob(Color(0xFF5E5CE6), 0.22f), CircleShape)
+                .background(blob(Color(0xFF0A84FF), 0.34f), CircleShape)
         )
         Box(
             Modifier
                 .size(300.dp)
-                .align(Alignment.CenterEnd)
-                .offset(x = 90.dp, y = 40.dp)
-                .blur(75.dp)
-                .background(blob(Color(0xFF30D158), 0.16f), CircleShape)
+                .align(Alignment.TopEnd)
+                .offset(x = 70.dp, y = 110.dp)
+                .blur(90.dp)
+                .background(blob(Color(0xFF5E5CE6), 0.24f), CircleShape)
         )
         Box(
             Modifier
                 .size(320.dp)
-                .align(Alignment.BottomStart)
-                .offset(x = (-60).dp, y = 60.dp)
+                .align(Alignment.CenterEnd)
+                .offset(x = 100.dp, y = 40.dp)
                 .blur(85.dp)
-                .background(blob(Color(0xFFFF9F0A), 0.16f), CircleShape)
+                .background(blob(Color(0xFF30D158), 0.18f), CircleShape)
         )
         Box(
             Modifier
-                .size(260.dp)
+                .size(340.dp)
+                .align(Alignment.BottomStart)
+                .offset(x = (-70).dp, y = 70.dp)
+                .blur(95.dp)
+                .background(blob(Color(0xFFFF9F0A), 0.18f), CircleShape)
+        )
+        Box(
+            Modifier
+                .size(280.dp)
                 .align(Alignment.BottomEnd)
-                .offset(x = 40.dp, y = (-40).dp)
-                .blur(75.dp)
-                .background(blob(Color(0xFFFF375F), 0.14f), CircleShape)
+                .offset(x = 50.dp, y = (-50).dp)
+                .blur(85.dp)
+                .background(blob(Color(0xFFFF375F), 0.16f), CircleShape)
         )
     }
 }
 
-/** Background only: content is drawn after this modifier, so text never enters the shader. */
+private data class ToneSpec(
+    val blur: Dp,
+    val lensHeight: Dp,
+    val lensAmount: Dp,
+    val tintAlpha: Float,
+    val innerShadow: Float
+)
+
+private fun specFor(tone: GlassTone, mode: GlassMode): ToneSpec {
+    val capLens = mode != GlassMode.Full
+    return when (tone) {
+        GlassTone.Thin -> ToneSpec(5.dp, 8.dp, 14.dp, 0.26f, 0.05f)
+        GlassTone.Regular -> ToneSpec(10.dp, 16.dp, 26.dp, 0.34f, 0.08f)
+        GlassTone.Thick -> ToneSpec(
+            blur = 16.dp,
+            lensHeight = if (capLens) 0.dp else 30.dp,
+            lensAmount = if (capLens) 0.dp else 52.dp,
+            tintAlpha = 0.52f,
+            innerShadow = 0.10f
+        )
+    }
+}
+
+/**
+ * The liquid-glass material.
+ *
+ * Layer order follows real glass optics: blur + vibrancy for the body, lens for
+ * edge refraction, a specular highlight on the rim, an inner shadow for edge
+ * thickness, and a soft drop shadow for lift. Text is drawn afterwards, crisp.
+ */
 @Composable
 internal fun Modifier.glassMaterial(
-    shape: Shape = RoundedCornerShape(28.dp),
+    shape: Shape = RoundedCornerShape(GlassTokens.cardRadius),
     tint: Color = MaterialTheme.colorScheme.surface,
-    compact: Boolean = false,
+    tone: GlassTone = GlassTone.Regular,
     enabled: Boolean = true,
-    outlineColor: Color? = null
+    outlineColor: Color? = null,
+    lifted: Boolean = true
 ): Modifier {
     val backdrop = LocalGlassBackdrop.current
     val mode = LocalGlassMode.current
     val scheme = MaterialTheme.colorScheme
     val dark = isSystemInDarkTheme()
+    val spec = specFor(tone, mode)
     val surface = if (enabled) tint else scheme.surfaceContainerHighest
-    val opacity = if (compact) .38f else .27f
-    val outline = outlineColor ?: scheme.outline.copy(alpha = if (enabled) .58f else .32f)
+    val alpha = if (enabled) spec.tintAlpha else 0f
+    val outline = outlineColor ?: scheme.onSurface.copy(
+        alpha = if (enabled) (if (dark) 0.16f else 0.10f) else 0.07f
+    )
+
     val material = if (backdrop == null || mode == GlassMode.Off) {
-        // Glassmorphism fallback: translucent solid tint + outline, no blur shader.
-        val fallback = if (dark) surface.copy(alpha = 0.72f) else Color.White.copy(alpha = 0.82f)
-        Modifier.background(if (enabled) fallback else surface.copy(alpha = 1f), shape)
+        // Glassmorphism fallback: translucent solid tint + hairline, no shader.
+        val fallbackAlpha = if (enabled) (if (dark) 0.72f else 0.86f) else 1f
+        Modifier.background(surface.copy(alpha = fallbackAlpha), shape)
     } else {
         Modifier.drawBackdrop(
             backdrop = backdrop,
             shape = { shape },
             effects = {
                 vibrancy()
-                colorControls(saturation = 1.04f)
-                blur((if (compact || mode == GlassMode.BlurOnly) 6.dp else 10.dp).toPx())
+                colorControls(saturation = 1.06f, brightness = if (dark) 0f else 0.015f)
+                blur(spec.blur.toPx())
                 if (mode == GlassMode.Full) {
-                    lens(minOf(12.dp.toPx(), size.minDimension / 4f), minOf(18.dp.toPx(), size.minDimension / 2f))
+                    lens(
+                        refractionHeight = minOf(spec.lensHeight.toPx(), size.minDimension / 2.6f),
+                        refractionAmount = minOf(spec.lensAmount.toPx(), size.minDimension * 0.45f)
+                    )
                 }
             },
-            highlight = { Highlight.Default.copy(alpha = if (enabled) .75f else .35f) },
-            shadow = null,
-            onDrawSurface = { drawRect(surface.copy(alpha = opacity)) }
+            highlight = {
+                Highlight.Default.copy(
+                    alpha = if (enabled) (if (dark) 0.55f else 0.85f) else 0.25f
+                )
+            },
+            shadow = if (lifted) {
+                {
+                    Shadow(
+                        radius = 18.dp,
+                        offset = DpOffset(0.dp, 6.dp),
+                        color = if (dark) Color.Black else Color(0xFF1B2A4A),
+                        alpha = if (dark) 0.34f else 0.13f
+                    )
+                }
+            } else null,
+            innerShadow = if (enabled) {
+                {
+                    InnerShadow(
+                        radius = 10.dp,
+                        offset = DpOffset(0.dp, 1.5.dp),
+                        color = Color.Black,
+                        alpha = spec.innerShadow
+                    )
+                }
+            } else null,
+            onDrawSurface = { drawRect(surface.copy(alpha = if (dark) alpha * 0.86f else alpha)) }
         )
     }
-    return then(material).border(1.dp, outline, shape).clip(shape)
+    return then(material)
+        .border(GlassTokens.hairline, outline, shape)
+        .clip(shape)
+}
+
+/**
+ * Liquid tap target: subtle squash while pressed, no Material ripple, optional
+ * haptic — the full iOS interaction feel for rows and cards.
+ */
+@Composable
+fun Modifier.liquidClickable(
+    enabled: Boolean = true,
+    pressedScale: Float = 0.97f,
+    haptic: Boolean = true,
+    onClick: () -> Unit
+): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val haptics = LocalHapticFeedback.current
+    val scale by animateFloatAsState(
+        targetValue = if (pressed && enabled) pressedScale else 1f,
+        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
+        label = "liquid-press"
+    )
+    return this
+        .graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        }
+        .clickable(
+            interactionSource = interaction,
+            indication = null,
+            enabled = enabled,
+            onClick = {
+                if (haptic) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+        )
 }

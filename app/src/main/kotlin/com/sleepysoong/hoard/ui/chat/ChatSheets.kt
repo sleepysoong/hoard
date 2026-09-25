@@ -1,11 +1,15 @@
 package com.sleepysoong.hoard.ui.chat
 
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
@@ -27,6 +31,8 @@ import com.sleepysoong.hoard.ui.glass.GlassModalBottomSheet
 import com.sleepysoong.hoard.ui.glass.GlassSecondaryButton
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassTextField
+import com.sleepysoong.hoard.ui.glass.SheetGrabber
+import com.sleepysoong.hoard.ui.glass.liquidClickable
 
 @Composable
 fun ModelPickerSheet(
@@ -35,28 +41,38 @@ fun ModelPickerSheet(
     onDismiss: () -> Unit
 ) {
     GlassModalBottomSheet(onDismissRequest = onDismiss) {
-        Text("모델 선택 (목업)", style = MaterialTheme.typography.titleLarge)
+        SheetGrabber(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
+        Text("모델 선택", style = MaterialTheme.typography.titleLarge)
         Text(
             "응답은 목업 데이터로 생성됩니다.",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
             items(MockData.models, key = { it.id }) { model ->
-                GlassCard(
-                    modifier = Modifier
+                val selected = model.id == currentModelId
+                Row(
+                    Modifier
                         .fillMaxWidth()
-                        .clickable { onPick(model.id); onDismiss() }
+                        .liquidClickable { onPick(model.id); onDismiss() }
+                        .padding(horizontal = 4.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Column(Modifier.padding(14.dp)) {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text(model.displayName, style = MaterialTheme.typography.titleSmall)
-                            if (model.id == currentModelId) Text("●", color = MaterialTheme.colorScheme.primary)
-                        }
+                    Column(Modifier.weight(1f)) {
+                        Text(model.displayName, style = MaterialTheme.typography.bodyLarge)
                         Text(
                             "${model.vendor} · ${model.description}",
-                            style = MaterialTheme.typography.bodySmall,
+                            style = MaterialTheme.typography.labelSmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    if (selected) {
+                        Icon(
+                            Icons.Rounded.Check,
+                            contentDescription = "선택됨",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -79,6 +95,7 @@ fun SessionSettingsSheet(
     val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
 
     GlassModalBottomSheet(onDismissRequest = onDismiss) {
+        SheetGrabber(Modifier.align(Alignment.CenterHorizontally).padding(bottom = 10.dp))
         Text("세션 설정", style = MaterialTheme.typography.titleLarge)
         GlassTextField(value = name, onValueChange = { name = it }, label = { Text("세션 이름") }, singleLine = true)
         GlassTextField(
