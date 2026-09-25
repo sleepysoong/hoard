@@ -177,45 +177,6 @@ fun GlassAnimatedVisibility(
     ) { content() }
 }
 
-/**
- * Floating liquid-glass context/action capsule (iMessage long-press menu shape).
- * Rendered inline above a bubble, so it stays in the same window as the backdrop.
- */
-@Composable
-fun GlassActionCapsule(
-    actions: List<Pair<androidx.compose.ui.graphics.vector.ImageVector, () -> Unit>>,
-    modifier: Modifier = Modifier
-) {
-    val scheme = MaterialTheme.colorScheme
-    Box(
-        modifier
-            .height(48.dp)
-            .shadow(14.dp, RoundedCornerShape(50), clip = false)
-            .glassMaterial(RoundedCornerShape(50), scheme.surface, compact = true)
-            .padding(horizontal = 4.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            actions.forEach { (icon, onClick) ->
-                Box(
-                    Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .clickable(onClick = onClick),
-                    contentAlignment = Alignment.Center
-                ) {
-                    androidx.compose.material3.Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = scheme.onSurface,
-                        modifier = Modifier.size(19.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
 /** iMessage-style typing indicator: three pulsing dots. */
 @Composable
 fun IOSTypingDots(modifier: Modifier = Modifier) {

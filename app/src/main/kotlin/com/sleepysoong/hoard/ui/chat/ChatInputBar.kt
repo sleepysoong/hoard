@@ -54,8 +54,6 @@ fun ChatInputBar(
     onValueChange: (String) -> Unit,
     attachments: List<UiAttachment>,
     onAttachmentsChange: (List<UiAttachment>) -> Unit,
-    modelName: String,
-    onModelClick: () -> Unit,
     onSend: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -94,8 +92,8 @@ fun ChatInputBar(
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
     val haptics = LocalHapticFeedback.current
 
-    GlassSurface(modifier = modifier, shape = RoundedCornerShape(24.dp)) {
-        Column(Modifier.padding(10.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    GlassSurface(modifier = modifier, shape = RoundedCornerShape(26.dp)) {
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (attachments.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     attachments.forEach { a ->
@@ -184,10 +182,11 @@ fun ChatInputBar(
                     value = value,
                     onValueChange = onValueChange,
                     modifier = Modifier.weight(1f),
-                    placeholder = { Text("메시지 입력  ( / 명령어 )") },
+                    placeholder = { Text("메시지") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                     keyboardActions = KeyboardActions(onSend = { onSend() }),
-                    maxLines = 6
+                    maxLines = 6,
+                    shape = RoundedCornerShape(20.dp)
                 )
                 IconButton(
                     onClick = {
@@ -212,22 +211,6 @@ fun ChatInputBar(
                         modifier = Modifier.size(20.dp)
                     )
                 }
-            }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    modelName,
-                    style = MaterialTheme.typography.labelMedium,
-                    color = scheme.primary,
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(8.dp))
-                        .clickable { onModelClick() }
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                )
-                Text(
-                    "앱을 나가도 백그라운드에서 답변 계속",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant
-                )
             }
         }
     }

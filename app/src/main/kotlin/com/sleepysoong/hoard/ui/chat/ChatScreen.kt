@@ -1,27 +1,41 @@
 package com.sleepysoong.hoard.ui.chat
 
-import androidx.compose.animation.AnimatedVisibility
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
+import androidx.compose.material.icons.rounded.ContentCopy
+import androidx.compose.material.icons.rounded.Delete
+import androidx.compose.material.icons.rounded.Edit
+import androidx.compose.material.icons.rounded.ForkRight
 import androidx.compose.material.icons.rounded.KeyboardArrowDown
+import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
+import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -37,20 +51,25 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
+import com.sleepysoong.hoard.data.ChatMessage
+import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.MockData
+import com.sleepysoong.hoard.ui.glass.GlassActionSheet
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
+import com.sleepysoong.hoard.ui.glass.GlassSheetAction
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import kotlinx.coroutines.launch
+
+private const val GROUP_WINDOW_MS = 3 * 60 * 1000L
 
 @Composable
 fun ChatScreen(
@@ -65,9 +84,12 @@ fun ChatScreen(
     var editText by rememberSaveable { mutableStateOf("") }
     var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var menuTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    // Background replies post a notification; ask once, when the first reply is sent.
+    val clipboard = LocalClipboardManager.current
+
+    // Background replies post a notification; ask once, on the first send.
     val context = LocalContext.current
     val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
     val sendReply: (String, String) -> Unit = { prompt, modelId ->
@@ -79,7 +101,7 @@ fun ChatScreen(
         }
         vm.send(prompt, vm.attachments, modelId)
     }
-    // Follow new replies only while the user is already at the bottom.
+
     val atBottom by remember {
         derivedStateOf {
             val info = listState.layoutInfo
@@ -87,120 +109,196 @@ fun ChatScreen(
             last.index >= info.totalItemsCount - 1
         }
     }
-
     LaunchedEffect(state.messages.size, state.messages.lastOrNull()?.text) {
         if (atBottom && state.messages.isNotEmpty()) {
             listState.animateScrollToItem(state.messages.lastIndex)
         }
     }
 
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        // iOS-style nav bar: centered title, glass chrome.
-        GlassSurface(shape = RoundedCornerShape(20.dp)) {
-            Column(Modifier.padding(horizontal = 8.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    GlassIconButton(onClick = { vm.newSession() }) {
-                        androidx.compose.material3.Icon(Icons.Rounded.Add, contentDescription = "새 세션")
-                    }
-                    Column(
-                        Modifier.weight(1f),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
-                        Text(
-                            session?.name ?: "Hoard",
-                            style = MaterialTheme.typography.headlineSmall,
-                            maxLines = 1,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                        val limit = session?.contextLimit ?: 32_000
-                        val ratio = (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f)
-                        Text(
-                            "${state.usedTokens} / $limit 토큰 (${(ratio * 100).toInt()}%) · ${session?.modelId}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                        )
-                    }
-                    GlassIconButton(onClick = { showSettings = true }) {
-                        androidx.compose.material3.Icon(Icons.Rounded.Settings, contentDescription = "세션 설정")
-                    }
-                }
-                val limit = session?.contextLimit ?: 32_000
-                LinearProgressIndicator(
-                    progress = { (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f) },
-                    modifier = Modifier.fillMaxWidth().padding(top = 6.dp, start = 8.dp, end = 8.dp)
-                )
-            }
-        }
+    val menuTarget = state.messages.firstOrNull { it.id == menuTargetId }
+    val lastUserMessageId = state.messages.lastOrNull { it.role == MessageRole.User }?.id
 
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (state.messages.isEmpty()) {
-                Text(
-                    "대화를 시작해 보세요 — 전부 목업 데이터입니다.",
-                    modifier = Modifier.align(Alignment.Center),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 8.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    items(state.messages, key = { it.id }) { msg ->
-                        MessageBubble(
-                            message = msg,
-                            modelName = msg.modelId?.let { id -> MockData.models.firstOrNull { it.id == id }?.displayName },
-                            onEdit = { editTarget = msg.id; editText = msg.text },
-                            onDelete = { deleteTarget = msg.id },
-                            onBranch = { branchTarget = msg.id },
-                            onRetry = { vm.retryFrom(msg.id) }
-                        )
+    Box(modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            // iOS-style nav bar: compact centered title, glass chrome.
+            GlassSurface(shape = RoundedCornerShape(20.dp)) {
+                Column {
+                    Row(
+                        Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        GlassIconButton(onClick = { vm.newSession() }) {
+                            Icon(Icons.Rounded.Add, contentDescription = "새 세션")
+                        }
+                        Column(
+                            Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Text(
+                                session?.name ?: "Hoard",
+                                style = MaterialTheme.typography.headlineSmall,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.noRippleClickable { showModels = true }
+                            )
+                            val limit = session?.contextLimit ?: 32_000
+                            Text(
+                                "${session?.modelId ?: "hoard"} · ${state.usedTokens}/$limit 토큰",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.noRippleClickable { showModels = true }
+                            )
+                        }
+                        GlassIconButton(onClick = { showSettings = true }) {
+                            Icon(Icons.Rounded.Settings, contentDescription = "세션 설정")
+                        }
                     }
+                    val limit = session?.contextLimit ?: 32_000
+                    LinearProgressIndicator(
+                        progress = { (state.usedTokens.toFloat() / limit.toFloat()).coerceIn(0f, 1f) },
+                        modifier = Modifier.fillMaxWidth().height(2.dp),
+                        trackColor = Color.Transparent,
+                        drawStopIndicator = {}
+                    )
                 }
-                // iOS-style floating glass scroll-to-bottom button.
-                GlassAnimatedVisibility(
-                    visible = !atBottom,
-                    enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.8f),
-                    exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.8f),
-                    modifier = Modifier.align(Alignment.BottomEnd)
-                ) {
-                    GlassIconButton(
-                        onClick = {
-                            scope.launch {
-                                if (state.messages.isNotEmpty()) {
-                                    listState.animateScrollToItem(state.messages.lastIndex)
+            }
+
+            BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
+                val maxBubbleWidth = maxWidth * 0.78f
+                if (state.messages.isEmpty()) {
+                    Text(
+                        "무엇을 도와드릴까요?",
+                        modifier = Modifier.align(Alignment.Center),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                } else {
+                    LazyColumn(
+                        state = listState,
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(top = 6.dp, bottom = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
+                        itemsIndexed(state.messages, key = { _, m -> m.id }) { index, msg ->
+                            val prev = state.messages.getOrNull(index - 1)
+                            val next = state.messages.getOrNull(index + 1)
+                            val grouped = prev != null &&
+                                prev.role == msg.role &&
+                                msg.createdAt - prev.createdAt < GROUP_WINDOW_MS
+                            val footer = !grouped || next == null || next.role != msg.role ||
+                                next.createdAt - msg.createdAt >= GROUP_WINDOW_MS
+                            MessageBubble(
+                                message = msg,
+                                modelName = msg.modelId?.let { id ->
+                                    MockData.models.firstOrNull { it.id == id }?.displayName
+                                },
+                                maxBubbleWidth = maxBubbleWidth,
+                                groupedWithPrevious = grouped,
+                                showFooter = footer,
+                                isLastUserMessage = msg.id == lastUserMessageId,
+                                onLongPress = { menuTargetId = msg.id },
+                                modifier = Modifier.padding(
+                                    top = if (grouped) 2.dp else 10.dp
+                                )
+                            )
+                        }
+                    }
+                    // Floating glass scroll-to-bottom button.
+                    GlassAnimatedVisibility(
+                        visible = !atBottom,
+                        enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.8f),
+                        exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.8f),
+                        modifier = Modifier.align(Alignment.BottomEnd)
+                    ) {
+                        GlassIconButton(
+                            onClick = {
+                                scope.launch {
+                                    if (state.messages.isNotEmpty()) {
+                                        listState.animateScrollToItem(state.messages.lastIndex)
+                                    }
                                 }
-                            }
-                        },
-                        modifier = Modifier.padding(8.dp)
-                    ) {
-                        androidx.compose.material3.Icon(
-                            Icons.Rounded.KeyboardArrowDown,
-                            contentDescription = "맨 아래로",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                            },
+                            modifier = Modifier.padding(10.dp)
+                        ) {
+                            Icon(
+                                Icons.Rounded.KeyboardArrowDown,
+                                contentDescription = "맨 아래로",
+                                tint = MaterialTheme.colorScheme.primary
+                            )
+                        }
                     }
                 }
             }
+
+            ChatInputBar(
+                value = vm.input,
+                onValueChange = { vm.input = it },
+                attachments = vm.attachments,
+                onAttachmentsChange = { vm.attachments = it },
+                onSend = { if (session != null) sendReply(vm.input, session.modelId) }
+            )
         }
 
-        val modelName = MockData.models.firstOrNull { it.id == session?.modelId }?.displayName ?: session?.modelId.orEmpty()
-        ChatInputBar(
-            value = vm.input,
-            onValueChange = { vm.input = it },
-            attachments = vm.attachments,
-            onAttachmentsChange = { vm.attachments = it },
-            modelName = modelName,
-            onModelClick = { showModels = true },
-            onSend = {
-                if (session != null) {
-                    sendReply(vm.input, session.modelId)
-                }
+        // Liquid-glass popup, drawn in the same window so the shader stays valid.
+        GlassAnimatedVisibility(
+            visible = menuTarget != null,
+            enter = fadeIn(tween(140)),
+            exit = fadeOut(tween(120)),
+            modifier = Modifier.fillMaxSize()
+        ) {
+            if (menuTarget != null) {
+                val isUser = menuTarget.role == MessageRole.User
+                GlassActionSheet(
+                    title = if (isUser) "내 메시지" else "Hoard의 메시지",
+                    message = menuTarget.text.take(80).ifBlank { "(첨부파일)" }
+                        .let { if (menuTarget.text.length > 80) "$it…" else it },
+                    actions = buildList {
+                        add(
+                            GlassSheetAction(
+                                icon = Icons.Rounded.ContentCopy,
+                                label = "복사",
+                                onClick = { clipboard.setText(AnnotatedString(menuTarget.text)) }
+                            )
+                        )
+                        if (isUser) {
+                            add(
+                                GlassSheetAction(
+                                    icon = Icons.Rounded.Edit,
+                                    label = "수정 후 다시 생성",
+                                    onClick = { editTarget = menuTarget.id; editText = menuTarget.text }
+                                )
+                            )
+                        } else {
+                            add(
+                                GlassSheetAction(
+                                    icon = Icons.Rounded.Refresh,
+                                    label = "다시 생성",
+                                    onClick = { vm.retryFrom(menuTarget.id) }
+                                )
+                            )
+                        }
+                        add(
+                            GlassSheetAction(
+                                icon = Icons.Rounded.ForkRight,
+                                label = "이 메시지에서 브랜치",
+                                onClick = { branchTarget = menuTarget.id }
+                            )
+                        )
+                        add(
+                            GlassSheetAction(
+                                icon = Icons.Rounded.Delete,
+                                label = "삭제",
+                                destructive = true,
+                                onClick = { deleteTarget = menuTarget.id }
+                            )
+                        )
+                    },
+                    onDismiss = { menuTargetId = null }
+                )
             }
-        )
+        }
     }
 
     if (showModels && session != null) {
@@ -240,4 +338,15 @@ fun ChatScreen(
             onDismiss = { deleteTarget = null }
         )
     }
+}
+
+/** iOS-style tap target without the Material ripple. */
+@Composable
+private fun Modifier.noRippleClickable(onClick: () -> Unit): Modifier {
+    val interaction = remember { MutableInteractionSource() }
+    return this.clickable(
+        interactionSource = interaction,
+        indication = null,
+        onClick = onClick
+    )
 }
