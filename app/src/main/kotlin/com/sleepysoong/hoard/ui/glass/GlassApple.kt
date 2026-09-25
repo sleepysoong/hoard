@@ -41,7 +41,6 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import com.sleepysoong.hoard.ui.theme.IOSSegmentThumbDark
 
 /** iOS Large Title. */
@@ -141,8 +140,9 @@ fun IOSSegmentedControl(
                 ) {
                     Text(
                         label,
-                        fontSize = 13.sp,
-                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                        style = MaterialTheme.typography.labelMedium.copy(
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium
+                        ),
                         color = if (selected) scheme.onSurface else scheme.onSurfaceVariant,
                         maxLines = 1
                     )

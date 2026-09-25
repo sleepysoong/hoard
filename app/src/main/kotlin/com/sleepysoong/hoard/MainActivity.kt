@@ -5,12 +5,16 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material.icons.rounded.ChatBubble
@@ -21,11 +25,16 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.VerticalDivider
+import androidx.compose.material3.windowsizeclass.ExperimentalMaterial3WindowSizeClassApi
+import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
+import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -62,6 +71,7 @@ private val TABS = listOf(
 )
 
 class MainActivity : ComponentActivity() {
+    @OptIn(ExperimentalMaterial3WindowSizeClassApi::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -76,9 +86,12 @@ class MainActivity : ComponentActivity() {
             HoardTheme(darkTheme = dark) {
                 val nav = rememberNavController()
                 val vm: ChatViewModel = viewModel()
-                var selected by remember { mutableIntStateOf(0) }
+                var selected by rememberSaveable { mutableIntStateOf(0) }
                 var pressed by remember { mutableStateOf(-1) }
                 val backdrop = LocalGlassBackdrop.current
+                // Foldables / tablets: side-by-side sessions + chat, state stays in the VM.
+                val windowSizeClass = calculateWindowSizeClass(this)
+                val twoPane = windowSizeClass.widthSizeClass == WindowWidthSizeClass.Expanded
 
                 Box(Modifier.fillMaxSize()) {
                     NavHost(
@@ -87,10 +100,26 @@ class MainActivity : ComponentActivity() {
                         modifier = Modifier
                             .fillMaxSize()
                             .statusBarsPadding()
-                            .padding(horizontal = 12.dp)
+                            .padding(horizontal = if (twoPane) 20.dp else 12.dp)
                             .padding(bottom = 108.dp, top = 8.dp)
                     ) {
-                        composable("chat") { ChatScreen(vm) }
+                        composable("chat") {
+                            if (twoPane) {
+                                Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                                    Box(Modifier.width(360.dp).fillMaxHeight()) {
+                                        SessionsScreen(vm, onOpenChat = {})
+                                    }
+                                    VerticalDivider(
+                                        modifier = Modifier.fillMaxHeight(),
+                                        thickness = 0.5.dp,
+                                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f)
+                                    )
+                                    Box(Modifier.weight(1f).fillMaxHeight()) { ChatScreen(vm) }
+                                }
+                            } else {
+                                ChatScreen(vm)
+                            }
+                        }
                         composable("sessions") {
                             SessionsScreen(vm, onOpenChat = {
                                 selected = 0

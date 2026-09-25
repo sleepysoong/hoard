@@ -101,6 +101,8 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.compose.material.icons)
     implementation(libs.androidx.navigation.compose)
+    implementation(libs.androidx.compose.material3.windowsizeclass)
+    implementation(libs.androidx.window)
     debugImplementation(libs.androidx.compose.ui.tooling)
 
     implementation(libs.androidx.work.runtime.ktx)

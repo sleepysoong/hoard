@@ -23,14 +23,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MockData
-import com.sleepysoong.hoard.data.UiAttachment
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 
@@ -41,14 +40,12 @@ fun ChatScreen(
 ) {
     val state by vm.uiState.collectAsState()
     val session = state.session
-    var input by remember { mutableStateOf("") }
-    var attachments by remember { mutableStateOf<List<UiAttachment>>(emptyList()) }
-    var showModels by remember { mutableStateOf(false) }
-    var showSettings by remember { mutableStateOf(false) }
-    var editTarget by remember { mutableStateOf<String?>(null) }
-    var editText by remember { mutableStateOf("") }
-    var branchTarget by remember { mutableStateOf<String?>(null) }
-    var deleteTarget by remember { mutableStateOf<String?>(null) }
+    var showModels by rememberSaveable { mutableStateOf(false) }
+    var showSettings by rememberSaveable { mutableStateOf(false) }
+    var editTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var editText by rememberSaveable { mutableStateOf("") }
+    var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     LaunchedEffect(state.messages.size) {
@@ -126,17 +123,15 @@ fun ChatScreen(
 
         val modelName = MockData.models.firstOrNull { it.id == session?.modelId }?.displayName ?: session?.modelId.orEmpty()
         ChatInputBar(
-            value = input,
-            onValueChange = { input = it },
-            attachments = attachments,
-            onAttachmentsChange = { attachments = it },
+            value = vm.input,
+            onValueChange = { vm.input = it },
+            attachments = vm.attachments,
+            onAttachmentsChange = { vm.attachments = it },
             modelName = modelName,
             onModelClick = { showModels = true },
             onSend = {
                 if (session != null) {
-                    vm.send(input, attachments, session.modelId)
-                    input = ""
-                    attachments = emptyList()
+                    vm.send(vm.input, vm.attachments, session.modelId)
                 }
             }
         )

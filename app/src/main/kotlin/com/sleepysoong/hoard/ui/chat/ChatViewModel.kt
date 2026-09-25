@@ -1,6 +1,9 @@
 package com.sleepysoong.hoard.ui.chat
 
 import android.app.Application
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.sleepysoong.hoard.data.ChatMessage
@@ -27,6 +30,10 @@ data class ChatUiState(
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = HoardRepository.get()
     private val _activeSessionId = MutableStateFlow(repo.sessions.value.firstOrNull()?.id ?: "")
+
+    /** Draft + attachments live in the ViewModel so folding/unfolding never loses them. */
+    var input by mutableStateOf("")
+    var attachments by mutableStateOf<List<UiAttachment>>(emptyList())
 
     val uiState: StateFlow<ChatUiState> = combine(
         repo.sessions, repo.messages, _activeSessionId
@@ -61,6 +68,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             attachments = attachments
         )
         repo.appendMessage(session.id, userMsg)
+        input = ""
+        this.attachments = emptyList()
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         // Worker owns the reply so it survives the app going to background.
         ChatResponseWorker.enqueue(
