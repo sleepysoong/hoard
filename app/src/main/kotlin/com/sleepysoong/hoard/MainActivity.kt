@@ -110,8 +110,6 @@ class MainActivity : ComponentActivity() {
             HoardTheme(darkTheme = dark) {
                 val nav = rememberNavController()
                 val vm: ChatViewModel = viewModel()
-                // 0=채팅 1=세션 2=도구 3=설정. 앱은 세션 목록에서 시작한다.
-                var selected by rememberSaveable { mutableIntStateOf(1) }
                 var pressed by remember { mutableStateOf(-1) }
                 val backdrop = LocalGlassBackdrop.current
                 // Foldables / tablets: side-by-side sessions + chat, state stays in the VM.
@@ -122,6 +120,9 @@ class MainActivity : ComponentActivity() {
                 // composer, so the floating tab bar steps aside (also while the IME is up).
                 val backStackEntry by nav.currentBackStackEntryAsState()
                 val route = backStackEntry?.destination?.route ?: "sessions"
+                // Highlight follows the screen on show (never a separately stored index,
+                // which drifted on launch and after system Back). Chat belongs to 세션.
+                val selected = TABS.indexOfFirst { it.route == route }.takeIf { it >= 0 } ?: 0
                 val inChat = route == "chat"
                 val imeVisible = WindowInsets.isImeVisible
                 // Tab bar: Sessions / Tools / Settings only. Chat hides it —
@@ -148,7 +149,6 @@ class MainActivity : ComponentActivity() {
                 }
 
                 fun backToSessions() {
-                    selected = 0
                     if (!nav.popBackStack()) {
                         nav.navigate("sessions") { launchSingleTop = true }
                     }
@@ -215,8 +215,12 @@ class MainActivity : ComponentActivity() {
                                     onPressedChange = { isPressed -> pressed = if (isPressed) i else -1 },
                                     onClick = {
                                         if (selected != i) {
-                                            selected = i
-                                            nav.navigate(tab.route) { launchSingleTop = true }
+                                            nav.navigate(tab.route) {
+                                                // Tabs are siblings: keep one entry per tab so
+                                                // Back from any tab lands on 세션, then exits.
+                                                popUpTo("sessions")
+                                                launchSingleTop = true
+                                            }
                                         }
                                     }
                                 )

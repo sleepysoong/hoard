@@ -7,6 +7,9 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.Role
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.background
@@ -278,9 +281,13 @@ fun RowScope.GlassTabItem(
         modifier = Modifier
             .weight(1f)
             .fillMaxHeight()
-            .clickable(
+            .testTag("tab-$title")
+            // selectable + Tab role: TalkBack announces "선택됨" on the active tab.
+            .selectable(
+                selected = selected,
                 interactionSource = interaction,
                 indication = null,
+                role = Role.Tab,
                 onClick = {
                     haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                     onClick()
