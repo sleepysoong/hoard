@@ -52,6 +52,8 @@ import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassTokens
+import com.sleepysoong.hoard.ui.glass.GlassMotion
+import com.sleepysoong.hoard.ui.glass.liquidPress
 import com.sleepysoong.hoard.ui.glass.GlassTone
 
 /**
@@ -185,19 +187,20 @@ private fun SessionCard(
 ) {
     val scheme = MaterialTheme.colorScheme
     var bounds by remember { mutableStateOf(Rect.Zero) }
+    val interaction = remember { MutableInteractionSource() }
 
     GlassSurface(
+        modifier = Modifier.liquidPress(interaction, pressedScale = GlassMotion.PRESS_SCALE_LARGE),
         shape = RoundedCornerShape(GlassTokens.cardRadius),
         tone = GlassTone.Regular
     ) {
-        val interaction = remember { MutableInteractionSource() }
         Row(
             Modifier
                 .fillMaxWidth()
                 .onGloballyPositioned { bounds = it.boundsInRoot() }
                 .combinedClickable(
                     interactionSource = interaction,
-                    indication = androidx.compose.foundation.LocalIndication.current,
+                    indication = null,
                     onClick = onOpen,
                     onLongClick = { onLongPress(bounds) },
                     onLongClickLabel = "세션 메뉴"

@@ -6,6 +6,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.animation.core.Animatable
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.ui.platform.testTag
@@ -209,15 +210,20 @@ fun GlassBottomBar(
         )
 
         val tabWidth = maxWidth / tabsCount
-        val position by animateFloatAsState(
-            targetValue = (if (pressedTabIndex >= 0) pressedTabIndex else selectedTabIndex)
-                .coerceIn(0, tabsCount - 1).toFloat(),
-            animationSpec = GlassMotion.springSnappy,
-            label = "tab-indicator"
-        )
+        val target = (if (pressedTabIndex >= 0) pressedTabIndex else selectedTabIndex)
+            .coerceIn(0, tabsCount - 1).toFloat()
+        // Liquid capsule: glides with a soft overshoot and stretches along its travel
+        // (like a drop of water), then relaxes back to its round shape.
+        val positionAnim = remember { Animatable(target, visibilityThreshold = 0.001f) }
+        LaunchedEffect(target) {
+            positionAnim.animateTo(target, spring(dampingRatio = 0.72f, stiffness = 420f, visibilityThreshold = 0.001f))
+        }
+        val position = positionAnim.value
+        // Soft saturation (tanh) instead of a hard cap: grows with speed, never plateaus flat.
+        val stretch = 0.2f * kotlin.math.tanh(kotlin.math.abs(positionAnim.velocity) * 0.12f)
         val press by animateFloatAsState(
             targetValue = if (pressedTabIndex >= 0) 1f else 0f,
-            animationSpec = GlassMotion.springSnappy,
+            animationSpec = if (pressedTabIndex >= 0) GlassMotion.exit() else GlassMotion.release(),
             label = "tab-press"
         )
 
@@ -227,6 +233,12 @@ fun GlassBottomBar(
                 .offset(x = tabWidth * position)
                 .width(tabWidth)
                 .height(GlassTokens.barHeight - 12.dp)
+                .graphicsLayer {
+                    // Stretch while moving, swell slightly while a tab is held.
+                    scaleX = 1f + stretch + 0.06f * press
+                    scaleY = 1f - stretch * 0.35f + 0.06f * press
+                }
+                .testTag("tab-capsule")
                 .padding(horizontal = 5.dp, vertical = 6.dp)
                 .then(
                     if (backdrop == null) {
@@ -269,9 +281,14 @@ fun RowScope.GlassTabItem(
         animationSpec = GlassMotion.fastColor,
         label = "tab-tint"
     )
+    // Pressed: sinks. Selected: pops a little bigger with a bouncy settle.
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.04f else 1f,
-        animationSpec = GlassMotion.springSnappy,
+        targetValue = when {
+            pressed -> 0.86f
+            selected -> 1.08f
+            else -> 1f
+        },
+        animationSpec = if (pressed) GlassMotion.exit() else GlassMotion.bouncy(),
         label = "tab-icon-scale"
     )
 

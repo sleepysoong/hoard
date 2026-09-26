@@ -1,6 +1,12 @@
 package com.sleepysoong.hoard.ui
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.width
+import androidx.compose.material3.Text
+import com.sleepysoong.hoard.ui.glass.GlassButton
+import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -63,5 +69,40 @@ class MotionPressTest {
         compose.mainClock.advanceTimeBy(1_000)
         assertEquals("settles at rest", 1f, scaleNow(), 0.001f)
         println("press curve: held=$held frames=" + frames.joinToString { "%.3f".format(it) })
+    }
+
+    /** Press → hold → release on [tag], returning the scale curve after release. */
+    private fun pressCurve(tag: String): Pair<Float, List<Float>> {
+        compose.onNodeWithTag(tag).performTouchInput { down(center) }
+        compose.mainClock.advanceTimeBy(250)
+        val held = scale(tag)
+        compose.onNodeWithTag(tag).performTouchInput { up() }
+        return held to (1..40).map { compose.mainClock.advanceTimeByFrame(); scale(tag) }
+    }
+
+    private fun scale(tag: String): Float {
+        val n = compose.onNodeWithTag(tag).fetchSemanticsNode()
+        return n.boundsInRoot.width / n.size.width
+    }
+
+    @Test fun sharedButtonsAndCardsUseThePressPhysics() {
+        compose.mainClock.autoAdvance = false
+        compose.setContent {
+            HoardTheme {
+                Column(Modifier.size(400.dp), verticalArrangement = Arrangement.spacedBy(40.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    GlassButton(onClick = {}, modifier = Modifier.width(200.dp).testTag("button")) { Text("버튼") }
+                    GlassIconButton(onClick = {}, modifier = Modifier.testTag("icon")) { Text("+") }
+                }
+            }
+        }
+        compose.mainClock.advanceTimeBy(100)
+        for (tag in listOf("button", "icon")) {
+            val (held, after) = pressCurve(tag)
+            println("$tag: held=$held peak=${after.max()}")
+            assertTrue("$tag sinks while held: $held", held < 0.97f)
+            assertTrue("$tag bounces back past 1.0: ${after.max()}", after.max() > 1.003f)
+            compose.mainClock.advanceTimeBy(1_000)
+            assertEquals(1f, scale(tag), 0.001f)
+        }
     }
 }

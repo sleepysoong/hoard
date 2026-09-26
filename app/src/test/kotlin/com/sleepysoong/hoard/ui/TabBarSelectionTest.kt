@@ -13,6 +13,8 @@ import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sleepysoong.hoard.MainActivity
 import com.sleepysoong.hoard.data.HoardRepository
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -78,5 +80,28 @@ class TabBarSelectionTest {
         compose.waitForIdle()
         compose.onNodeWithText("기본 컨텍스트").assertExists()
         compose.onAllNodesWithText("백그라운드", substring = true).assertCountEquals(0)
+    }
+}
+
+/** Liquid capsule motion in the real app: glides to the new tab, stretching while it travels. */
+@RunWith(AndroidJUnit4::class)
+@Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
+class TabCapsuleMotionTest {
+    @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
+        override fun before() = HoardRepository.resetForTests()
+    }
+    @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
+
+    @Test fun capsuleStretchesWhileMovingAndSettlesRound() {
+        compose.waitForIdle()
+        val capsule = { compose.onNodeWithTag("tab-capsule").fetchSemanticsNode().let { it.boundsInRoot.width / it.size.width } }
+        val restW = capsule()
+        compose.mainClock.autoAdvance = false
+        compose.onNodeWithTag("tab-설정").performClick()
+        val widths = (1..45).map { compose.mainClock.advanceTimeByFrame(); capsule() }
+        println("capsule scaleX: " + widths.joinToString { "%.3f".format(it) })
+        assertTrue("stretches in flight: max=${widths.max()}", widths.max() > restW + 0.05f)
+        compose.mainClock.advanceTimeBy(1_500)
+        assertEquals("round again at rest", restW, capsule(), 0.005f)
     }
 }

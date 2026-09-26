@@ -33,6 +33,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -123,12 +124,15 @@ private fun GlassAction(
         1 -> scheme.onPrimaryContainer
         else -> scheme.onErrorContainer
     }
+    val interaction = remember { MutableInteractionSource() }
     Button(
         onClick = onClick,
         modifier = modifier
+            .liquidPress(interaction, enabled)
             .heightIn(min = 50.dp)
             .glassMaterial(shape, tint, tone = GlassTone.Thin, enabled = enabled),
         enabled = enabled,
+        interactionSource = interaction,
         shape = shape,
         colors = ButtonDefaults.buttonColors(
             containerColor = Color.Transparent,
@@ -152,10 +156,14 @@ fun GlassIconButton(
     enabled: Boolean = true,
     content: @Composable () -> Unit
 ) {
+    val interaction = remember { MutableInteractionSource() }
     IconButton(
         onClick = onClick, enabled = enabled,
-        modifier = modifier.sizeIn(minWidth = 44.dp, minHeight = 44.dp)
+        // Small targets sink deeper so the press reads at a glance.
+        modifier = modifier.liquidPress(interaction, enabled, pressedScale = 0.88f)
+            .sizeIn(minWidth = 44.dp, minHeight = 44.dp)
             .glassMaterial(RoundedCornerShape(50), tone = GlassTone.Thin, enabled = enabled),
+        interactionSource = interaction,
         content = content
     )
 }
