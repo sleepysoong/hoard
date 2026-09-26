@@ -114,6 +114,52 @@ class ChatFlowTest {
     }
 
     @Test
+    fun editMiddleUserMessageDropsLaterTurnsAndAnswersEditedText() {
+        h = ChatHarness()
+        val (q1, _, _) = threeTurnConversation()
+        val u2 = h.messages()[3]
+        val edited = "수정된 두번째 질문: 망고"
+
+        h.vm.editUserMessage(u2.id, edited)
+        h.awaitReplies()
+        h.snapshot("after editing U2")
+
+        val msgs = h.messages()
+        assertEquals("welcome, U1, A1, U2', A2'", 5, msgs.size)
+        assertEquals(listOf(q1, edited), msgs.filter { it.role == MessageRole.User }.map { it.text })
+        assertEquals("edited message keeps its identity", u2.id, msgs[3].id)
+        assertEquals(MessageRole.Assistant, msgs[4].role)
+        assertTrue("reply answers the edited text: ${msgs[4].text}", msgs[4].text.contains(edited))
+        assertEquals("exactly one reply after the edit", 1, msgs.count { it.role == MessageRole.Assistant && it.text.contains(edited) })
+    }
+
+    @Test
+    fun editLastUserMessageReplacesItsReply() {
+        h = ChatHarness()
+        threeTurnConversation()
+        val u3 = h.messages()[5]
+        h.vm.editUserMessage(u3.id, "체리 말고 자두")
+        h.awaitReplies()
+        h.snapshot("after editing U3")
+        val msgs = h.messages()
+        assertEquals(7, msgs.size)
+        assertEquals("체리 말고 자두", msgs[5].text)
+        assertTrue(msgs[6].text.contains("체리 말고 자두"))
+    }
+
+    @Test
+    fun blankEditOrAssistantTargetChangesNothing() {
+        h = ChatHarness()
+        threeTurnConversation()
+        val before = h.messages()
+        h.vm.editUserMessage(before[3].id, "   ")
+        h.vm.editUserMessage(before[4].id, "assistant 메시지는 수정 대상이 아님")
+        h.awaitReplies()
+        h.snapshot("after invalid edits")
+        assertEquals(before, h.messages())
+    }
+
+    @Test
     fun retryReplyThatHasNoPromptBeforeItKeepsConversation() {
         h = ChatHarness()
         threeTurnConversation()

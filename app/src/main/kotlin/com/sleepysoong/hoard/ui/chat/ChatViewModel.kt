@@ -92,11 +92,19 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun editUserMessage(messageId: String, newText: String) {
         val session = uiState.value.session ?: return
-        repo.updateMessage(session.id, messageId) { it.copy(text = newText) }
-        // Regenerate the next assistant reply for the edited prompt.
+        val clean = newText.trim()
+        if (clean.isEmpty()) return
+        val messages = repo.messagesOf(session.id)
+        val idx = messages.indexOfFirst { it.id == messageId }
+        val target = messages.getOrNull(idx) ?: return
+        if (target.role != MessageRole.User) return
+        // Save & regenerate: the old reply and every later turn answered the old
+        // text, so drop them and answer the edited message right after it.
+        repo.replaceSessionTail(session.id, idx + 1)
+        repo.updateMessage(session.id, messageId) { it.copy(text = clean) }
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, newText, session.modelId, replyId, false
+            getApplication(), session.id, clean, session.modelId, replyId, target.attachments.isNotEmpty()
         )
     }
 
