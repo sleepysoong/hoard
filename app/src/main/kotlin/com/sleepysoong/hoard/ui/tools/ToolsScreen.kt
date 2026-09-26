@@ -36,6 +36,8 @@ import com.sleepysoong.hoard.ui.glass.GlassTokens
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
+import com.sleepysoong.hoard.ui.glass.GlassPillButton
+import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.LargeTitle
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 
@@ -156,23 +158,12 @@ private fun McpTab(repo: HoardRepository) {
                     GlassSwitch(checked = s.enabled, onCheckedChange = { repo.setMcpEnabled(s.id, it) })
                 }
                 IOSRowDivider()
-                Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 2.dp)) {
-                    Text(
-                        "테스트",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = scheme.primary,
-                        modifier = Modifier
-                            .liquidClickable(haptic = false) { }
-                            .padding(horizontal = 10.dp, vertical = 10.dp)
-                    )
-                    Text(
-                        "제거",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = scheme.error,
-                        modifier = Modifier
-                            .liquidClickable { repo.removeMcpServer(s.id) }
-                            .padding(horizontal = 10.dp, vertical = 10.dp)
-                    )
+                Row(
+                    Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    GlassPillButton("테스트", onClick = { }, tint = GlassPillTint.Accent)
+                    GlassPillButton("제거", onClick = { repo.removeMcpServer(s.id) }, tint = GlassPillTint.Destructive)
                 }
             }
         }

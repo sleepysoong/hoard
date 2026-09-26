@@ -279,38 +279,6 @@ fun GlassTokenField(
 }
 
 /**
- * iOS switch: solid green/gray pill, white thumb. No glass — matches iOS,
- * where switches are opaque even on translucent surfaces.
- */
-@Composable
-fun GlassSwitch(
-    checked: Boolean,
-    onCheckedChange: ((Boolean) -> Unit)?,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true
-) {
-    val scheme = MaterialTheme.colorScheme
-    Switch(
-        checked = checked, onCheckedChange = onCheckedChange, enabled = enabled,
-        modifier = modifier,
-        colors = SwitchDefaults.colors(
-            checkedTrackColor = IOSGreen,
-            uncheckedTrackColor = scheme.surfaceContainerHighest,
-            checkedThumbColor = Color.White,
-            uncheckedThumbColor = Color.White,
-            checkedBorderColor = Color.Transparent,
-            uncheckedBorderColor = Color.Transparent,
-            disabledCheckedTrackColor = IOSGreen.copy(alpha = 0.4f),
-            disabledUncheckedTrackColor = scheme.surfaceContainerHighest,
-            disabledCheckedThumbColor = Color.White,
-            disabledUncheckedThumbColor = Color.White,
-            disabledCheckedBorderColor = Color.Transparent,
-            disabledUncheckedBorderColor = Color.Transparent
-        )
-    )
-}
-
-/**
  * iOS slider: 4dp track, white round thumb with shadow.
  */
 @OptIn(ExperimentalMaterial3Api::class)

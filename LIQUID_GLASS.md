@@ -460,6 +460,24 @@ internal fun Modifier.glassMaterial(
 
 ---
 
+### 11.4 리퀴드 컨트롤 (스위치 · 세그먼트 · 필 버튼) — `GlassLiquidControls.kt`
+
+Kyant 카탈로그 `LiquidToggle` 방식. 모든 썸이 같은 `liquidThumb`를 쓴다:
+평소엔 불투명 썸, **누르는 순간 커지며 투명한 유리 렌즈로 변해** 트랙을 굴절시키고,
+움직일 때는 속도에 비례해 늘어났다가 둥글게 돌아온다.
+
+- 트랙은 자기 `layerBackdrop(trackLayer)`에 기록, 썸은 **형제**로서 전역 backdrop +
+  트랙 레이어를 `rememberCombinedBackdrop`으로 합쳐 읽는다(4장 루프 규칙).
+- **썸의 크기 변형은 `drawBackdrop(layerBlock = …)` 안에서.** 바깥 `graphicsLayer`로
+  키우면 backdrop 좌표 매핑이 그걸 몰라 굴절된 트랙이 렌즈 안에서 어긋나 그려진다.
+- 넓은 트랙(세그먼트)은 트랙을 렌즈 안으로 **압축하지 않는다**. 압축하면 트랙 가장자리의
+  빈 공간이 렌즈로 끌려와 검은 테두리 + 색수차 줄무늬가 생긴다.
+- 카드 안 인라인 동작("테스트"/"제거")은 텍스트 링크가 아니라 `GlassPillButton`.
+- 검증: `LiquidControlsTest` — 탭·드래그 토글, 오버슈트 곡선, 누를 때 픽셀로 부풂 측정,
+  라이트/다크 · 평상/눌림 스크린샷(`app/build/test-artifacts/liquid/`).
+
+---
+
 ## 12. 실제로 겪은 크래시 리스트
 
 | 증상 | 원인 | 해결 |
