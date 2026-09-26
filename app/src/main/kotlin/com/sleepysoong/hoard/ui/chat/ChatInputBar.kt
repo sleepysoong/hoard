@@ -249,18 +249,16 @@ fun ChatInputBar(
                     )
                 }
 
-                // Send: solid blue when armed, glass when idle. Same 44dp footprint.
+                // Send is liquid glass in both states; active just swaps the tint
+                // (blue-tinted glass, not a flat painted disc).
                 Box(
                     Modifier
                         .size(ControlSize)
                         .clip(CircleShape)
-                        .then(
-                            if (canSend) Modifier.background(scheme.primary, CircleShape)
-                            else Modifier.glassMaterial(
-                                shape = CircleShape,
-                                tint = scheme.surface,
-                                tone = GlassTone.Thin
-                            )
+                        .glassMaterial(
+                            shape = CircleShape,
+                            tint = if (canSend) scheme.primaryContainer else scheme.surface,
+                            tone = if (canSend) GlassTone.Regular else GlassTone.Thin
                         )
                         .liquidClickable(enabled = canSend) { onSend() },
                     contentAlignment = Alignment.Center
@@ -268,7 +266,7 @@ fun ChatInputBar(
                     Icon(
                         Icons.Rounded.ArrowUpward,
                         contentDescription = "보내기",
-                        tint = if (canSend) Color.White else scheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        tint = if (canSend) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(20.dp)
                     )
                 }

@@ -185,8 +185,11 @@ internal fun Modifier.glassMaterial(
                 }
             },
             highlight = {
-                Highlight.Default.copy(
-                    alpha = if (enabled) (if (dark) 0.55f else 0.85f) else 0.25f
+                // Plain rim specular only — the Default style paints an angled
+                // wash across the surface and would turn the lower half of the
+                // card into a "white-painted" look (against the design rule).
+                Highlight.Plain.copy(
+                    alpha = if (enabled) (if (dark) 0.16f else 0.22f) else 0.06f
                 )
             },
             shadow = if (lifted) {
