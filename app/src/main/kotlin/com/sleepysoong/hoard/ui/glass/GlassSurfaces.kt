@@ -5,6 +5,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
@@ -208,12 +209,12 @@ fun GlassBottomBar(
         val position by animateFloatAsState(
             targetValue = (if (pressedTabIndex >= 0) pressedTabIndex else selectedTabIndex)
                 .coerceIn(0, tabsCount - 1).toFloat(),
-            animationSpec = spring(dampingRatio = 0.78f, stiffness = 520f),
+            animationSpec = GlassMotion.springSnappy,
             label = "tab-indicator"
         )
         val press by animateFloatAsState(
             targetValue = if (pressedTabIndex >= 0) 1f else 0f,
-            animationSpec = spring(dampingRatio = 0.6f, stiffness = 420f),
+            animationSpec = GlassMotion.springSnappy,
             label = "tab-press"
         )
 
@@ -262,12 +263,12 @@ fun RowScope.GlassTabItem(
     val haptics = LocalHapticFeedback.current
     val tint by animateColorAsState(
         targetValue = if (selected) scheme.primary else scheme.onSurfaceVariant,
-        animationSpec = tween(180),
+        animationSpec = GlassMotion.fastColor,
         label = "tab-tint"
     )
     val iconScale by animateFloatAsState(
         targetValue = if (selected) 1.04f else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 600f),
+        animationSpec = GlassMotion.springSnappy,
         label = "tab-icon-scale"
     )
 

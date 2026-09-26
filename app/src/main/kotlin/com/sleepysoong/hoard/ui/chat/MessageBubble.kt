@@ -1,11 +1,10 @@
 package com.sleepysoong.hoard.ui.chat
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -36,6 +35,8 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -52,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.formatElapsed
+import com.sleepysoong.hoard.ui.glass.GlassMotion
 import com.sleepysoong.hoard.ui.glass.GlassTone
 import com.sleepysoong.hoard.ui.glass.IOSTypingDots
 import com.sleepysoong.hoard.ui.glass.glassMaterial
@@ -82,6 +84,12 @@ fun MessageBubble(
     val haptics = LocalHapticFeedback.current
     var thinkingOpen by remember { mutableStateOf(false) }
     var bubbleBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
+    // Entrance: tiny squash + fade from the tail corner. Runs once per bubble.
+    val appear by animateFloatAsState(
+        targetValue = 1f,
+        animationSpec = GlassMotion.springs,
+        label = "bubble-appear"
+    )
 
     val shape = RoundedCornerShape(
         topStart = 19.dp,
@@ -91,7 +99,21 @@ fun MessageBubble(
     )
     val textColor = if (isUser) Color.White else scheme.onSurface
 
-    Box(modifier.fillMaxWidth(), contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart) {
+    Box(
+        modifier
+            .fillMaxWidth()
+            // iMessage-ish entrance: new bubbles glide in from their tail corner.
+            .graphicsLayer {
+                scaleX = 0.95f + 0.05f * appear
+                scaleY = 0.95f + 0.05f * appear
+                alpha = appear
+                transformOrigin = TransformOrigin(
+                    pivotFractionX = if (isUser) 1f else 0f,
+                    pivotFractionY = 0.85f
+                )
+            },
+        contentAlignment = if (isUser) Alignment.CenterEnd else Alignment.CenterStart
+    ) {
         Column(
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             modifier = Modifier.widthIn(max = maxBubbleWidth)

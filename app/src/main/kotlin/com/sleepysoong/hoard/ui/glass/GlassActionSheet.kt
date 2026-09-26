@@ -81,7 +81,7 @@ fun GlassAnchoredOverlay(
 
     val appear by animateFloatAsState(
         targetValue = 1f,
-        animationSpec = spring(dampingRatio = 0.82f, stiffness = 380f),
+        animationSpec = GlassMotion.springSnappy,
         label = "anchor-overlay-appear"
     )
 
