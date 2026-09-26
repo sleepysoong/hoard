@@ -21,6 +21,9 @@ object MockAiEngine {
     /** Multiplier for the fake streaming delays. Tests set 0 to run instantly. */
     @Volatile var pace: Float = 1f
 
+    /** Test hook: called before every streamed event; throw to simulate a network failure. */
+    @Volatile var faultInjector: ((question: String, eventIndex: Int) -> Unit)? = null
+
     private suspend fun delay(ms: Long) = kotlinx.coroutines.delay((ms * pace).toLong())
 
     suspend fun streamReply(
@@ -29,13 +32,18 @@ object MockAiEngine {
         hasAttachments: Boolean,
         onEvent: suspend (MockStreamEvent) -> Unit
     ) {
+        var eventIndex = 0
+        val emit: suspend (MockStreamEvent) -> Unit = { ev ->
+            faultInjector?.invoke(question, eventIndex++)
+            onEvent(ev)
+        }
         val started = System.currentTimeMillis()
         val thinking = MockData.mockThinking(question)
         val shown = mutableListOf<ThinkingStep>()
         for (step in thinking) {
             delay(step.durationMs / 3)
             shown += step
-            onEvent(MockStreamEvent(thinking = shown.toList(), elapsedMs = System.currentTimeMillis() - started))
+            emit(MockStreamEvent(thinking = shown.toList(), elapsedMs = System.currentTimeMillis() - started))
         }
         val full = MockData.mockAnswer(question, modelId, hasAttachments)
         val promptTokens = estimateTokens(question)
@@ -48,7 +56,7 @@ object MockAiEngine {
             chunk.append(w).append(" ")
             count++
             if (count % 4 == 0) {
-                onEvent(
+                emit(
                     MockStreamEvent(
                         thinking = shown.toList(),
                         deltaText = chunk.toString(),
@@ -59,7 +67,7 @@ object MockAiEngine {
                 )
             }
         }
-        onEvent(
+        emit(
             MockStreamEvent(
                 thinking = shown.toList(),
                 deltaText = full,

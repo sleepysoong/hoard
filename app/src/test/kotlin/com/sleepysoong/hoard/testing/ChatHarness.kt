@@ -33,6 +33,7 @@ class ChatHarness(pace: Float = 0f) {
     init {
         HoardRepository.resetForTests()
         MockAiEngine.pace = pace
+        MockAiEngine.faultInjector = null
         WorkManagerTestInitHelper.initializeTestWorkManager(
             app,
             Configuration.Builder()
@@ -75,6 +76,18 @@ class ChatHarness(pace: Float = 0f) {
     }
 
     fun messages(): List<ChatMessage> = vm.uiState.value.messages
+
+    /** Fast-forwards WorkManager backoff so every retried reply runs its next attempt now. */
+    fun fireBackoff() {
+        val driver = WorkManagerTestInitHelper.getTestDriver(app)!!
+        workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.ENQUEUED)).get()
+            .forEach { driver.setInitialDelayMet(it.id) }
+        idle()
+    }
+
+    fun allWork(): List<WorkInfo> = workManager.getWorkInfos(
+        WorkQuery.fromStates(*WorkInfo.State.entries.toTypedArray())
+    ).get()
 
     /** Records a labelled snapshot of a session (default: active) into the transcript artifact. */
     fun snapshot(label: String, sessionId: String? = vm.uiState.value.session?.id) {

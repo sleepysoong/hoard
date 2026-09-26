@@ -5,6 +5,7 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import android.os.Build
 import androidx.core.app.NotificationCompat
+import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
@@ -17,6 +18,8 @@ import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.engine.MockAiEngine
 import java.util.UUID
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
 
 /**
  * Continues a mock reply in the background so leaving the app after send
@@ -32,13 +35,21 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val hasAttachments = inputData.getBoolean(KEY_ATTACH, false)
         val repo = HoardRepository.get()
 
+        val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
+        if (runAttemptCount == 0) {
+            // Placeholder streaming bubble owned by the worker.
+            repo.appendMessage(sessionId, placeholder)
+        } else if (repo.messagesOf(sessionId).none { it.id == messageId }) {
+            // The failed bubble was deleted or regenerated during backoff: the user
+            // no longer wants this reply, so don't bring it back.
+            return Result.success()
+        } else {
+            // Retry streams into the same bubble instead of appending a duplicate.
+            repo.updateMessage(sessionId, messageId) { placeholder.copy(createdAt = it.createdAt) }
+        }
+
         return try {
             promote("Hoard가 생각 중…")
-            // Placeholder streaming bubble owned by the worker.
-            repo.appendMessage(
-                sessionId,
-                ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
-            )
             MockAiEngine.streamReply(prompt, modelId, hasAttachments) { ev ->
                 repo.updateMessage(sessionId, messageId) {
                     it.copy(
@@ -54,11 +65,22 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             }
             notifyDone(sessionId)
             Result.success()
-        } catch (e: Exception) {
+        } catch (e: CancellationException) {
+            // Cancelled or stopped by the system: never leave a spinning bubble,
+            // and let the coroutine machinery see the cancellation.
             repo.updateMessage(sessionId, messageId) {
                 it.copy(text = it.text.ifBlank { "(목업) 답변이 중단됐습니다." }, isStreaming = false)
             }
-            Result.retry()
+            throw e
+        } catch (e: Exception) {
+            val willRetry = runAttemptCount + 1 < MAX_ATTEMPTS
+            repo.updateMessage(sessionId, messageId) {
+                it.copy(
+                    text = if (willRetry) "(목업) 연결이 끊겨 곧 다시 시도합니다…" else "(목업) 답변이 중단됐습니다.",
+                    isStreaming = false
+                )
+            }
+            if (willRetry) Result.retry() else Result.failure()
         }
     }
 
@@ -109,6 +131,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_MESSAGE = "message_id"
         const val KEY_ATTACH = "has_attachments"
 
+        /** First run + 2 retries; a dead backend must not spin forever. */
+        const val MAX_ATTEMPTS = 3
+
         fun enqueue(
             ctx: Context,
             sessionId: String,
@@ -127,6 +152,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         KEY_ATTACH to hasAttachments
                     )
                 )
+                .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .addTag("hoard-reply-$sessionId")
                 .build()
             WorkManager.getInstance(ctx).enqueue(req)
