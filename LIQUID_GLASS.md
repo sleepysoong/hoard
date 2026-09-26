@@ -168,7 +168,7 @@ Hoard가 실제로 한 결정:
 
 | 팝업 | 대처 |
 | --- | --- |
-| 모달 다이얼로그 (`GlassDialog`) | Dialog 내부에 **자체 `GlassHost`를 만든다** (새 윈도우 전용 캡처) |
+| 모달 팝업 (`GlassPopup`) | Dialog 창을 쓰지 않는다 — 같은 윈도우 오버레이라 Activity backdrop을 그대로 샘플링 (구 `GlassDialog`는 삭제) |
 | 바네임(ModalBottomSheet: model/settings) | **본체는 솔리드+알파(0.92f)**, 같은 화면의 진짜 팝업은 in-window overlay로 |
 | 메시지 액션 시트 (`GlassActionSheet`) | **같은 윈도우 내 오버레이** → 진짜 글래스 셰이더가 정상 동작 |
 
@@ -352,8 +352,10 @@ enabled = true / false
 | | `GlassSwitch` | checked·onCheckedChange·enabled |
 | 뷰 | `GlassCard` / `GlassSurface` | shape · tone · color(표면컨테이너) |
 | 상단 바 | `GlassFloatingBar` | navigationIcon · title/subtitle(onTitleClick) · actions 슬롯 |
-| 오버레이 | `GlassAnchoredOverlay` | anchor(Rect), 내용 슬롯 |
-| | `GlassAnchoredMenu` | header + 행렬 액션 + 분리 취소 버튼 |
+| 오버레이 | `GlassAnchoredOverlay` | anchor(Rect), 내용 슬롯 (직접 쓰지 말 것) |
+| 팝업 | `GlassPopup` | **모든 팝업의 유일한 레이아웃**: 헤더 카드 · 본문 카드 · 버튼 줄. title/message/anchor/confirmLabel/body 슬롯만 채운다 |
+| | `GlassPopupRow` / `GlassPopupDivider` | 팝업 본문의 행(아이콘·부제·체크)과 구분선 |
+| | `GlassAnchoredMenu` | `GlassPopup` + 액션 행 목록 |
 
 사용처 입장에서는 shape나 색상을 조정하지 않고 호출하는 슬롯만 채우면 됩니다. 채팅 상단과 세션 목록 상단이 지금 동일하게 이것으로 처리됩니다.
 
@@ -392,6 +394,12 @@ GlassFloatingBar(
   쓰거나, 새 컴포넌트를 공통 파일에 추가한다.
 - Compose `Popup`/`Dialog`에 글래스 넣기 — 5장.
 - 같은 동작을 하는 컴포넌트를 두 화면에 따로 작성 (이 프로젝트에서 이미 했음).
+  실제 사례: 세션 설정·모델 선택·롱프레스 메뉴가 헤더/카드/버튼을 각자 복붙했고,
+  확인·수정 다이얼로그는 별도 창 `GlassDialog`라 모양이 전혀 달랐다. 게다가
+  `OutlinedTextField`의 라벨이 채워진 필드에 노치를 파서 "이상한 팝업"이 됐다.
+  → `GlassPopup` 하나로 통합, `GlassDialog` 삭제, 필드는 라벨이 안에 뜨는 filled TextField.
+  검증: `PopupScreenshotTest`가 실제 앱을 조작해 팝업마다 라이트/다크 PNG를
+  `app/build/test-artifacts/popups/`에 남긴다.
 
 원리: 과정을 줄이려다 복제가 늘면, 디자인 통일성만이 아니라 수정할 때마다
 수정해야 하는 곳이 증해진다.**오버라이드로만 연결**

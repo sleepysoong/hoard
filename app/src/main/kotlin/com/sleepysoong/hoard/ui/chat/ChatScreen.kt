@@ -105,6 +105,8 @@ fun ChatScreen(
         )
     ) { mutableStateOf<Rect?>(null) }
     var settingsAnchor by remember { mutableStateOf<Rect?>(null) }
+    // Model picker drops down from the top bar (its title opens it).
+    var barAnchor by remember { mutableStateOf<Rect?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
@@ -144,6 +146,7 @@ fun ChatScreen(
                 title = session?.name ?: "Hoard",
                 subtitle = "${session?.modelId ?: "hoard"} · ${state.usedTokens}/${session?.contextLimit ?: 32_000} 토큰",
                 onTitleClick = { showModels = true },
+                modifier = Modifier.onGloballyPositioned { barAnchor = it.boundsInRoot() },
                 navigationIcon = {
                     GlassIconButton(
                         onClick = onBack,
@@ -350,7 +353,7 @@ fun ChatScreen(
     if (showModels && session != null) {
         ModelPickerSheet(
             currentModelId = session.modelId,
-            anchor = settingsAnchor,   // anchored right below the title bar
+            anchor = barAnchor,   // drops down right below the title bar
             onPick = { vm.setModel(it) },
             onDismiss = { showModels = false }
         )

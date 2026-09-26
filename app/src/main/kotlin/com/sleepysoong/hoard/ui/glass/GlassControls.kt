@@ -3,6 +3,7 @@ package com.sleepysoong.hoard.ui.glass
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
@@ -23,8 +24,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.TextField
+import androidx.compose.material3.TextFieldDefaults
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
@@ -32,8 +33,6 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
@@ -187,8 +186,10 @@ fun GlassFilterChip(
 }
 
 /**
- * iOS-style field: solid system-gray fill, 12dp corners, no outline.
- * Fields are opaque on iOS even inside translucent bars.
+ * iOS-style field: solid system-gray fill, 12dp corners, no outline and no
+ * underline. The label floats *inside* the fill (a filled TextField) — an
+ * outlined field would cut a notch into the fill for the label.
+ * Fills the available width by default so stacked fields line up.
  */
 @Composable
 fun GlassTextField(
@@ -212,27 +213,28 @@ fun GlassTextField(
     minLines: Int = 1,
     shape: Shape = RoundedCornerShape(12.dp)
 ) {
-    val interactions = remember { MutableInteractionSource() }
-    val focused by interactions.collectIsFocusedAsState()
     val scheme = MaterialTheme.colorScheme
-    OutlinedTextField(
+    val fill = scheme.surfaceContainerHighest
+    TextField(
         value = value, onValueChange = onValueChange,
-        modifier = modifier,
+        modifier = modifier.fillMaxWidth(),
         enabled = enabled, readOnly = readOnly, textStyle = textStyle,
         label = label, placeholder = placeholder, leadingIcon = leadingIcon,
         trailingIcon = trailingIcon, supportingText = supportingText, isError = isError,
         visualTransformation = visualTransformation, keyboardOptions = keyboardOptions,
         keyboardActions = keyboardActions, singleLine = singleLine, maxLines = maxLines,
-        minLines = minLines, shape = shape, interactionSource = interactions,
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedContainerColor = scheme.surfaceContainerHighest,
-            unfocusedContainerColor = scheme.surfaceContainerHighest,
-            disabledContainerColor = scheme.surfaceContainerHighest,
-            errorContainerColor = scheme.surfaceContainerHighest,
-            focusedBorderColor = if (focused) scheme.primary else Color.Transparent,
-            unfocusedBorderColor = Color.Transparent,
-            disabledBorderColor = Color.Transparent,
-            errorBorderColor = scheme.error
+        minLines = minLines, shape = shape,
+        colors = TextFieldDefaults.colors(
+            focusedContainerColor = fill,
+            unfocusedContainerColor = fill,
+            disabledContainerColor = fill,
+            errorContainerColor = fill,
+            focusedIndicatorColor = Color.Transparent,
+            unfocusedIndicatorColor = Color.Transparent,
+            disabledIndicatorColor = Color.Transparent,
+            errorIndicatorColor = Color.Transparent,
+            focusedLabelColor = scheme.primary,
+            unfocusedLabelColor = scheme.onSurfaceVariant
         )
     )
 }

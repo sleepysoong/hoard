@@ -1,230 +1,116 @@
 package com.sleepysoong.hoard.ui.chat
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Check
-import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.Icon
-import androidx.compose.ui.Alignment
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.MockData
-import com.sleepysoong.hoard.ui.glass.GlassAnchoredOverlay
-import com.sleepysoong.hoard.ui.glass.GlassCapsuleButton
-import com.sleepysoong.hoard.ui.glass.GlassDialog
+import com.sleepysoong.hoard.ui.glass.GlassPopup
+import com.sleepysoong.hoard.ui.glass.GlassPopupDivider
+import com.sleepysoong.hoard.ui.glass.GlassPopupRow
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassTextField
-import com.sleepysoong.hoard.ui.glass.GlassTone
-import com.sleepysoong.hoard.ui.glass.liquidClickable
-import com.sleepysoong.hoard.ui.glass.glassMaterial
+
+// Every popup here is the shared GlassPopup (header card · body card · buttons).
+// Only the body differs; never hand-build cards or buttons in this file.
 
 @Composable
 fun ModelPickerSheet(
     currentModelId: String,
-    anchor: androidx.compose.ui.geometry.Rect?,
+    anchor: Rect?,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val cornerRad = 20.dp
-    // Anchored glass popup — same overlay as settings / long-press menu.
-    // Content must be wrapped in a glass card, not float free.
-    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss) {
-        // Header card
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(cornerRad))
-                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-                .padding(horizontal = 18.dp, vertical = 14.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("모델 선택", style = MaterialTheme.typography.headlineSmall, maxLines = 1)
-                Text(
-                    "응답은 목업 데이터로 생성됩니다.",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
-
-        // Model list card
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(cornerRad))
-                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-                .padding(vertical = 4.dp)
-        ) {
-            MockData.models.forEachIndexed { i, model ->
-                if (i > 0) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 16.dp),
-                        thickness = 0.5.dp,
-                        color = scheme.onSurface.copy(alpha = 0.12f)
-                    )
-                }
-                val selected = model.id == currentModelId
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .clickable {
-                            onPick(model.id)
-                            onDismiss()
-                        }
-                        .padding(horizontal = 16.dp, vertical = 10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(model.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                        Text(
-                            "${model.vendor} · ${model.description}",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 1
-                        )
-                    }
-                    if (selected) {
-                        Icon(
-                            Icons.Rounded.Check,
-                            contentDescription = "선택됨",
-                            tint = scheme.primary,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-            }
+    GlassPopup(
+        onDismiss = onDismiss,
+        title = "모델 선택",
+        message = "응답은 목업 데이터로 생성됩니다.",
+        anchor = anchor
+    ) {
+        MockData.models.forEachIndexed { i, model ->
+            if (i > 0) GlassPopupDivider()
+            GlassPopupRow(
+                label = model.displayName,
+                subtitle = "${model.vendor} · ${model.description}",
+                selected = model.id == currentModelId,
+                onClick = { onPick(model.id); onDismiss() }
+            )
         }
     }
 }
 
-/**
- * Session settings & model picker use the same in-window anchored glass
- * overlay as the long-press menu. A ModalBottomSheet opens its own window,
- * and that window cannot sample the Activity backdrop — so we render these
- * settings as a real glass panel next to the gear instead.
- */
+/** Context sizes offered for a session (tokens). */
+val CONTEXT_OPTIONS = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
+
 @Composable
 fun SessionSettingsSheet(
     session: ChatSession,
-    anchor: androidx.compose.ui.geometry.Rect?,
+    anchor: Rect?,
     onRename: (String) -> Unit,
     onSystemPrompt: (String) -> Unit,
     onContextLimit: (Int) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember(session.id) { mutableStateOf(session.name) }
-    var prompt by remember(session.id) { mutableStateOf(session.systemPrompt) }
-    var context by remember(session.id) { mutableFloatStateOf(session.contextLimit.toFloat()) }
-    val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
-    val scheme = MaterialTheme.colorScheme
-    val cornerRad = 20.dp
+    var name by rememberSaveable(session.id) { mutableStateOf(session.name) }
+    var prompt by rememberSaveable(session.id) { mutableStateOf(session.systemPrompt) }
+    var contextIdx by rememberSaveable(session.id) {
+        mutableIntStateOf(
+            CONTEXT_OPTIONS.indices.minBy { kotlin.math.abs(CONTEXT_OPTIONS[it] - session.contextLimit) }
+        )
+    }
 
-    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss, maxCardW = 380.dp) {
-        // Header card — matches the action menus.
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(cornerRad))
-                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-                .padding(horizontal = 18.dp, vertical = 16.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text("세션 설정", style = MaterialTheme.typography.headlineSmall, maxLines = 1)
-                Text(
-                    "이 세션에만 적용됩니다 (목업).",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 4.dp)
-                )
-            }
-        }
-
-        // Form card — one glass surface housing all editable rows.
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(cornerRad))
-                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-                .padding(horizontal = 16.dp, vertical = 4.dp)
-        ) {
+    GlassPopup(
+        onDismiss = onDismiss,
+        title = "세션 설정",
+        message = "이 세션에만 적용됩니다 (목업).",
+        anchor = anchor,
+        confirmLabel = "저장",
+        confirmEnabled = name.isNotBlank(),
+        onConfirm = {
+            onRename(name.trim()); onSystemPrompt(prompt); onContextLimit(CONTEXT_OPTIONS[contextIdx]); onDismiss()
+        },
+        bodyPadding = PaddingValues(16.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             GlassTextField(
                 value = name, onValueChange = { name = it },
                 label = { Text("세션 이름") }, singleLine = true
-            )
-            HorizontalDivider(
-                thickness = 0.5.dp,
-                color = scheme.onSurface.copy(alpha = 0.12f),
-                modifier = Modifier.padding(start = 16.dp)
             )
             GlassTextField(
                 value = prompt, onValueChange = { prompt = it },
                 label = { Text("시스템 프롬프트") }, minLines = 3, maxLines = 8
             )
-            HorizontalDivider(
-                thickness = 0.5.dp,
-                color = scheme.onSurface.copy(alpha = 0.12f),
-                modifier = Modifier.padding(start = 16.dp)
-            )
-            Column(Modifier.padding(vertical = 8.dp)) {
-                Text(
-                    "컨텍스트: ${context.toInt()} 토큰",
-                    style = MaterialTheme.typography.labelLarge,
-                    color = scheme.onSurface
-                )
+            Column {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(horizontal = 4.dp)) {
+                    Text("컨텍스트", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text(
+                        "%,d 토큰".format(CONTEXT_OPTIONS[contextIdx]),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 GlassSlider(
-                    value = options.indexOf(options.minByOrNull { kotlin.math.abs(it - context.toInt()) } ?: 32_000).toFloat(),
-                    onValueChange = { idx -> context = options[idx.toInt().coerceIn(0, options.lastIndex)].toFloat() },
-                    valueRange = 0f..(options.lastIndex.toFloat()),
-                    steps = options.size - 2
+                    value = contextIdx.toFloat(),
+                    onValueChange = { contextIdx = it.toInt().coerceIn(0, CONTEXT_OPTIONS.lastIndex) },
+                    valueRange = 0f..CONTEXT_OPTIONS.lastIndex.toFloat(),
+                    steps = CONTEXT_OPTIONS.size - 2
                 )
             }
-        }
-
-        // Save / cancel — same split-capsule idiom as the action menus.
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            GlassCapsuleButton(
-                onClick = onDismiss,
-                label = "취소",
-                modifier = Modifier.weight(1f)
-            )
-            GlassCapsuleButton(
-                onClick = {
-                    onRename(name); onSystemPrompt(prompt); onContextLimit(context.toInt()); onDismiss()
-                },
-                label = "저장",
-                primary = true,
-                modifier = Modifier.weight(1f)
-            )
         }
     }
 }
@@ -235,16 +121,18 @@ fun EditMessageDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var text by remember { mutableStateOf(initial) }
-    GlassDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("메시지 수정") },
-        text = {
-            GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3)
-        },
-        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
-        confirmButton = { GlassCapsuleButton(onClick = { onConfirm(text) }, label = "저장하고 다시 생성", primary = true) }
-    )
+    var text by rememberSaveable { mutableStateOf(initial) }
+    GlassPopup(
+        onDismiss = onDismiss,
+        title = "메시지 수정",
+        message = "이후 대화는 지워지고 이 메시지부터 다시 생성합니다.",
+        confirmLabel = "다시 생성",
+        confirmEnabled = text.isNotBlank(),
+        onConfirm = { onConfirm(text) },
+        bodyPadding = PaddingValues(16.dp)
+    ) {
+        GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3)
+    }
 }
 
 @Composable
@@ -252,16 +140,18 @@ fun BranchDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var name by remember { mutableStateOf("브랜치") }
-    GlassDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("여기서 브랜치 만들기") },
-        text = {
-            GlassTextField(value = name, onValueChange = { name = it }, label = { Text("브랜치 이름") }, singleLine = true)
-        },
-        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
-        confirmButton = { GlassCapsuleButton(onClick = { onConfirm(name) }, label = "브랜치 만들기", primary = true) }
-    )
+    var name by rememberSaveable { mutableStateOf("브랜치") }
+    GlassPopup(
+        onDismiss = onDismiss,
+        title = "여기서 브랜치 만들기",
+        message = "이 메시지까지의 대화로 새 세션을 만듭니다.",
+        confirmLabel = "만들기",
+        confirmEnabled = name.isNotBlank(),
+        onConfirm = { onConfirm(name.trim()) },
+        bodyPadding = PaddingValues(16.dp)
+    ) {
+        GlassTextField(value = name, onValueChange = { name = it }, label = { Text("브랜치 이름") }, singleLine = true)
+    }
 }
 
 @Composable
@@ -270,16 +160,17 @@ fun RenameSessionDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    var text by remember { mutableStateOf(initial) }
-    GlassDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("세션 이름 변경") },
-        text = {
-            GlassTextField(value = text, onValueChange = { text = it }, label = { Text("이름") }, singleLine = true)
-        },
-        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
-        confirmButton = { GlassCapsuleButton(onClick = { onConfirm(text) }, label = "변경", primary = true) }
-    )
+    var text by rememberSaveable { mutableStateOf(initial) }
+    GlassPopup(
+        onDismiss = onDismiss,
+        title = "세션 이름 변경",
+        confirmLabel = "변경",
+        confirmEnabled = text.isNotBlank(),
+        onConfirm = { onConfirm(text.trim()) },
+        bodyPadding = PaddingValues(16.dp)
+    ) {
+        GlassTextField(value = text, onValueChange = { text = it }, label = { Text("이름") }, singleLine = true)
+    }
 }
 
 @Composable
@@ -289,11 +180,12 @@ fun DeleteConfirmDialog(
     onConfirm: () -> Unit,
     onDismiss: () -> Unit
 ) {
-    GlassDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(title) },
-        text = { Text(message) },
-        dismissButton = { GlassCapsuleButton(onClick = onDismiss, label = "취소") },
-        confirmButton = { GlassCapsuleButton(onClick = onConfirm, label = "삭제", destructive = true) }
+    GlassPopup(
+        onDismiss = onDismiss,
+        title = title,
+        message = message,
+        confirmLabel = "삭제",
+        confirmDestructive = true,
+        onConfirm = onConfirm
     )
 }

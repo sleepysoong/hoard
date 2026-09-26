@@ -1,5 +1,16 @@
 package com.sleepysoong.hoard.ui.glass
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.Check
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.heading
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
@@ -33,6 +44,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
@@ -66,7 +80,7 @@ data class GlassSheetAction(
 fun GlassAnchoredOverlay(
     anchor: Rect?,
     onDismiss: () -> Unit,
-    maxCardW: Dp = 340.dp,
+    maxCardW: Dp = GlassTokens.popupWidth,
     content: @Composable ColumnScope.() -> Unit
 ) {
     val density = LocalDensity.current
@@ -85,6 +99,9 @@ fun GlassAnchoredOverlay(
         label = "anchor-overlay-appear"
     )
 
+    // In-window overlay has no Dialog window to consume Back: close it here.
+    BackHandler(onBack = onDismiss)
+
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val totalW = constraints.maxWidth.toFloat()
         val totalH = constraints.maxHeight.toFloat()
@@ -93,7 +110,16 @@ fun GlassAnchoredOverlay(
             Modifier
                 .fillMaxSize()
                 .alpha(appear)
-                .background(Color.Black.copy(alpha = 0.22f))
+                // The overlay lives inside the padded NavHost; paint the scrim past
+                // our bounds so it reaches the screen edges instead of leaving a frame.
+                .drawBehind {
+                    val bleed = 4_000f
+                    drawRect(
+                        Color.Black.copy(alpha = 0.22f),
+                        topLeft = Offset(-bleed, -bleed),
+                        size = Size(size.width + 2 * bleed, size.height + 2 * bleed)
+                    )
+                }
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
@@ -149,7 +175,179 @@ fun GlassAnchoredOverlay(
     }
 }
 
-/** Standard iOS-style action list menu, anchored near its source element. */
+/**
+ * The one popup layout. Every popup in the app — long-press menus, model picker,
+ * session settings, confirm/edit dialogs — is this stack of glass cards:
+ *
+ *   header card (title + message) · body card (rows or form) · button row
+ *
+ * Callers only fill the slots; shape, tone, spacing and button style live here.
+ * [anchor] = pressed element (null → centered). The body scrolls when it would
+ * not fit (e.g. with the keyboard up).
+ */
+@Composable
+fun GlassPopup(
+    onDismiss: () -> Unit,
+    title: String?,
+    message: String? = null,
+    anchor: Rect? = null,
+    maxWidth: Dp = GlassTokens.popupWidth,
+    dismissLabel: String = "취소",
+    confirmLabel: String? = null,
+    onConfirm: (() -> Unit)? = null,
+    confirmDestructive: Boolean = false,
+    confirmEnabled: Boolean = true,
+    bodyPadding: PaddingValues = PaddingValues(0.dp),
+    body: (@Composable ColumnScope.() -> Unit)? = null
+) {
+    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss, maxCardW = maxWidth) {
+        if (title != null || message != null) GlassPopupHeader(title, message)
+        if (body != null) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .weight(1f, fill = false)
+                    .popupCard()
+                    .verticalScroll(rememberScrollState())
+                    .padding(bodyPadding),
+                content = body
+            )
+        }
+        GlassPopupButtons(
+            dismissLabel = dismissLabel,
+            onDismiss = onDismiss,
+            confirmLabel = confirmLabel,
+            onConfirm = onConfirm,
+            confirmDestructive = confirmDestructive,
+            confirmEnabled = confirmEnabled
+        )
+    }
+}
+
+@Composable
+private fun Modifier.popupCard(): Modifier {
+    val shape = RoundedCornerShape(GlassTokens.cardRadius)
+    return this.clip(shape).glassMaterial(shape, MaterialTheme.colorScheme.surface)
+}
+
+@Composable
+private fun GlassPopupHeader(title: String?, message: String?) {
+    val scheme = MaterialTheme.colorScheme
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .popupCard()
+            .padding(horizontal = 18.dp, vertical = 14.dp),
+        horizontalAlignment = Alignment.CenterHorizontally
+    ) {
+        title?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.headlineSmall,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.semantics { heading() }
+            )
+        }
+        message?.let {
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = scheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 3,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.padding(top = if (title != null) 4.dp else 0.dp)
+            )
+        }
+    }
+}
+
+/** Cancel alone spans the width; cancel + confirm split it evenly. */
+@Composable
+private fun GlassPopupButtons(
+    dismissLabel: String,
+    onDismiss: () -> Unit,
+    confirmLabel: String?,
+    onConfirm: (() -> Unit)?,
+    confirmDestructive: Boolean,
+    confirmEnabled: Boolean
+) {
+    val haptics = LocalHapticFeedback.current
+    Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+        GlassCapsuleButton(
+            onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onDismiss() },
+            label = dismissLabel,
+            modifier = Modifier.weight(1f)
+        )
+        if (confirmLabel != null && onConfirm != null) {
+            GlassCapsuleButton(
+                onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onConfirm() },
+                label = confirmLabel,
+                primary = !confirmDestructive,
+                destructive = confirmDestructive,
+                enabled = confirmEnabled,
+                modifier = Modifier.weight(1f)
+            )
+        }
+    }
+}
+
+/** Hairline between rows of a popup body; [inset] aligns it with the row text. */
+@Composable
+fun GlassPopupDivider(inset: Dp = 16.dp) {
+    HorizontalDivider(
+        modifier = Modifier.padding(start = inset),
+        thickness = GlassTokens.hairline,
+        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.12f)
+    )
+}
+
+/** Tappable popup row: optional icon, label (+subtitle), optional check mark. */
+@Composable
+fun GlassPopupRow(
+    label: String,
+    onClick: () -> Unit,
+    icon: ImageVector? = null,
+    subtitle: String? = null,
+    destructive: Boolean = false,
+    selected: Boolean = false
+) {
+    val scheme = MaterialTheme.colorScheme
+    val haptics = LocalHapticFeedback.current
+    val tint = if (destructive) scheme.error else scheme.onSurface
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 54.dp)
+            .clickable {
+                haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                onClick()
+            }
+            .padding(horizontal = 16.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        if (icon != null) Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
+        Column(Modifier.weight(1f)) {
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = tint, maxLines = 1)
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+        }
+        if (selected) {
+            Icon(Icons.Rounded.Check, contentDescription = "선택됨", tint = scheme.primary, modifier = Modifier.size(20.dp))
+        }
+    }
+}
+
+/** Long-press action menu: [GlassPopup] with one row per action. */
 @Composable
 fun GlassAnchoredMenu(
     anchor: Rect?,
@@ -158,92 +356,15 @@ fun GlassAnchoredMenu(
     actions: List<GlassSheetAction>,
     onDismiss: () -> Unit
 ) {
-    val scheme = MaterialTheme.colorScheme
-    val haptics = LocalHapticFeedback.current
-    val cornerRad = 20.dp
-
-    GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss) {
-        if (title != null || message != null) {
-            Box(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(cornerRad))
-                    .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-                    .padding(horizontal = 18.dp, vertical = 14.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                    title?.let {
-                        Text(it, style = MaterialTheme.typography.headlineSmall, maxLines = 1)
-                    }
-                    message?.let {
-                        Text(
-                            it,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = scheme.onSurfaceVariant,
-                            maxLines = 2,
-                            modifier = Modifier.padding(top = if (title != null) 4.dp else 0.dp)
-                        )
-                    }
-                }
-            }
-        }
-        Column(
-            Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(cornerRad))
-                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
-        ) {
-            actions.forEachIndexed { i, action ->
-                if (i > 0) {
-                    HorizontalDivider(
-                        modifier = Modifier.padding(start = 58.dp),
-                        thickness = 0.5.dp,
-                        color = scheme.onSurface.copy(alpha = 0.12f)
-                    )
-                }
-                val tint = if (action.destructive) scheme.error else scheme.onSurface
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 54.dp)
-                        .clickable {
-                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                            onDismiss()
-                            action.onClick()
-                        }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
-                ) {
-                    Icon(
-                        action.icon,
-                        contentDescription = null,
-                        tint = tint,
-                        modifier = Modifier.size(21.dp)
-                    )
-                    Text(
-                        action.label,
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = tint,
-                        maxLines = 1
-                    )
-                }
-            }
-        }
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(54.dp)
-                .clip(RoundedCornerShape(cornerRad))
-                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface, tone = GlassTone.Thin)
-                .clickable {
-                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                    onDismiss()
-                },
-            contentAlignment = Alignment.Center
-        ) {
-            Text("취소", style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
+    GlassPopup(onDismiss = onDismiss, title = title, message = message, anchor = anchor) {
+        actions.forEachIndexed { i, action ->
+            if (i > 0) GlassPopupDivider(inset = 51.dp)
+            GlassPopupRow(
+                label = action.label,
+                icon = action.icon,
+                destructive = action.destructive,
+                onClick = { onDismiss(); action.onClick() }
+            )
         }
     }
 }

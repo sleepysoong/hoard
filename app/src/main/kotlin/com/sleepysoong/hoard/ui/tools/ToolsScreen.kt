@@ -3,6 +3,7 @@ package com.sleepysoong.hoard.ui.tools
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -27,7 +28,7 @@ import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.ui.glass.GlassButton
-import com.sleepysoong.hoard.ui.glass.GlassDialog
+import com.sleepysoong.hoard.ui.glass.GlassPopup
 import com.sleepysoong.hoard.ui.glass.GlassSecondaryButton
 import com.sleepysoong.hoard.ui.glass.GlassSwitch
 import com.sleepysoong.hoard.ui.glass.GlassTextField
@@ -177,17 +178,18 @@ private fun McpTab(repo: HoardRepository) {
     if (showAdd) {
         var name by remember { mutableStateOf("") }
         var url by remember { mutableStateOf("") }
-        GlassDialog(
-            onDismissRequest = { showAdd = false },
-            title = { Text("MCP 서버 추가") },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    GlassTextField(value = name, onValueChange = { name = it }, label = { Text("이름") }, singleLine = true)
-                    GlassTextField(value = url, onValueChange = { url = it }, label = { Text("URL") }, singleLine = true)
-                }
-            },
-            dismissButton = { GlassSecondaryButton(onClick = { showAdd = false }) { Text("취소") } },
-            confirmButton = { GlassButton(onClick = { repo.addMcpServer(name, url); showAdd = false }) { Text("등록") } }
-        )
+        GlassPopup(
+            onDismiss = { showAdd = false },
+            title = "MCP 서버 추가",
+            confirmLabel = "등록",
+            confirmEnabled = url.isNotBlank(),
+            onConfirm = { repo.addMcpServer(name, url); showAdd = false },
+            bodyPadding = PaddingValues(16.dp)
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                GlassTextField(value = name, onValueChange = { name = it }, label = { Text("이름") }, singleLine = true)
+                GlassTextField(value = url, onValueChange = { url = it }, label = { Text("URL") }, singleLine = true)
+            }
+        }
     }
 }

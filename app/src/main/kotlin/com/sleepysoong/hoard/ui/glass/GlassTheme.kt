@@ -61,6 +61,8 @@ object GlassTokens {
     val hairline: Dp = 0.5.dp
     /** iOS modal buttons: full-width, 54dp, separated from content. */
     val modalActionHeight: Dp = 54.dp
+    /** Max width of every popup (menus, pickers, dialogs). */
+    val popupWidth: Dp = 360.dp
 }
 
 /** Always choose the strongest effect supported by the running Android version. */

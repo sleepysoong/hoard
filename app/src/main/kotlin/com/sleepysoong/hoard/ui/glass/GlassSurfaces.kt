@@ -309,62 +309,6 @@ fun RowScope.GlassTabItem(
     }
 }
 
-/** Each Dialog gets its own source. Never reuse the Activity's graphics layer across windows. */
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-fun GlassDialog(
-    onDismissRequest: () -> Unit,
-    confirmButton: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    dismissButton: (@Composable () -> Unit)? = null,
-    title: (@Composable () -> Unit)? = null,
-    text: (@Composable () -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(GlassTokens.sheetRadius)
-) {
-    Dialog(onDismissRequest = onDismissRequest, properties = DialogProperties(usePlatformDefaultWidth = true)) {
-        BoxWithConstraints(
-            Modifier
-                .widthIn(max = 400.dp)
-                .fillMaxWidth()
-                .safeDrawingPadding()
-                .imePadding()
-        ) {
-            GlassHost(
-                modifier = modifier.widthIn(max = 400.dp).fillMaxWidth().heightIn(max = maxHeight),
-                fillWindow = false,
-                backgroundShape = shape
-            ) {
-                GlassSurface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = shape,
-                    tone = GlassTone.Thick
-                ) {
-                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
-                        if (title != null) {
-                            Box(Modifier.semantics { heading() }) {
-                                ProvideTextStyle(MaterialTheme.typography.titleLarge) { title() }
-                            }
-                        }
-                        if (text != null) {
-                            Box(Modifier.weight(1f, fill = false).verticalScroll(rememberScrollState())) {
-                                ProvideTextStyle(MaterialTheme.typography.bodyMedium) { text() }
-                            }
-                        }
-                        FlowRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            dismissButton?.invoke()
-                            confirmButton()
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
 /** iOS grabber for sheet headers. */
 @Composable
 fun SheetGrabber(modifier: Modifier = Modifier) {
