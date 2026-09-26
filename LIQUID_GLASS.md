@@ -5,7 +5,7 @@
 > 어디에서 크게 넘어졌고 어떻게 피했는지를 자세히 담는다. 코드 조각은 모두
 > Hoard 소스(패키지 `com.sleepysoong.hoard`)에서 발췌한다.
 
-- 작성 시점: 2026-09-25
+- 작성 시점: 2026-09-26 (2차 개정)
 - 대상 독자: Compose(Material3)는 익숙하지만 Backdrop은 처음인 개발자
 - 기준 버전: `io.github.kyant0:backdrop:2.0.1`, `io.github.kyant0:shapes:1.2.1`
 
@@ -13,11 +13,11 @@
 
 ## 0. 먼저 읽을 결론
 
-1. **Backdrop은 위젯 라이브러리가 아니라 “효과” 라이브러리다.** 버튼·토글·탭·
+1. **Backdrop은 위젯 라이브러리가 아니라 "효과" 라이브러리다.** 버튼·토글·탭·
    시트 같은 완성품은 제공하지 않는다. `layerBackdrop`(배경 캡처)과
    `drawBackdrop`(효과 적용) 두 함수 위에, 디자인 시스템은 직접 만든다.
 2. **순서가 실패의 3/4다.** `배경 레이어 캡처 → (형제에서만) 소비 → 텍스트/아이콘은
-   마지막에 선명하게`. 이 순서 하나로 크래시와 “뽀얗게 보인 글자”가 갈린다.
+   마지막에 선명하게`. 이 순서 하나로 크래시와 "뽀얗게 보인 글자"가 갈린다.
 3. **가장 많이 죽는 곳**: (a) `layerBackdrop`을 샘플링 박스로 중첩 → RenderThread 루프
    (b) Dialog/Popup에서 Activity의 backdrop 사용 → 크로스 윈도우 크래시
    (c) `ForegroundServiceType` 미선언 → `MissingForegroundServiceTypeException`.
@@ -25,7 +25,11 @@
    2.0.1 바이너리의 API가 달랐다(파라미터 이름·타입·기본값). `javap`로 클래스
    시그니처를 확인하고 넘어갔다(10장).
 5. **흰 바탕은 색이 아니라 림·그림자가 유리를 만든다.** tint가 약한 환경에서는
-   “헤어라인(0.5dp) + 내부/외부 그림자 + 스페큘러 하이라이트”가 구분을 책임진다.
+   "헤어라인(0.5dp) + 내부/외부 그림자"가 구분을 책임진다.
+6. **Highlight.Default가 "하얗게 칠한" 아티팩트를 만든다.** 앵글드 스페큘러 워시가
+   화이트 캔버스에서 카드 하단을 세탁해버린다. `highlight = null` + 림라인으로.
+7. **공통 컴포넌트를 정의하고 파라미터로 오버라이드하라.** 화면마다 새로 만들면
+   디자인 통일이 깨진다(11장).
 
 ---
 
@@ -200,26 +204,38 @@ Box(Modifier.fillMaxSize()) {
 
 ## 7. 시각 품질 스택 — 효과는 어떤 순서로 켜는가
 
-(우리가 제일만 옳은 순서):
+**2026-09-26 개정**: `Highlight.Default`가 앵글드 스페큘러 **워시**를 그려
+화이트 캔버스에서 "카드 하단이 하얗게 칠해진" 아티팩트를 만들었다.
+유저가 두 번 지적했고, `highlight = null` + 헤어라인 보더 + 그림자로 해결했다.
+`lens`의 `depthEffect`도 같은 증상을 가중했다 — `false`로 고정.
+
+현재의 정확한 순서:
 
 ```kotlin
 effects = {
-    vibrancy()                                            // 채도를 팝시켜줌
+    vibrancy()
     colorControls(saturation = 1.06f, brightness = if (dark) 0f else 0.015f)
-    blur(spec.blur.toPx())                                // 단위는 Float px
-    if (mode == GlassMode.Full) {                         // API 33+만 lens
+    blur(spec.blur.toPx())
+    if (mode == GlassMode.Full) {
         lens(
             refractionHeight = minOf(spec.lensHeight.toPx(), size.minDimension / 2.6f),
-            refractionAmount = minOf(spec.lensAmount.toPx(), size.minDimension * 0.45f)
+            refractionAmount = minOf(spec.lensAmount.toPx(), size.minDimension * 0.45f),
+            depthEffect = false,        // ← "하얀 밴드" 아티팩트
+            chromaticAberration = false
         )
     }
 },
-highlight = { Highlight.Default.copy(alpha = ...) },      // 림 스페큘러
-shadow   = if (lifted) { { Shadow(radius=18.dp, offset=DpOffset(0.dp,6.dp),
-                                  color=if (dark) Color.Black else Color(0xFF1B2A4A),
-                                  alpha=if (dark) 0.34f else 0.13f) } } else null,
-innerShadow = if (enabled) { { InnerShadow(radius=10.dp, offset=DpOffset(0.dp,1.5.dp),
-                                  color=Color.Black, alpha=spec.innerShadow) } } else null
+highlight = null,   // ← 앵글드 워시 → "칠한" 느낌. 림라인으로 대체
+shadow = if (lifted) { {
+    Shadow(radius = 18.dp, offset = DpOffset(0.dp, 6.dp),
+           color = if (dark) Color.Black else Color(0xFF1B2A4A),
+           alpha = if (dark) 0.34f else 0.13f)
+} } else null,
+innerShadow = if (enabled && tone != GlassTone.Thin) { {
+    InnerShadow(radius = 10.dp, offset = DpOffset(0.dp, 1.5.dp),
+                color = Color.Black, alpha = spec.innerShadow)
+} } else null
+// 이후: .border(GlassTokens.hairline, outline, shape).clip(shape)
 ```
 
 파라미터의 감각:
@@ -230,13 +246,16 @@ innerShadow = if (enabled) { { InnerShadow(radius=10.dp, offset=DpOffset(0.dp,1.
 | `lens` | 가장자리 굴절 | Thin (8,14) / Regular (16,26) / Thick (30,52) |
 | `vibrancy` | 색 보정 | 항상 on |
 | `colorControls` | 미세 보정 | light: saturation 1.06·bright +0.015, dark: saturation 1.06 |
-| `Highlight` | 림 하이라이트 | light alpha 0.85 / dark 0.55 |
-| `Shadow` | 드롭섀도(띄움) | 18dp, Y 6dp, 앞에서 말한 색과 알파 |
-| `InnerShadow` | 두께감 | 10dp, Y 1.5dp, 보이지 극히 낮은 α(0.05–0.10) |
+| ~~`Highlight`~~ | 림 하이라이트 | **끔** — 앵글드 워시가 "칠한" 아티팩트를 만듦 |
+| `Shadow` | 드롭섀도(띄움) | 18dp, Y 6dp, dark: Black α0.34, light: 0xFF1B2A4A α0.13 |
+| `InnerShadow` | 두께감 | Thin 톤에서는 off, Regular/Thick만: 10dp, Y 1.5dp, α 0.05-0.14 |
 
-**중요한 제물**: Tokyo서의 blur/lens는 `Float`로 px를 원한다. `Dp.toPx()`는
+**중요한 제물**: blur/lens는 `Float`로 px를 원한다. `Dp.toPx()`는
 `Density` 스코프가 있으면 안전하고, `size.minDimension` 클램핑으로 0이나
 부풀은 렌즈를 막는다.
+
+**다크 모드 밀도 보정**: `specFor(tone, mode, dark)`에서
+`tintAlpha × 1.22`(상한 0.60), `innerShadow × 1.4`를 곱한다.
 
 ---
 
@@ -428,6 +447,12 @@ internal fun Modifier.glassMaterial(
 | 키보드 떠 있을 때 입력바 밑에 이중 여백 | `.navigationBarsPadding()`이 IME와 함께 적용 | `if (imeVisible) navigationBarsPadding 제거` |
 | 시트 그래버의 잠재 크로스 윈도우 | `ModalBottomSheet`가 새 윈도우인데 Activity backdrop 샘플링 | 그래버를 솔리드로 교체(5장) |
 | release build daemon 터짐 | 기기 메모리 한계(코드 무관) | 빌드 전 메모리 잡고 빌드, CI는 여유 여분 사용 |
+| **세션 카드 하단이 "하얗게 칠한" 것처럼 보임** | `Highlight.Default`의 앵글드 스페큘러 워시 + `lens(depthEffect=true)`가 화이트 캔버스에서 카드 표면을 세탁 | `highlight = null`, `depthEffect = false` + 헤어라인 보더 + 그림자만으로 림 정의 |
+| **모델 피커가 "이상하게 투명"** | `GlassAnchoredOverlay` 안에 카드 래핑 없이 Text/LazyColumn을 날로 띄움 | 액션 메뉴와 동일한 **헤더 카드 + 목록 카드** 구조로 통일 (11장 규칙 준수) |
+| **`BoxScope.GlassAnchoredOverlay`가 "Unresolved reference"** | BoxScope 확장 함수를 Box 리시버 없는 곳에서 호출 | 리시버 제거(`fun GlassAnchoredOverlay`) — 오버레이가 어디서든 호출 가능 |
+| **다크 모드에서 Hoard 버블이 안 보임** | `scheme.surfaceContainer`(#19191C)가 배경(#0C0C0F)과 거의 같음 | `specFor`에 `dark` 플래그로 tintAlpha/innerShadow 증폭 |
+| **입력바가 네비바에 붙음** | 하단 여백 계산이 IME/비-IME 상태와 독립적이지 않았음 | `WindowInsets.navigationBars` + 상태별 `bottomReserve` 계산 |
+| **재생성 시 아래에 새 메시지가 추가됨** | `retryFrom`이 `appendMessage`만 하고 기존 위치를 안 자름 | `replaceSessionTail(sessionId, idx)` — 목록을 인덱스에서 자른 뒤 스트리밍 |
 
 ---
 
@@ -449,8 +474,145 @@ internal fun Modifier.glassMaterial(
 - **그라데이션은 사용하지 않는다.** 배경 변화는 solid color + blur(둥근 서클)로만.
 - **화이트 온리**에서 유리는 tint가 아니라 가장자리 artifact로 읽는다(9장).
 - **최대 효과 자동**: `resolveGlassMode(Build.VERSION.SDK_INT)` — 사용자에게
-  “On/Off”를 묻지 않는다. API 31~32는 BlurOnly, 33+는 Full.
+  "On/Off"를 묻지 않는다. API 31~32는 BlurOnly, 33+는 Full.
+- **백그라운드 답변은 항상 활성** — 설정에 토글을 두지 않는다(기획 의도).
 - 탭/버튼/전송은 44dp에 맞춰 통일; 어디서든 Touchable을 한 공통으로.
+
+---
+
+## 15. 키보드 & IME 인셋 — 이중 여백 방지
+
+**핵심**: `WindowInsets.ime`는 키보드가 떠 있을 때 **네비게이션 바 영역까지 포함**한다.
+따라서 `imePadding()`과 `navigationBarsPadding()`을 동시에 걸면 이중 여백이 생긴다.
+
+```kotlin
+// ✅ 정확한 방법
+modifier
+    .statusBarsPadding()
+    .imePadding()
+    .padding(bottom = when {
+        inChat -> navBarBottom + 18.dp    // 탭바 없음: 네비바+여백
+        imeVisible -> 0.dp                // IME가 nav bar 포함
+        else -> navBarBottom + 108.dp     // 탭바 있음: 네비바+탭바
+    })
+```
+
+**채팅 입력바가 키보드 위에 붙는 조건**:
+- `BasicTextField`의 `imeAction = ImeAction.Default` (Enter = 줄바꿈)
+- `onPreviewKeyEvent`에서 `Key.Enter && isAltPressed`만 전송 트리거
+- 전송 버튼은 별도 44dp 글래스 버튼 (11장의 `GlassAttachButton` 패턴)
+
+---
+
+## 16. 앵커드 팝업 — 위치 계산의 함정
+
+메시지 롱프레스 → 팝업이 **누른 버블 바로 위/아래에** 떠야 한다.
+
+**측정 순서**: 카드를 먼저 배치하지 말고 `onGloballyPositioned`로 크기를 잰 뒤
+위치를 결정한다:
+
+```kotlin
+Column(
+    Modifier
+        .onGloballyPositioned {
+            cardW = it.size.width; cardH = it.size.height
+            // 여기서 위/아래 방향 결정 + x/y 클램프
+        }
+        .offset { IntOffset(placedX, placedY) }
+        .graphicsLayer {
+            transformOrigin = TransformOrigin(anchorX/cardW, if (above) 1f else 0f)
+        }
+)
+```
+
+**3가지 함정**:
+1. **`BoxScope` 확장 함수 리시버** — `fun BoxScope.X()`는 Box 밖에서 호출하면
+   "Unresolved reference"가 난다. `fun X()`로 만들고 내부에서 `BoxWithConstraints`를
+   쓰는 게 안전하다.
+2. **회전 시 앵커 소실** — `remember { Rect? }`는 configuration change에서 날아간다.
+   `rememberSaveable(stateSaver = Saver<Rect?, Any>(save = { listOf(l,t,r,b) }, restore = { ... }))`
+   로 4개 float를 저장해야 한다.
+3. **팝업 내용이 "날로" 뜸** — `GlassAnchoredOverlay`는 컨테이너일 뿐이다. 내용은
+   반드시 `glassMaterial(shape, surface)` 카드로 감싸야 한다. 그렇지 않으면
+   투명한 텍스트가 스크림 위에 떠서 "이상하게 투명하다"는 피드백을 받는다.
+
+---
+
+## 17. 모션 그래머 — 일관된 물리 시스템
+
+모든 애니메이션이 `GlassMotion`에서 정의한 5개 스펙을 통과한다:
+
+```kotlin
+object GlassMotion {
+    val springs = SpringSpec<Float>(Spring.DampingRatioLowBouncy, Spring.StiffnessMediumLow)
+    val springSnappy = SpringSpec<Float>(Spring.DampingRatioNoBouncy, Spring.StiffnessHigh)
+    val fast = TweenSpec<Float>(180, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
+    val fastColor = TweenSpec<Color>(180, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
+    val relaxed = TweenSpec<Float>(240, easing = CubicBezierEasing(0.25f, 0f, 0f, 1f))
+}
+```
+
+| 스펙 | 용도 |
+| --- | --- |
+| `springs` | 버블 등장, 팝업 등장 (부드러운 바운스) |
+| `springSnappy` | 탭 전환, 인디케이터 (빠르고 overshoot 없음) |
+| `fast` | 스크림 페이드, 저비용 UI |
+| `fastColor` | 아이콘/텍스트 색 전환 (알파 보간) |
+| `relaxed` | 큰 카드/오버레이 등장 |
+
+**메시지 버블 등장 애니메이션** — 사용자는 오른쪽 하단 코너에서, Hoard는 왼쪽에서:
+
+```kotlin
+val appear by animateFloatAsState(1f, GlassMotion.springs)
+Box(
+    Modifier.graphicsLayer {
+        scaleX = 0.95f + 0.05f * appear
+        scaleY = 0.95f + 0.05f * appear
+        alpha = appear
+        transformOrigin = TransformOrigin(if (isUser) 1f else 0f, 0.85f)
+    }
+)
+```
+
+---
+
+## 18. 재생성(in-place retry) — 아래에 추가하지 말고 그 자리에서
+
+메시지를 "다시 생성"하면 목록 맨 끝에 새 버블이 추가되는 게 아니라, 대상 버블이
+그 자리에서 교체돼야 한다:
+
+```kotlin
+// Repository
+fun replaceSessionTail(sessionId: String, fromIndex: Int) {
+    _messages.update { map ->
+        map[sessionId]?.let { full ->
+            if (fromIndex < full.size) map + (sessionId to full.take(fromIndex)) else map
+        } ?: map
+    }
+}
+
+// ViewModel.retryFrom
+val idx = messages.indexOfFirst { it.id == messageId }
+if (idx < 0) return
+repo.replaceSessionTail(session.id, idx)  // ← 여기서 자르고
+ChatResponseWorker.enqueue(...)            // ← 워커가 같은 위치에 append
+```
+
+**원리**: 워커의 `appendMessage`는 항상 목록 끝에 추가하므로, "자르고 → 추가"하면
+결과적으로 그 인덱스에 새 버블이 들어간다.
+
+---
+
+## 19. 2026-09-26 종합 감사에서 나온 교훈
+
+1. **같은 인터페이스가 세 벌로 돌면 반드시 하나는 망가진다.** 탭 바/앵커드
+   오버레이/모달 다이얼로그가 각각 따로 놀다가 결국 시각 불일치로 사용자 피드백.
+2. **사용하지 않는 파라미터는 남기지 마라.** `isLastUserMessage`는 체크 아이콘을
+   지우고 나서도 시그니처에 남아 호출부에서 조용히 죽은 코드가 됐다.
+3. **사용자가 "왜 이게 있지?"라고 물으면 정답은 삭제다.** 실제 메신저도 아닌데
+   읽음 체크 아이콘이 있었다. 목업 데이터에 정당성 없는 UI는 낭비다.
+4. **메타데이터는 발바닥 라인으로** — 모델명이 버블 위에 별도 라인으로 떠 있으면
+   시선이 분산된다. `모델명 · 시간 · 토큰` 한 줄로 병합.
 
 ---
 
