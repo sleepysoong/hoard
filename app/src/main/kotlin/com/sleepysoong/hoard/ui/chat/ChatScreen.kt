@@ -136,7 +136,6 @@ fun ChatScreen(
     }
 
     val menuTarget = state.messages.firstOrNull { it.id == menuTargetId }
-    val lastUserMessageId = state.messages.lastOrNull { it.role == MessageRole.User }?.id
 
     Box(modifier.fillMaxSize()) {
         Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -244,7 +243,6 @@ fun ChatScreen(
                                 maxBubbleWidth = maxBubbleWidth,
                                 groupedWithPrevious = grouped,
                                 showFooter = footer,
-                                isLastUserMessage = msg.id == lastUserMessageId,
                                 onLongPress = { rect -> menuTargetId = msg.id; menuAnchorRect = rect },
                                 modifier = Modifier.padding(
                                     top = if (grouped) 2.dp else 10.dp

@@ -75,7 +75,6 @@ fun MessageBubble(
     maxBubbleWidth: Dp,
     groupedWithPrevious: Boolean,
     showFooter: Boolean,
-    isLastUserMessage: Boolean,
     onLongPress: (Rect) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -118,14 +117,7 @@ fun MessageBubble(
             horizontalAlignment = if (isUser) Alignment.End else Alignment.Start,
             modifier = Modifier.widthIn(max = maxBubbleWidth)
         ) {
-            if (!isUser && modelName != null && !groupedWithPrevious) {
-                Text(
-                    modelName,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(start = 14.dp, bottom = 3.dp)
-                )
-            }
+            // Model name sits on the footer line, not above the bubble.
 
             // Hoard bubble = liquid glass (frosted neutral so it reads on white);
             // my bubble = solid iOS blue.
@@ -238,19 +230,18 @@ fun MessageBubble(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
+                    if (!isUser && modelName != null) {
+                        Text(
+                            "$modelName · ",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = scheme.onSurfaceVariant
+                        )
+                    }
                     Text(
                         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.createdAt)),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant
                     )
-                    if (isUser && isLastUserMessage) {
-                        Icon(
-                            Icons.Rounded.Check,
-                            contentDescription = "전송됨",
-                            modifier = Modifier.size(13.dp),
-                            tint = scheme.onSurfaceVariant
-                        )
-                    }
                     if (!isUser && message.totalTokens > 0) {
                         Text(
                             "· ${formatElapsed(message.elapsedMs)} · ${message.totalTokens} 토큰",
