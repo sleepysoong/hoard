@@ -36,6 +36,7 @@ import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.ChatSession
@@ -209,13 +210,14 @@ private fun SessionCard(
                         color = scheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = false)
+                        modifier = Modifier.weight(1f, fill = true)
                     )
                     if (previewText != null) {
                         Text(
                             formatRelativeTime(session.updatedAt),
                             style = MaterialTheme.typography.labelSmall,
                             color = scheme.onSurfaceVariant,
+                            textAlign = TextAlign.End,
                             modifier = Modifier.padding(start = 10.dp)
                         )
                     }

@@ -177,30 +177,19 @@ fun SessionSettingsSheet(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(54.dp)
-                    .clip(RoundedCornerShape(cornerRad))
-                    .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface, tone = GlassTone.Thin)
-                    .clickable { onDismiss() },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("취소", style = MaterialTheme.typography.labelLarge, color = scheme.onSurface)
-            }
-            Box(
-                Modifier
-                    .weight(1f)
-                    .height(54.dp)
-                    .clip(RoundedCornerShape(cornerRad))
-                    .glassMaterial(RoundedCornerShape(cornerRad), scheme.primaryContainer, tone = GlassTone.Regular)
-                    .liquidClickable {
-                        onRename(name); onSystemPrompt(prompt); onContextLimit(context.toInt()); onDismiss()
-                    },
-                contentAlignment = Alignment.Center
-            ) {
-                Text("저장", style = MaterialTheme.typography.labelLarge, color = scheme.onPrimaryContainer)
-            }
+            GlassCapsuleButton(
+                onClick = onDismiss,
+                label = "취소",
+                modifier = Modifier.weight(1f)
+            )
+            GlassCapsuleButton(
+                onClick = {
+                    onRename(name); onSystemPrompt(prompt); onContextLimit(context.toInt()); onDismiss()
+                },
+                label = "저장",
+                primary = true,
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

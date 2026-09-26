@@ -36,15 +36,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardColors
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ProvideTextStyle
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarColors
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.contentColorFor
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -104,26 +100,6 @@ fun GlassSurface(
         contentColor = contentColor,
         tonalElevation = 0.dp,
         content = content
-    )
-}
-
-@OptIn(ExperimentalMaterial3Api::class)
-@Composable
-fun GlassTopAppBar(
-    title: @Composable () -> Unit,
-    modifier: Modifier = Modifier,
-    navigationIcon: @Composable () -> Unit = {},
-    actions: @Composable RowScope.() -> Unit = {},
-    colors: TopAppBarColors = TopAppBarDefaults.topAppBarColors()
-) {
-    TopAppBar(
-        title = title, navigationIcon = navigationIcon, actions = actions,
-        modifier = modifier.glassMaterial(
-            RoundedCornerShape(bottomStart = 24.dp, bottomEnd = 24.dp),
-            MaterialTheme.colorScheme.surface,
-            GlassTone.Thick
-        ),
-        colors = colors.copy(containerColor = Color.Transparent, scrolledContainerColor = Color.Transparent)
     )
 }
 
@@ -290,7 +266,7 @@ fun RowScope.GlassTabItem(
         label = "tab-tint"
     )
     val iconScale by animateFloatAsState(
-        targetValue = if (selected) 1.06f else 1f,
+        targetValue = if (selected) 1.04f else 1f,
         animationSpec = spring(dampingRatio = 0.6f, stiffness = 600f),
         label = "tab-icon-scale"
     )

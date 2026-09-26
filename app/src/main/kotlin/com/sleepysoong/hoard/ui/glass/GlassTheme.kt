@@ -224,7 +224,7 @@ internal fun Modifier.glassMaterial(
 @Composable
 fun Modifier.liquidClickable(
     enabled: Boolean = true,
-    pressedScale: Float = 0.97f,
+    pressedScale: Float = 0.98f,
     haptic: Boolean = true,
     onClick: () -> Unit
 ): Modifier {

@@ -96,7 +96,14 @@ fun ChatScreen(
     var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var menuTargetId by rememberSaveable { mutableStateOf<String?>(null) }
-    var menuAnchorRect by remember { mutableStateOf<Rect?>(null) }
+    // Save the bubble anchor across configuration change; Rect has no built-in
+    // Saver, so persist the four plain floats.
+    var menuAnchorRect by rememberSaveable(
+        stateSaver = androidx.compose.runtime.saveable.Saver<Rect?, Any>(
+            save = { it?.let { r -> listOf(r.left, r.top, r.right, r.bottom) } },
+            restore = { s -> (s as? List<*>)?.let { l -> Rect(l[0] as Float, l[1] as Float, l[2] as Float, l[3] as Float) } }
+        )
+    ) { mutableStateOf<Rect?>(null) }
     var settingsAnchor by remember { mutableStateOf<Rect?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
