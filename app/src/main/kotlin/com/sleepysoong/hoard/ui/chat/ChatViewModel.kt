@@ -86,7 +86,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         // Worker owns the reply so it survives the app going to background.
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, clean, modelId, replyId, attachments.isNotEmpty()
+            getApplication(), session.id, clean, modelId, replyId, attachments.isNotEmpty(),
+            parentId = userMsg.id
         )
     }
 
@@ -104,7 +105,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         repo.updateMessage(session.id, messageId) { it.copy(text = clean) }
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, clean, session.modelId, replyId, target.attachments.isNotEmpty()
+            getApplication(), session.id, clean, session.modelId, replyId, target.attachments.isNotEmpty(),
+            parentId = messageId, replacePending = true
         )
     }
 
@@ -114,20 +116,23 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun retryFrom(messageId: String) {
-        val state = uiState.value
-        val session = state.session ?: return
-        val messages = state.messages
+        val session = uiState.value.session ?: return
+        // Act on the store, not the (possibly one frame stale) UI snapshot.
+        val messages = repo.messagesOf(session.id)
         val idx = messages.indexOfFirst { it.id == messageId }
         if (idx < 0) return
         // The reply answers the closest user message before it; everything after
         // the target is dropped below, so later prompts must never be used.
-        val prompt = messages.subList(0, idx).lastOrNull { it.role == MessageRole.User }?.text
+        val parent = messages.subList(0, idx).lastOrNull { it.role == MessageRole.User }
             ?: return
         // Remove the old reply (same position) and everything after; then
         // regenerate at that same spot.
         repo.replaceSessionTail(session.id, idx)
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
-        ChatResponseWorker.enqueue(getApplication(), session.id, prompt, session.modelId, replyId, false)
+        ChatResponseWorker.enqueue(
+            getApplication(), session.id, parent.text, session.modelId, replyId, parent.attachments.isNotEmpty(),
+            parentId = parent.id, replacePending = true
+        )
     }
 
     fun branchFrom(messageId: String, branchName: String): String? {
@@ -143,6 +148,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteSession(id: String) {
+        ChatResponseWorker.cancel(getApplication(), id)
         repo.deleteSession(id)
         viewModelScope.launch {
             val remaining = repo.sessions.value

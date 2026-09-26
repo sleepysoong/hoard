@@ -7,6 +7,7 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
 import androidx.work.WorkManager
@@ -33,7 +34,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val modelId = inputData.getString(KEY_MODEL) ?: "hoard-1-pro"
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
         val hasAttachments = inputData.getBoolean(KEY_ATTACH, false)
+        val parentId = inputData.getString(KEY_PARENT)
         val repo = HoardRepository.get()
+        // Queued behind another reply, and the prompt was deleted/edited away meanwhile.
+        if (parentId != null && repo.messagesOf(sessionId).none { it.id == parentId }) return Result.success()
 
         val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
         val hasTarget = if (runAttemptCount == 0) {
@@ -136,6 +140,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_MODEL = "model_id"
         const val KEY_MESSAGE = "message_id"
         const val KEY_ATTACH = "has_attachments"
+        /** The user message being answered; the reply is skipped if it was removed while queued. */
+        const val KEY_PARENT = "parent_id"
 
         /** First run + 2 retries; a dead backend must not spin forever. */
         const val MAX_ATTEMPTS = 3
@@ -146,7 +152,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             prompt: String,
             modelId: String,
             messageId: String,
-            hasAttachments: Boolean
+            hasAttachments: Boolean,
+            parentId: String? = null,
+            replacePending: Boolean = false
         ) {
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
@@ -155,13 +163,26 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         KEY_PROMPT to prompt,
                         KEY_MODEL to modelId,
                         KEY_MESSAGE to messageId,
-                        KEY_ATTACH to hasAttachments
+                        KEY_ATTACH to hasAttachments,
+                        KEY_PARENT to parentId
                     )
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .addTag("hoard-reply-$sessionId")
                 .build()
-            WorkManager.getInstance(ctx).enqueue(req)
+            // One reply at a time per session, in send order. Regenerate/edit rewrites the
+            // tail, so whatever was running or queued for the old tail is replaced.
+            WorkManager.getInstance(ctx).enqueueUniqueWork(
+                uniqueName(sessionId),
+                if (replacePending) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
+                req
+            )
         }
+
+        fun cancel(ctx: Context, sessionId: String) {
+            WorkManager.getInstance(ctx).cancelUniqueWork(uniqueName(sessionId))
+        }
+
+        private fun uniqueName(sessionId: String) = "hoard-reply-$sessionId"
     }
 }
