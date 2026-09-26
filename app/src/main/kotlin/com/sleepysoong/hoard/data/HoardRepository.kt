@@ -161,6 +161,12 @@ class HoardRepository {
         _skills.update { list -> list.map { if (it.id == id) it.copy(enabled = enabled) else it } }
     }
 
+    /** Enabled plugins, MCP servers and skills, as offered to the model. */
+    fun enabledToolNames(): List<String> =
+        _plugins.value.filter { it.enabled }.map { it.name } +
+            _mcpServers.value.filter { it.enabled }.map { it.name } +
+            _skills.value.filter { it.enabled }.map { it.name }
+
     private fun touch(sessionId: String) {
         _sessions.update { list -> list.map { if (it.id == sessionId) it.copy(updatedAt = System.currentTimeMillis()) else it } }
     }

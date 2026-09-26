@@ -31,7 +31,7 @@ class OrphanReplyTest {
     private lateinit var h: ChatHarness
 
     @After fun dump() {
-        MockAiEngine.faultInjector = null
+        MockAiEngine.testHook = null
         if (::h.isInitialized) h.writeTranscript("OrphanReplyTest.${name.methodName}")
     }
 
@@ -56,7 +56,7 @@ class OrphanReplyTest {
     fun replyQueuedAcrossProcessDeathDoesNotCreateGhostSession() {
         h = ChatHarness()
         var failures = 0
-        MockAiEngine.faultInjector = { _, i -> if (i == 0 && failures++ == 0) throw IOException("blip") }
+        MockAiEngine.testHook = { _, i -> if (i == 0 && failures++ == 0) throw IOException("blip") }
         val session = h.vm.newSession("곧 사라질 세션")
         h.vm.send("프로세스가 죽기 전에 보낸 질문", emptyList(), "hoard-1-pro")
         h.awaitNoRunningWork()
@@ -79,7 +79,7 @@ class OrphanReplyTest {
         h = ChatHarness()
         // WorkManager persists the queue; after a restart the job's session is gone.
         com.sleepysoong.hoard.work.ChatResponseWorker.enqueue(
-            h.app, "session-lost-in-restart", "재시작 전 질문", "hoard-1-pro", "msg-lost", false
+            h.app, "session-lost-in-restart", "hoard-1-pro", "msg-lost", parentId = "msg-question-lost"
         )
         h.awaitReplies()
         h.snapshot("after restored job", "session-lost-in-restart")

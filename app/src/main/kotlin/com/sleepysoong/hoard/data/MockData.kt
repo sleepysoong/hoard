@@ -67,9 +67,15 @@ object MockData {
         )
     )
 
-    fun mockThinking(question: String): List<ThinkingStep> = listOf(
+    fun mockThinking(question: String, contextMessages: Int, droppedMessages: Int, tools: List<String>): List<ThinkingStep> = listOf(
         ThinkingStep("요청 파악", "분석: ${question.take(64)}…", 320),
-        ThinkingStep("컨텍스트 조회", "세션 범위와 첨부파일 확인 (목업).", 480),
+        ThinkingStep(
+            "컨텍스트 조회",
+            "이전 메시지 ${contextMessages - 1}개 참고" +
+                (if (droppedMessages > 0) ", 컨텍스트 한도로 오래된 메시지 ${droppedMessages}개 생략" else "") +
+                (if (tools.isNotEmpty()) " · 도구: ${tools.joinToString(", ")}" else "") + " (목업).",
+            480
+        ),
         ThinkingStep("답변 작성", "간결한 목업 답변 구성.", 610)
     )
 

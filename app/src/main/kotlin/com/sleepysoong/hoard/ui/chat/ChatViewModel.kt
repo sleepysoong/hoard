@@ -12,6 +12,7 @@ import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.UiAttachment
+import com.sleepysoong.hoard.engine.ReplyRequest
 import com.sleepysoong.hoard.work.ChatResponseWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -56,10 +57,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
                 key to SessionPreview(it.text, it.role == MessageRole.User, it.createdAt)
             }
         }.toMap()
+        val session = sessions.firstOrNull { it.id == id }
         ChatUiState(
-            session = sessions.firstOrNull { it.id == id },
+            session = session,
             messages = msgs,
-            usedTokens = msgs.sumOf { it.totalTokens },
+            // What the next request would carry: system prompt + every message.
+            usedTokens = session?.let { ReplyRequest.contextTokens(it.systemPrompt, msgs) } ?: 0,
             sessions = sessions,
             previews = previews
         )
@@ -95,8 +98,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         // Worker owns the reply so it survives the app going to background.
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, clean, modelId, replyId, attachments.isNotEmpty(),
-            parentId = userMsg.id
+            getApplication(), session.id, modelId, replyId, parentId = userMsg.id
         )
     }
 
@@ -114,7 +116,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         repo.updateMessage(session.id, messageId) { it.copy(text = clean) }
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, clean, session.modelId, replyId, target.attachments.isNotEmpty(),
+            getApplication(), session.id, session.modelId, replyId,
             parentId = messageId, replacePending = true
         )
     }
@@ -139,7 +141,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         repo.replaceSessionTail(session.id, idx)
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, parent.text, session.modelId, replyId, parent.attachments.isNotEmpty(),
+            getApplication(), session.id, session.modelId, replyId,
             parentId = parent.id, replacePending = true
         )
     }

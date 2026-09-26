@@ -30,7 +30,7 @@ class WorkerFailureTest {
     private lateinit var h: ChatHarness
 
     @After fun dump() {
-        MockAiEngine.faultInjector = null
+        MockAiEngine.testHook = null
         if (::h.isInitialized) h.writeTranscript("WorkerFailureTest.${name.methodName}")
     }
 
@@ -40,7 +40,7 @@ class WorkerFailureTest {
     fun transientFailureMidStreamRetriesIntoTheSameSingleBubble() {
         h = ChatHarness()
         var failures = 0
-        MockAiEngine.faultInjector = { _, i -> if (i == 4 && failures++ == 0) throw IOException("network down") }
+        MockAiEngine.testHook = { _, i -> if (i == 4 && failures++ == 0) throw IOException("network down") }
 
         h.vm.send("끊겼다가 다시 이어지는 답변", emptyList(), "hoard-1-pro")
         h.awaitNoRunningWork()
@@ -64,7 +64,7 @@ class WorkerFailureTest {
     fun permanentFailureGivesUpAfterBoundedAttempts() {
         h = ChatHarness()
         var attempts = 0
-        MockAiEngine.faultInjector = { _, i -> if (i == 0) { attempts++; throw IOException("always down") } }
+        MockAiEngine.testHook = { _, i -> if (i == 0) { attempts++; throw IOException("always down") } }
 
         h.vm.send("항상 실패하는 답변", emptyList(), "hoard-1-pro")
         repeat(10) { h.fireBackoff() }
@@ -103,7 +103,7 @@ class WorkerFailureTest {
     fun bubbleDeletedDuringBackoffIsNotResurrected() {
         h = ChatHarness()
         var failures = 0
-        MockAiEngine.faultInjector = { _, i -> if (i == 1 && failures++ == 0) throw IOException("blip") }
+        MockAiEngine.testHook = { _, i -> if (i == 1 && failures++ == 0) throw IOException("blip") }
 
         h.vm.send("삭제될 답변", emptyList(), "hoard-1-pro")
         h.awaitNoRunningWork()

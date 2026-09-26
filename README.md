@@ -23,8 +23,19 @@ chat with **mock data only**: sending a message streams fake thinking + reply te
 
 ## The one seam for the real backend
 
-`engine/MockAiEngine.kt :: streamReply` — replace with a real network call.
+`engine/MockAiEngine.kt :: streamReply(ReplyRequest)` — replace with a real network call.
+`ReplyRequest` already carries the model, current system prompt, history trimmed to the
+session context limit, attachments and enabled plugin/MCP/skill names.
 UI (`ChatViewModel`, `ChatScreen`, `ChatResponseWorker`) stays unchanged.
+
+## Tests
+
+```bash
+./gradlew :app:testDebugUnitTest
+```
+
+Robolectric E2E flows drive the real ViewModel → WorkManager → worker → engine → store
+stack. Each test writes a conversation transcript to `app/build/test-artifacts/`.
 
 ## Build
 

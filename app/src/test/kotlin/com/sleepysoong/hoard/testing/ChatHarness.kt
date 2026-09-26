@@ -37,7 +37,7 @@ class ChatHarness(pace: Float = 0f) {
         HoardRepository.resetForTests()
         runBlocking { SettingsStore.reset(app) }
         MockAiEngine.pace = pace
-        MockAiEngine.faultInjector = null
+        MockAiEngine.testHook = null
         WorkManagerTestInitHelper.initializeTestWorkManager(
             app,
             Configuration.Builder()
@@ -124,6 +124,8 @@ class ChatHarness(pace: Float = 0f) {
             log.append("  %2d %-9s %s  %s\n".format(i, m.role, m.text.replace("\n", "⏎").take(110), flags))
         }
     }
+
+    fun note(text: String) { log.append(text).append('\n') }
 
     /** Writes build/test-artifacts/<name>.txt so a failing or passing run can be inspected. */
     fun writeTranscript(name: String) {

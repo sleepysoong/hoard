@@ -19,6 +19,7 @@ import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.engine.MockAiEngine
+import com.sleepysoong.hoard.engine.ReplyRequest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -31,14 +32,24 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
 
     override suspend fun doWork(): Result {
         val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
-        val prompt = inputData.getString(KEY_PROMPT) ?: return Result.failure()
+        val parentId = inputData.getString(KEY_PARENT) ?: return Result.failure()
         val modelId = inputData.getString(KEY_MODEL) ?: "hoard-1-pro"
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
-        val hasAttachments = inputData.getBoolean(KEY_ATTACH, false)
-        val parentId = inputData.getString(KEY_PARENT)
         val repo = HoardRepository.get()
-        // Queued behind another reply, and the prompt was deleted/edited away meanwhile.
-        if (parentId != null && repo.messagesOf(sessionId).none { it.id == parentId }) return Result.success()
+        // Session gone (deleted / lost with the process), or the prompt was
+        // deleted/edited away while this reply was queued.
+        val session = repo.sessionOf(sessionId) ?: return Result.success()
+        val before = repo.messagesOf(sessionId)
+        val parentIdx = before.indexOfFirst { it.id == parentId }
+        if (parentIdx < 0) return Result.success()
+        // Built now, from the store: current system prompt, context limit, tools and
+        // exactly the turns up to the answered message.
+        val request = ReplyRequest.build(
+            session = session,
+            conversation = before.take(parentIdx + 1),
+            tools = repo.enabledToolNames(),
+            modelId = modelId
+        )
 
         val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
         val hasTarget = if (runAttemptCount == 0) {
@@ -60,7 +71,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
 
         return try {
             promote("Hoard가 생각 중…")
-            MockAiEngine.streamReply(prompt, modelId, hasAttachments) { ev ->
+            MockAiEngine.streamReply(request) { ev ->
                 val written = repo.updateMessage(sessionId, messageId) {
                     it.copy(
                         text = ev.deltaText,
@@ -142,10 +153,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
 
     companion object {
         const val KEY_SESSION = "session_id"
-        const val KEY_PROMPT = "prompt"
         const val KEY_MODEL = "model_id"
         const val KEY_MESSAGE = "message_id"
-        const val KEY_ATTACH = "has_attachments"
         /** The user message being answered; the reply is skipped if it was removed while queued. */
         const val KEY_PARENT = "parent_id"
 
@@ -155,21 +164,17 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         fun enqueue(
             ctx: Context,
             sessionId: String,
-            prompt: String,
             modelId: String,
             messageId: String,
-            hasAttachments: Boolean,
-            parentId: String? = null,
+            parentId: String,
             replacePending: Boolean = false
         ) {
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
                     workDataOf(
                         KEY_SESSION to sessionId,
-                        KEY_PROMPT to prompt,
                         KEY_MODEL to modelId,
                         KEY_MESSAGE to messageId,
-                        KEY_ATTACH to hasAttachments,
                         KEY_PARENT to parentId
                     )
                 )

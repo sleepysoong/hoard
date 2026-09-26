@@ -22,31 +22,30 @@ object MockAiEngine {
     @Volatile var pace: Float = 1f
 
     /** Test hook: called before every streamed event; throw to simulate a network failure. */
-    @Volatile var faultInjector: ((question: String, eventIndex: Int) -> Unit)? = null
+    @Volatile var testHook: ((request: ReplyRequest, eventIndex: Int) -> Unit)? = null
 
     private suspend fun delay(ms: Long) = kotlinx.coroutines.delay((ms * pace).toLong())
 
     suspend fun streamReply(
-        question: String,
-        modelId: String,
-        hasAttachments: Boolean,
+        request: ReplyRequest,
         onEvent: suspend (MockStreamEvent) -> Unit
     ) {
+        val question = request.question
         var eventIndex = 0
         val emit: suspend (MockStreamEvent) -> Unit = { ev ->
-            faultInjector?.invoke(question, eventIndex++)
+            testHook?.invoke(request, eventIndex++)
             onEvent(ev)
         }
         val started = System.currentTimeMillis()
-        val thinking = MockData.mockThinking(question)
+        val thinking = MockData.mockThinking(question, request.history.size, request.droppedCount, request.tools)
         val shown = mutableListOf<ThinkingStep>()
         for (step in thinking) {
             delay(step.durationMs / 3)
             shown += step
             emit(MockStreamEvent(thinking = shown.toList(), elapsedMs = System.currentTimeMillis() - started))
         }
-        val full = MockData.mockAnswer(question, modelId, hasAttachments)
-        val promptTokens = estimateTokens(question)
+        val full = MockData.mockAnswer(question, request.modelId, request.hasAttachments)
+        val promptTokens = request.promptTokens
         // Word-by-word streaming illusion.
         val words = full.split(" ")
         val chunk = StringBuilder()
