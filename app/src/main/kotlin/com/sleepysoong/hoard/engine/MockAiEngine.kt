@@ -3,7 +3,6 @@ package com.sleepysoong.hoard.engine
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.ThinkingStep
 import com.sleepysoong.hoard.data.estimateTokens
-import kotlinx.coroutines.delay
 
 data class MockStreamEvent(
     val thinking: List<ThinkingStep> = emptyList(),
@@ -19,6 +18,11 @@ data class MockStreamEvent(
  * Replace [streamReply] with a real network call; everything else stays.
  */
 object MockAiEngine {
+    /** Multiplier for the fake streaming delays. Tests set 0 to run instantly. */
+    @Volatile var pace: Float = 1f
+
+    private suspend fun delay(ms: Long) = kotlinx.coroutines.delay((ms * pace).toLong())
+
     suspend fun streamReply(
         question: String,
         modelId: String,

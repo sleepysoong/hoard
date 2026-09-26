@@ -72,6 +72,17 @@ android {
         }
     }
 
+    testOptions {
+        unitTests {
+            isIncludeAndroidResources = true
+            all {
+                it.maxHeapSize = "1536m"
+                // Flow tests dump conversation transcripts here (reviewable artifact).
+                it.systemProperty("hoard.artifacts", layout.buildDirectory.dir("test-artifacts").get().asFile.path)
+            }
+        }
+    }
+
     lint {
         abortOnError = false
         checkReleaseBuilds = false
@@ -113,4 +124,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     testImplementation(libs.junit)
+    testImplementation(libs.robolectric)
+    testImplementation(libs.androidx.test.core)
+    testImplementation(libs.androidx.test.ext.junit)
+    testImplementation(libs.androidx.work.testing)
+    testImplementation(libs.kotlinx.coroutines.test)
 }

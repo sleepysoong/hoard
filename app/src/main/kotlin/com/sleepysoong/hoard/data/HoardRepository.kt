@@ -148,5 +148,8 @@ class HoardRepository {
         fun get(): HoardRepository = instance ?: synchronized(this) {
             instance ?: HoardRepository().also { instance = it }
         }
+
+        /** Simulates a fresh process: the in-memory store starts over. */
+        internal fun resetForTests() = synchronized(this) { instance = null }
     }
 }
