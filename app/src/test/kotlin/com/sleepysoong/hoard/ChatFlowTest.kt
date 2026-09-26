@@ -61,4 +61,66 @@ class ChatFlowTest {
             shadowOf(nm).allNotifications.any { it.extras.getString("android.title")?.contains("환영") == true }
         )
     }
+
+    /** Builds welcome, U1, A1, U2, A2, U3, A3 in the active session. */
+    private fun threeTurnConversation(): List<String> {
+        val prompts = listOf("첫 질문: 사과", "두번째 질문: 바나나", "세번째 질문: 체리")
+        for (p in prompts) {
+            h.vm.send(p, emptyList(), "hoard-1-pro")
+            h.awaitReplies()
+        }
+        h.snapshot("three turns")
+        return prompts
+    }
+
+    @Test
+    fun retryMiddleReplyRegeneratesForItsOwnPromptInPlace() {
+        h = ChatHarness()
+        val (q1, q2, _) = threeTurnConversation()
+        val a2 = h.messages()[4]
+        assertTrue(a2.text.contains(q2))
+
+        h.vm.retryFrom(a2.id)
+        h.awaitReplies()
+        h.snapshot("after retry of A2")
+
+        val msgs = h.messages()
+        assertEquals("tail after A2 is dropped, A2 regenerated in place", 5, msgs.size)
+        assertEquals(listOf(q1, q2), msgs.filter { it.role == MessageRole.User }.map { it.text })
+        val regenerated = msgs.last()
+        assertEquals(MessageRole.Assistant, regenerated.role)
+        assertTrue("regenerated for its own prompt, got: ${regenerated.text}", regenerated.text.contains(q2))
+        assertTrue(regenerated.id != a2.id)
+    }
+
+    @Test
+    fun retryFirstReplyUsesFirstPromptAndRetryLastUsesLast() {
+        h = ChatHarness()
+        val (q1, _, _) = threeTurnConversation()
+        h.vm.retryFrom(h.messages()[2].id)
+        h.awaitReplies()
+        h.snapshot("after retry of A1")
+        assertEquals(3, h.messages().size)
+        assertTrue(h.messages().last().text.contains(q1))
+
+        val q = "마지막 질문: 두리안"
+        h.vm.send(q, emptyList(), "hoard-1-pro")
+        h.awaitReplies()
+        h.vm.retryFrom(h.messages().last().id)
+        h.awaitReplies()
+        h.snapshot("after retry of last reply")
+        assertEquals(5, h.messages().size)
+        assertTrue(h.messages().last().text.contains(q))
+    }
+
+    @Test
+    fun retryReplyThatHasNoPromptBeforeItKeepsConversation() {
+        h = ChatHarness()
+        threeTurnConversation()
+        val before = h.messages()
+        h.vm.retryFrom(before[0].id) // the welcome message: nothing to answer
+        h.awaitReplies()
+        h.snapshot("after retry of welcome")
+        assertEquals(before.map { it.id }, h.messages().map { it.id })
+    }
 }

@@ -111,8 +111,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val messages = state.messages
         val idx = messages.indexOfFirst { it.id == messageId }
         if (idx < 0) return
-        val prompt = messages.asSequence().drop(idx + 1).lastOrNull { it.role == MessageRole.User }?.text
-            ?: messages.withIndex().firstOrNull { it.index <= idx && it.value.role == MessageRole.User }?.value?.text
+        // The reply answers the closest user message before it; everything after
+        // the target is dropped below, so later prompts must never be used.
+        val prompt = messages.subList(0, idx).lastOrNull { it.role == MessageRole.User }?.text
             ?: return
         // Remove the old reply (same position) and everything after; then
         // regenerate at that same spot.
