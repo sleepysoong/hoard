@@ -226,29 +226,20 @@ internal fun Modifier.glassMaterial(
 }
 
 /**
- * Liquid tap target: subtle squash while pressed, no Material ripple, optional
- * haptic — the full iOS interaction feel for rows and cards.
+ * Liquid tap target: sinks while pressed and springs back with a little
+ * overshoot on release ([liquidPress]), no Material ripple, optional haptic.
  */
 @Composable
 fun Modifier.liquidClickable(
     enabled: Boolean = true,
-    pressedScale: Float = 0.98f,
+    pressedScale: Float = GlassMotion.PRESS_SCALE,
     haptic: Boolean = true,
     onClick: () -> Unit
 ): Modifier {
     val interaction = remember { MutableInteractionSource() }
-    val pressed by interaction.collectIsPressedAsState()
     val haptics = LocalHapticFeedback.current
-    val scale by animateFloatAsState(
-        targetValue = if (pressed && enabled) pressedScale else 1f,
-        animationSpec = spring(dampingRatio = 0.6f, stiffness = 800f),
-        label = "liquid-press"
-    )
     return this
-        .graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        }
+        .liquidPress(interaction, enabled, pressedScale)
         .clickable(
             interactionSource = interaction,
             indication = null,
