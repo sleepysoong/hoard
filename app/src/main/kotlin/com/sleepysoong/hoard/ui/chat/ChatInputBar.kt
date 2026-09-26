@@ -1,5 +1,21 @@
 package com.sleepysoong.hoard.ui.chat
 
+import androidx.compose.runtime.remember
+import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
+import com.sleepysoong.hoard.ui.glass.GlassMotion
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateContentSize
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
@@ -109,14 +125,26 @@ fun ChatInputBar(
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {
-        Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        // The bar grows/shrinks on a spring as chips and the slash menu come and go.
+        Column(
+            Modifier.animateContentSize(GlassMotion.sizeSmooth()).padding(8.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
             if (attachments.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     attachments.forEach { a ->
+                        key(a.id) {
+                        val pop = remember { Animatable(0f, visibilityThreshold = GlassMotion.SCALE_THRESHOLD) }
+                        LaunchedEffect(Unit) { pop.animateTo(1f, GlassMotion.bouncy()) }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(2.dp),
                             modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = 0.5f + 0.5f * pop.value
+                                    scaleY = 0.5f + 0.5f * pop.value
+                                    alpha = pop.value.coerceIn(0f, 1f)
+                                }
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(scheme.surfaceContainerHighest)
                                 .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
@@ -139,12 +167,18 @@ fun ChatInputBar(
                                 )
                             }
                         }
+                        }
                     }
                 }
             }
 
-            if (showSlash) {
-                val query = value.trimStart().removePrefix("/")
+            GlassAnimatedVisibility(
+                visible = showSlash,
+                enter = fadeIn(GlassMotion.fade()) + expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Bottom) +
+                    scaleIn(GlassMotion.bouncy(), initialScale = 0.94f, transformOrigin = TransformOrigin(0.1f, 1f)),
+                exit = fadeOut(GlassMotion.fade()) + shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Bottom)
+            ) {
+                val query = value.trimStart().removePrefix("/").substringBefore(" ")
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -251,8 +285,15 @@ fun ChatInputBar(
 
                 // Send is liquid glass in both states; active just swaps the tint
                 // (blue-tinted glass, not a flat painted disc).
+                // Becoming sendable: the button swells past full size and settles.
+                val sendPop by animateFloatAsState(
+                    targetValue = if (canSend) 1f else 0.9f,
+                    animationSpec = if (canSend) GlassMotion.bouncy() else GlassMotion.exit(),
+                    label = "send-pop"
+                )
                 Box(
                     Modifier
+                        .graphicsLayer { scaleX = sendPop; scaleY = sendPop }
                         .size(ControlSize)
                         .clip(CircleShape)
                         .glassMaterial(

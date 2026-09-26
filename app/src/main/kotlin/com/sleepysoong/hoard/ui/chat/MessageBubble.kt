@@ -60,6 +60,12 @@ import com.sleepysoong.hoard.ui.glass.glassMaterial
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.expandVertically
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.animation.core.Animatable
 
 /**
  * Messenger-grade bubble: content-sized (never full width), iMessage geometry.
@@ -76,19 +82,23 @@ fun MessageBubble(
     groupedWithPrevious: Boolean,
     showFooter: Boolean,
     onLongPress: (Rect) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** Pop in on first composition. False for bubbles already there when the chat opened. */
+    animateEntrance: Boolean = true
 ) {
     val isUser = message.role == MessageRole.User
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
     var thinkingOpen by remember { mutableStateOf(false) }
     var bubbleBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
-    // Entrance: tiny squash + fade from the tail corner. Runs once per bubble.
-    val appear by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = GlassMotion.springs,
-        label = "bubble-appear"
-    )
+    // Entrance: pops out of its tail corner with a soft overshoot, once per bubble.
+    // (animateFloatAsState(targetValue = 1f) would start *at* 1 and never play.)
+    val appear = remember(message.id) {
+        Animatable(if (animateEntrance) 0f else 1f, visibilityThreshold = GlassMotion.SCALE_THRESHOLD)
+    }
+    LaunchedEffect(message.id) {
+        if (appear.value < 1f) appear.animateTo(1f, GlassMotion.bouncy())
+    }
 
     val shape = RoundedCornerShape(
         topStart = 19.dp,
@@ -103,9 +113,11 @@ fun MessageBubble(
             .fillMaxWidth()
             // iMessage-ish entrance: new bubbles glide in from their tail corner.
             .graphicsLayer {
-                scaleX = 0.95f + 0.05f * appear
-                scaleY = 0.95f + 0.05f * appear
-                alpha = appear
+                val p = appear.value
+                scaleX = 0.6f + 0.4f * p
+                scaleY = 0.6f + 0.4f * p
+                translationY = (1f - p) * 24.dp.toPx()
+                alpha = p.coerceIn(0f, 1f)
                 transformOrigin = TransformOrigin(
                     pivotFractionX = if (isUser) 1f else 0f,
                     pivotFractionY = 0.85f
@@ -189,7 +201,12 @@ fun MessageBubble(
                             tint = textColor.copy(alpha = 0.7f)
                         )
                     }
-                    AnimatedVisibility(thinkingOpen) {
+                    AnimatedVisibility(
+                        thinkingOpen,
+                        enter = expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Top) +
+                            fadeIn(GlassMotion.fade()) + scaleIn(GlassMotion.bouncy(), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
+                        exit = shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Top) + fadeOut(GlassMotion.fade())
+                    ) {
                         // Translucent inset so the trace stays readable over glass.
                         Column(
                             Modifier

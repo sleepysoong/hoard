@@ -599,6 +599,23 @@ Box(
 
 ---
 
+### 17.x 모션 실전 교훈 (2026-09-26)
+
+- **`animateFloatAsState(targetValue = 1f)`는 등장 애니메이션이 아니다.** 시작값이 곧
+  목표값이라 한 번도 재생되지 않는다. `Animatable(0f)` + `LaunchedEffect`로 0→1.
+- **스프링 오버슈트가 안 보이면 visibilityThreshold를 의심하라.** Float 기본값 0.01은
+  목표 1% 이내에서 애니메이션을 끝내 1.007 같은 작은 튐을 잘라버린다 →
+  `GlassMotion.SCALE_THRESHOLD`(0.0005).
+- **화면 전환(push)에는 alpha를 쓰지 않는다.** 페이드 중인 레이어가 형제 위에 합성돼
+  들어오는 화면 위로 나가는 화면이 비친다. 각 목적지에 불투명 `screenCanvas()`.
+- **닫힘도 애니메이션이다.** 팝업 안 버튼은 `LocalPopupCloser`로 '퇴장 → 액션' 순서.
+- **이미 있던 것은 튀지 않는다.** 채팅을 열 때 기존 말풍선은 정지 상태, 새 것만 pop.
+- 검증: 가상 시계(`mainClock.autoAdvance = false` + `advanceTimeByFrame`)로 프레임별
+  스케일/좌표를 측정. 스케일은 `boundsInRoot.width / size.width`, testTag는
+  graphicsLayer **뒤에** 둬야 변형된 크기가 잡힌다.
+
+---
+
 ## 18. 재생성(in-place retry) — 아래에 추가하지 말고 그 자리에서
 
 메시지를 "다시 생성"하면 목록 맨 끝에 새 버블이 추가되는 게 아니라, 대상 버블이

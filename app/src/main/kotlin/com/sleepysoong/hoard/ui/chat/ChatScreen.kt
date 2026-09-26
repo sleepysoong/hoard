@@ -71,6 +71,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
 import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
+import com.sleepysoong.hoard.ui.glass.GlassMotion
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassTone
@@ -224,6 +225,8 @@ fun ChatScreen(
                         }
                     }
                 } else {
+                    // Bubbles present when this chat opened appear at rest; only new ones pop in.
+                    val initialIds = remember(session?.id) { state.messages.map { it.id }.toSet() }
                     LazyColumn(
                         state = listState,
                         modifier = Modifier.fillMaxSize(),
@@ -247,17 +250,23 @@ fun ChatScreen(
                                 groupedWithPrevious = grouped,
                                 showFooter = footer,
                                 onLongPress = { rect -> menuTargetId = msg.id; menuAnchorRect = rect },
-                                modifier = Modifier.padding(
-                                    top = if (grouped) 2.dp else 10.dp
-                                )
+                                animateEntrance = msg.id !in initialIds,
+                                modifier = Modifier
+                                    // Neighbours glide when a message is added, deleted or regenerated.
+                                    .animateItem(
+                                        fadeInSpec = null,
+                                        placementSpec = GlassMotion.offsetSmooth(),
+                                        fadeOutSpec = GlassMotion.fade()
+                                    )
+                                    .padding(top = if (grouped) 2.dp else 10.dp)
                             )
                         }
                     }
                     // Floating glass scroll-to-bottom button.
                     GlassAnimatedVisibility(
                         visible = !atBottom,
-                        enter = fadeIn(tween(140)) + scaleIn(tween(160), initialScale = 0.8f),
-                        exit = fadeOut(tween(120)) + scaleOut(tween(140), targetScale = 0.8f),
+                        enter = fadeIn(GlassMotion.fade()) + scaleIn(GlassMotion.bouncy(), initialScale = 0.5f),
+                        exit = fadeOut(GlassMotion.fade()) + scaleOut(GlassMotion.exit(), targetScale = 0.6f),
                         modifier = Modifier.align(Alignment.BottomEnd)
                     ) {
                         GlassIconButton(
