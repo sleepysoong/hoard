@@ -36,22 +36,22 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val repo = HoardRepository.get()
 
         val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
-        if (runAttemptCount == 0) {
-            // Placeholder streaming bubble owned by the worker.
+        val hasTarget = if (runAttemptCount == 0) {
+            // Placeholder streaming bubble owned by the worker. Fails when the session
+            // is gone — e.g. a job WorkManager restored after the in-memory store died.
             repo.appendMessage(sessionId, placeholder)
-        } else if (repo.messagesOf(sessionId).none { it.id == messageId }) {
-            // The failed bubble was deleted or regenerated during backoff: the user
-            // no longer wants this reply, so don't bring it back.
-            return Result.success()
         } else {
             // Retry streams into the same bubble instead of appending a duplicate.
+            // Fails when the bubble was deleted/regenerated during backoff.
             repo.updateMessage(sessionId, messageId) { placeholder.copy(createdAt = it.createdAt) }
         }
+        // Nobody is waiting for this reply any more: finish quietly, never resurrect it.
+        if (!hasTarget) return Result.success()
 
         return try {
             promote("Hoard가 생각 중…")
             MockAiEngine.streamReply(prompt, modelId, hasAttachments) { ev ->
-                repo.updateMessage(sessionId, messageId) {
+                val written = repo.updateMessage(sessionId, messageId) {
                     it.copy(
                         text = ev.deltaText,
                         thinking = ev.thinking,
@@ -61,9 +61,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         isStreaming = !ev.done
                     )
                 }
+                // Session or bubble deleted mid-stream: stop generating.
+                if (!written) throw TargetGone()
                 if (!ev.done) promote("Hoard가 답변 중…")
             }
             notifyDone(sessionId)
+            Result.success()
+        } catch (_: TargetGone) {
             Result.success()
         } catch (e: CancellationException) {
             // Cancelled or stopped by the system: never leave a spinning bubble,
@@ -123,6 +127,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         applicationContext.getSystemService(NotificationManager::class.java)
             ?.notify(sessionId.hashCode(), notification)
     }
+
+    private class TargetGone : Exception()
 
     companion object {
         const val KEY_SESSION = "session_id"

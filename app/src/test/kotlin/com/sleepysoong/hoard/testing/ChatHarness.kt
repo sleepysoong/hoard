@@ -25,7 +25,8 @@ import java.io.File
 class ChatHarness(pace: Float = 0f) {
     val app: Application = ApplicationProvider.getApplicationContext()
     val workManager: WorkManager
-    val repo: HoardRepository
+    /** Always the live store; after [simulateProcessDeath] this is the fresh instance. */
+    val repo: HoardRepository get() = HoardRepository.get()
     private val store = ViewModelStore()
     val vm: ChatViewModel
     private val log = StringBuilder()
@@ -42,8 +43,13 @@ class ChatHarness(pace: Float = 0f) {
                 .build()
         )
         workManager = WorkManager.getInstance(app)
-        repo = HoardRepository.get()
         vm = ViewModelProvider(store, ViewModelProvider.AndroidViewModelFactory.getInstance(app))[ChatViewModel::class.java]
+        idle()
+    }
+
+    /** Process killed and restarted: in-memory chats are gone, WorkManager's queue survives. */
+    fun simulateProcessDeath() {
+        HoardRepository.resetForTests()
         idle()
     }
 

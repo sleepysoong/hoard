@@ -55,16 +55,31 @@ class HoardRepository {
         _sessions.update { list -> list.map { if (it.id == id) transform(it).copy(updatedAt = System.currentTimeMillis()) else it } }
     }
 
-    fun appendMessage(sessionId: String, message: ChatMessage) {
-        _messages.update { it + (sessionId to (it[sessionId].orEmpty() + message)) }
-        touch(sessionId)
+    /**
+     * Appends to an existing session only. Returns false when the session is gone
+     * (deleted, or lost with the process) so late writers never resurrect it.
+     */
+    fun appendMessage(sessionId: String, message: ChatMessage): Boolean {
+        var appended = false
+        _messages.update { map ->
+            val list = map[sessionId]
+            appended = list != null
+            if (list == null) map else map + (sessionId to list + message)
+        }
+        if (appended) touch(sessionId)
+        return appended
     }
 
-    fun updateMessage(sessionId: String, messageId: String, transform: (ChatMessage) -> ChatMessage) {
+    /** Returns false when the session or the message no longer exists. */
+    fun updateMessage(sessionId: String, messageId: String, transform: (ChatMessage) -> ChatMessage): Boolean {
+        var found = false
         _messages.update { map ->
-            map + (sessionId to map[sessionId].orEmpty().map { if (it.id == messageId) transform(it) else it })
+            val list = map[sessionId]
+            found = list?.any { it.id == messageId } == true
+            if (!found) map else map + (sessionId to list!!.map { if (it.id == messageId) transform(it) else it })
         }
-        touch(sessionId)
+        if (found) touch(sessionId)
+        return found
     }
 
     // Regenerate in place: drop the target message and everything after,
@@ -79,13 +94,16 @@ class HoardRepository {
     }
 
     fun deleteMessage(sessionId: String, messageId: String) {
-        _messages.update { map -> map + (sessionId to map[sessionId].orEmpty().filterNot { it.id == messageId }) }
+        _messages.update { map ->
+            val list = map[sessionId] ?: return@update map
+            map + (sessionId to list.filterNot { it.id == messageId })
+        }
         touch(sessionId)
     }
 
     fun truncateAfter(sessionId: String, messageId: String) {
         _messages.update { map ->
-            val list = map[sessionId].orEmpty()
+            val list = map[sessionId] ?: return@update map
             val idx = list.indexOfFirst { it.id == messageId }
             if (idx < 0) map else map + (sessionId to list.take(idx + 1))
         }
