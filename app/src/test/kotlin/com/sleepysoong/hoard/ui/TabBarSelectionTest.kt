@@ -8,6 +8,8 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sleepysoong.hoard.MainActivity
 import com.sleepysoong.hoard.data.HoardRepository
@@ -68,5 +70,13 @@ class TabBarSelectionTest {
         onlySelected("세션")
         back()
         compose.waitForIdle()
+    }
+
+    /** Background replies are always on (product intent): Settings offers no switch. */
+    @Test fun settingsHasNoBackgroundReplyToggle() {
+        compose.onNodeWithTag("tab-설정").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("기본 컨텍스트").assertExists()
+        compose.onAllNodesWithText("백그라운드", substring = true).assertCountEquals(0)
     }
 }

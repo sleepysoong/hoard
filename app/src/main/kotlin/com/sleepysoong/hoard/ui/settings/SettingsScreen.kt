@@ -33,7 +33,6 @@ import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.parseContextLimit
 import com.sleepysoong.hoard.ui.glass.GlassTokenField
-import com.sleepysoong.hoard.ui.glass.GlassSwitch
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSectionHeader
@@ -105,28 +104,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 label = "새 세션의 컨텍스트",
                 modifier = Modifier.padding(12.dp)
             )
-        }
-
-        IOSSectionHeader("백그라운드")
-        IOSGroupedSection {
-            Row(
-                Modifier.fillMaxWidth().heightIn(min = 60.dp).padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Column(Modifier.weight(1f)) {
-                    Text("백그라운드 답변", style = MaterialTheme.typography.bodyLarge)
-                    Text(
-                        "앱을 나가도 답변을 계속 생성합니다 (목업 워커).",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant
-                    )
-                }
-                GlassSwitch(
-                    checked = settings.backgroundWork,
-                    onCheckedChange = { scope.launch { SettingsStore.setBackground(ctx, it) } }
-                )
-            }
         }
 
         IOSSectionHeader("정보")

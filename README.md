@@ -15,7 +15,8 @@ chat with **mock data only**: sending a message streams fake thinking + reply te
 - Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
-  foreground notification, so leaving the app after send still finishes the reply
+  foreground notification, so leaving the app after send still finishes the reply.
+  Always on by design — there is no setting to disable it.
 - Liquid glass everywhere via Backdrop 2.0.1 (`drawBackdrop` + `blur` + `lens`),
   glassmorphism fallback on older APIs / preview. **No gradients** — solid colors only.
 - Signed release APK via `.github/workflows/build-and-release.yml`:
