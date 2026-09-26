@@ -3,7 +3,6 @@ package com.sleepysoong.hoard.work
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
-import android.os.Build
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
 import androidx.work.CoroutineWorker
@@ -126,15 +125,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val notification = NotificationCompat.Builder(applicationContext, "hoard-replies")
             .setContentTitle("Hoard")
             .setContentText(text)
-            .setSmallIcon(android.R.drawable.sym_def_app_icon)
+            .setSmallIcon(R.drawable.ic_stat_hoard)
             .setOngoing(true)
             .setSilent(true)
             .build()
-        return if (Build.VERSION.SDK_INT >= 29) {
-            ForegroundInfo(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
-        } else {
-            ForegroundInfo(1, notification)
-        }
+        // minSdk 31: the typed constructor is always available.
+        return ForegroundInfo(1, notification, ServiceInfo.FOREGROUND_SERVICE_TYPE_DATA_SYNC)
     }
 
     private fun notifyDone(sessionId: String) {
@@ -142,7 +138,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val notification = NotificationCompat.Builder(applicationContext, "hoard-replies")
             .setContentTitle("Hoard — ${session.name}")
             .setContentText("답변이 준비됐습니다 (목업).")
-            .setSmallIcon(android.R.drawable.sym_def_app_icon)
+            .setSmallIcon(R.drawable.ic_stat_hoard)
             .setAutoCancel(true)
             .build()
         applicationContext.getSystemService(NotificationManager::class.java)

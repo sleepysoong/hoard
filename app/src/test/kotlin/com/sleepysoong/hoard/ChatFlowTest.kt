@@ -56,10 +56,9 @@ class ChatFlowTest {
         assertTrue("the other session stays empty", h.repo.messagesOf(other).isEmpty())
 
         val nm = h.app.getSystemService(NotificationManager::class.java)
-        assertTrue(
-            "completion notification posted",
-            shadowOf(nm).allNotifications.any { it.extras.getString("android.title")?.contains("환영") == true }
-        )
+        val done = shadowOf(nm).allNotifications.filter { it.extras.getString("android.title")?.contains("환영") == true }
+        assertEquals("completion notification posted once", 1, done.size)
+        assertEquals("app's own status icon, not the platform default", R.drawable.ic_stat_hoard, done.single().smallIcon.resId)
     }
 
     /** Builds welcome, U1, A1, U2, A2, U3, A3 in the active session. */

@@ -102,22 +102,20 @@ fun formatElapsed(ms: Long): String = when {
     else -> String.format("%d분 %d초", ms / 60_000, (ms % 60_000) / 1000)
 }
 
-/** Apple-style relative timestamp for list rows. */
+/** Apple-style relative timestamp for list rows. Day boundaries are calendar days in the local zone. */
 fun formatRelativeTime(epochMs: Long, now: Long = System.currentTimeMillis()): String {
     val diff = (now - epochMs).coerceAtLeast(0L)
     val minute = 60_000L
     val hour = 60 * minute
-    val day = 24 * hour
-    val cal = java.util.Calendar.getInstance().apply { timeInMillis = epochMs }
-    val nowCal = java.util.Calendar.getInstance().apply { timeInMillis = now }
+    val zone = java.time.ZoneId.systemDefault()
+    val date = java.time.Instant.ofEpochMilli(epochMs).atZone(zone).toLocalDate()
+    val today = java.time.Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
     return when {
         diff < minute -> "방금"
         diff < hour -> "${diff / minute}분 전"
-        diff < day && nowCal.get(java.util.Calendar.DAY_OF_YEAR) == cal.get(java.util.Calendar.DAY_OF_YEAR) ->
-            "${diff / hour}시간 전"
-        nowCal.get(java.util.Calendar.DAY_OF_YEAR) - cal.get(java.util.Calendar.DAY_OF_YEAR) == 1 -> "어제"
-        nowCal.get(java.util.Calendar.YEAR) == cal.get(java.util.Calendar.YEAR) ->
-            "${cal.get(java.util.Calendar.MONTH) + 1}월 ${cal.get(java.util.Calendar.DAY_OF_MONTH)}일"
-        else -> "${cal.get(java.util.Calendar.YEAR)}.${cal.get(java.util.Calendar.MONTH) + 1}.${cal.get(java.util.Calendar.DAY_OF_MONTH)}"
+        date == today -> "${diff / hour}시간 전"
+        date == today.minusDays(1) -> "어제"
+        date.year == today.year -> "${date.monthValue}월 ${date.dayOfMonth}일"
+        else -> "${date.year}.${date.monthValue}.${date.dayOfMonth}"
     }
 }
