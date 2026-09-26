@@ -5,6 +5,13 @@ on:
     branches:
       - main
 
+# Pushes that land while a release is building queue up instead of racing:
+# a concurrent run would bump from a stale version.properties and have its
+# version-bump push rejected (fetch first).
+concurrency:
+  group: release-main
+  cancel-in-progress: false
+
 jobs:
   release:
     runs-on: ubuntu-latest
@@ -15,6 +22,9 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
+          # Build the tip of main (includes the previous run's version bump),
+          # not the possibly stale triggering SHA.
+          ref: main
           fetch-depth: 0
 
       - name: Setup Java
