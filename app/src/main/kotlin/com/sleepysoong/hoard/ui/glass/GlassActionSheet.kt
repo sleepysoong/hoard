@@ -1,6 +1,15 @@
 package com.sleepysoong.hoard.ui.glass
 
 import androidx.activity.compose.BackHandler
+import androidx.compose.animation.core.Animatable
+import androidx.compose.foundation.LocalIndication
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.testTag
+import kotlinx.coroutines.launch
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -69,6 +78,12 @@ data class GlassSheetAction(
 )
 
 /**
+ * Inside a popup: play the exit animation, then run the given action.
+ * Use for every button/row that closes the popup so it never just vanishes.
+ */
+val LocalPopupCloser = staticCompositionLocalOf<(() -> Unit) -> Unit> { { it() } }
+
+/**
  * Shared anchor-aware glass overlay.
  *
  * In-window overlay (never a `Popup`) so the Backdrop shader stays valid:
@@ -93,14 +108,32 @@ fun GlassAnchoredOverlay(
     var placedY by remember { mutableStateOf(0) }
     var origin by remember { mutableStateOf(TransformOrigin(0.5f, 0.5f)) }
 
-    val appear by animateFloatAsState(
-        targetValue = 1f,
-        animationSpec = GlassMotion.springSnappy,
-        label = "anchor-overlay-appear"
-    )
+    // 0 = gone, 1 = at rest. Enters with a bouncy overshoot from the anchor, leaves
+    // fast without bounce; the caller's state only changes after the exit finishes.
+    val appear = remember { Animatable(0f, visibilityThreshold = GlassMotion.SCALE_THRESHOLD) }
+    val fade = remember { Animatable(0f) }
+    val scope = rememberCoroutineScope()
+    var closing by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        launch { fade.animateTo(1f, GlassMotion.fade()) }
+        appear.animateTo(1f, GlassMotion.bouncy())
+    }
+    val currentDismiss by rememberUpdatedState(onDismiss)
+    val closer: (() -> Unit) -> Unit = remember {
+        { after ->
+            if (!closing) {
+                closing = true
+                scope.launch {
+                    launch { fade.animateTo(0f, GlassMotion.leave()) }
+                    appear.animateTo(0f, GlassMotion.leave())
+                    after()
+                }
+            }
+        }
+    }
 
     // In-window overlay has no Dialog window to consume Back: close it here.
-    BackHandler(onBack = onDismiss)
+    BackHandler { closer { currentDismiss() } }
 
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val totalW = constraints.maxWidth.toFloat()
@@ -109,7 +142,7 @@ fun GlassAnchoredOverlay(
         Box(
             Modifier
                 .fillMaxSize()
-                .alpha(appear)
+                .graphicsLayer { alpha = fade.value }
                 // The overlay lives inside the padded NavHost; paint the scrim past
                 // our bounds so it reaches the screen edges instead of leaving a frame.
                 .drawBehind {
@@ -123,7 +156,7 @@ fun GlassAnchoredOverlay(
                 .clickable(
                     interactionSource = remember { MutableInteractionSource() },
                     indication = null,
-                    onClick = onDismiss
+                    onClick = { closer { currentDismiss() } }
                 )
         )
 
@@ -163,15 +196,21 @@ fun GlassAnchoredOverlay(
                     }
                 }
                 .offset { IntOffset(placedX, placedY) }
-                .alpha(appear)
                 .graphicsLayer {
-                    scaleX = 0.92f + 0.08f * appear
-                    scaleY = 0.92f + 0.08f * appear
+                    // Grows out of the pressed element; the spring's overshoot
+                    // makes it pop slightly past full size before settling.
+                    val p = appear.value
+                    scaleX = 0.82f + 0.18f * p
+                    scaleY = 0.82f + 0.18f * p
+                    alpha = fade.value
                     transformOrigin = origin
-                },
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            content = content
-        )
+                }
+                // After the layer so tests measure the animated (scaled) bounds.
+                .testTag("glass-popup"),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            CompositionLocalProvider(LocalPopupCloser provides closer) { content() }
+        }
     }
 }
 
@@ -274,15 +313,16 @@ private fun GlassPopupButtons(
     confirmEnabled: Boolean
 ) {
     val haptics = LocalHapticFeedback.current
+    val close = LocalPopupCloser.current
     Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
         GlassCapsuleButton(
-            onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onDismiss() },
+            onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); close { onDismiss() } },
             label = dismissLabel,
             modifier = Modifier.weight(1f)
         )
         if (confirmLabel != null && onConfirm != null) {
             GlassCapsuleButton(
-                onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); onConfirm() },
+                onClick = { haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove); close { onConfirm() } },
                 label = confirmLabel,
                 primary = !confirmDestructive,
                 destructive = confirmDestructive,
@@ -311,18 +351,22 @@ fun GlassPopupRow(
     icon: ImageVector? = null,
     subtitle: String? = null,
     destructive: Boolean = false,
-    selected: Boolean = false
+    selected: Boolean = false,
+    /** Play the popup's exit animation before [onClick] runs. */
+    closesPopup: Boolean = false
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
     val tint = if (destructive) scheme.error else scheme.onSurface
+    val close = LocalPopupCloser.current
+    val interaction = remember { MutableInteractionSource() }
     Row(
         Modifier
             .fillMaxWidth()
             .heightIn(min = 54.dp)
-            .clickable {
+            .clickable(interactionSource = interaction, indication = LocalIndication.current) {
                 haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                onClick()
+                if (closesPopup) close(onClick) else onClick()
             }
             .padding(horizontal = 16.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -363,6 +407,7 @@ fun GlassAnchoredMenu(
                 label = action.label,
                 icon = action.icon,
                 destructive = action.destructive,
+                closesPopup = true,
                 onClick = { onDismiss(); action.onClick() }
             )
         }

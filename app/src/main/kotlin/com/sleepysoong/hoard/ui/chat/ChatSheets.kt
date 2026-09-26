@@ -43,6 +43,7 @@ fun ModelPickerSheet(
                 label = model.displayName,
                 subtitle = "${model.vendor} · ${model.description}",
                 selected = model.id == currentModelId,
+                closesPopup = true,
                 onClick = { onPick(model.id); onDismiss() }
             )
         }

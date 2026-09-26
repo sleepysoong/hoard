@@ -45,6 +45,9 @@ object GlassMotion {
     fun sizeSmooth(): SpringSpec<IntSize> = spring(dampingRatio = 0.86f, stiffness = 420f, visibilityThreshold = IntSize(1, 1))
     fun offsetBouncy(): SpringSpec<IntOffset> = spring(dampingRatio = 0.72f, stiffness = 380f, visibilityThreshold = IntOffset(1, 1))
 
+    /** Leaving the screen: quick ease-in, no bounce (Apple dismissals never wobble). */
+    fun leave(): FiniteAnimationSpec<Float> = TweenSpec(170, easing = CubicBezierEasing(0.4f, 0f, 1f, 1f))
+
     /** Finger lifted: springs back past 1.0 and settles — the iOS rebound. */
     fun release(): SpringSpec<Float> = spring(dampingRatio = 0.5f, stiffness = 600f, visibilityThreshold = SCALE_THRESHOLD)
 

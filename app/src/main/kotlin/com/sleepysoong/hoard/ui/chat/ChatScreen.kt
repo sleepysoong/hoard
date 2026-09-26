@@ -290,12 +290,8 @@ fun ChatScreen(
         }
 
         // Liquid-glass popup, drawn in the same window so the shader stays valid.
-        GlassAnimatedVisibility(
-            visible = menuTarget != null,
-            enter = fadeIn(tween(140)),
-            exit = fadeOut(tween(120)),
-            modifier = Modifier.fillMaxSize()
-        ) {
+        // (GlassAnchoredOverlay animates its own entry and exit.)
+        run {
             if (menuTarget != null) {
                 val isUser = menuTarget.role == MessageRole.User
                 GlassAnchoredMenu(
