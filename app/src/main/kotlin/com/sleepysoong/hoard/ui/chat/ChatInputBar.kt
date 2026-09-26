@@ -257,7 +257,7 @@ fun ChatInputBar(
                         .clip(CircleShape)
                         .glassMaterial(
                             shape = CircleShape,
-                            tint = if (canSend) scheme.primaryContainer else scheme.surface,
+                            tint = if (canSend) scheme.primary else scheme.surface,
                             tone = if (canSend) GlassTone.Regular else GlassTone.Thin
                         )
                         .liquidClickable(enabled = canSend) { onSend() },
@@ -266,7 +266,7 @@ fun ChatInputBar(
                     Icon(
                         Icons.Rounded.ArrowUpward,
                         contentDescription = "보내기",
-                        tint = if (canSend) scheme.primary else scheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        tint = if (canSend) scheme.onPrimary else scheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(20.dp)
                     )
                 }
