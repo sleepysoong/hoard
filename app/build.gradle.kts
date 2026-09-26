@@ -76,7 +76,10 @@ android {
         unitTests {
             isIncludeAndroidResources = true
             all {
-                it.maxHeapSize = "1536m"
+                // Low-spec: one Robolectric JVM, small heap, serial GC, capped CPU use.
+                it.maxHeapSize = "1024m"
+                it.maxParallelForks = 1
+                it.jvmArgs("-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-XX:TieredStopAtLevel=1")
                 // Flow tests dump conversation transcripts here (reviewable artifact).
                 it.systemProperty("hoard.artifacts", layout.buildDirectory.dir("test-artifacts").get().asFile.path)
             }

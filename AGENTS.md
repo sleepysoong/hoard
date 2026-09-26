@@ -18,3 +18,15 @@ This project runs an Android app with heavy UI and platform constraints (Compose
 ## When nothing existed
 
 If a module already has no tests, write the E2E (or the narrowest meaningful integration) test that covers the feature being touched. Don’t backfill unit tests for legacy code.
+
+## Building & testing on the dev machine (low spec)
+
+The dev box is small (3 cores / 6 GB) and **freezes when a build or test run takes all of it.** Always build and test at reduced spec:
+
+- **Use `scripts/gradlew-lowspec.sh` instead of `./gradlew`.** It runs Gradle at the lowest CPU/IO priority (`nice 19`, `ionice idle`), with one worker, and stops the daemon afterwards so it doesn't keep ~1.5 GB resident.
+  - Tests: `scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q`
+  - One class: `scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q --tests '*PopupMotionTest'`
+  - APK: `scripts/gradlew-lowspec.sh :app:assembleDebug -q`
+- **Run the narrowest thing first.** Iterate with `--tests '*OneTest*'`; run the full suite once, at the end, before committing.
+- **Never combine heavy tasks in one invocation** (e.g. full test suite + assemble) and never start a second Gradle run while one is going.
+- Don't raise the limits in `gradle.properties` / `testOptions` (Gradle heap 1280m, one Robolectric fork with 1024m, serial GC, `ActiveProcessorCount=2`). If something runs out of memory, split the run instead.
