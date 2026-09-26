@@ -6,7 +6,12 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import com.sleepysoong.hoard.ui.glass.GlassMotion
+import com.sleepysoong.hoard.ui.glass.HoardTransitions
+import com.sleepysoong.hoard.ui.glass.HoardTransitions.screenCanvas
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
@@ -138,7 +143,7 @@ class MainActivity : ComponentActivity() {
                         imeVisible -> 0.dp
                         else -> navBarBottom + 108.dp
                     },
-                    animationSpec = tween(220),
+                    animationSpec = spring(dampingRatio = 0.86f, stiffness = 420f),
                     label = "bottom-reserve"
                 )
 
@@ -158,6 +163,12 @@ class MainActivity : ComponentActivity() {
                     NavHost(
                         navController = nav,
                         startDestination = "sessions",
+                        // iOS push: chat slides in from the right over a slightly receding
+                        // list; Back reverses it. Tabs swap with a soft scale-fade instead.
+                        enterTransition = { HoardTransitions.enter(initialState.destination.route, targetState.destination.route) },
+                        exitTransition = { HoardTransitions.exit(initialState.destination.route, targetState.destination.route) },
+                        popEnterTransition = { HoardTransitions.popEnter(initialState.destination.route, targetState.destination.route) },
+                        popExitTransition = { HoardTransitions.popExit(initialState.destination.route, targetState.destination.route) },
                         modifier = Modifier
                             .fillMaxSize()
                             .statusBarsPadding()
@@ -165,7 +176,7 @@ class MainActivity : ComponentActivity() {
                             .padding(horizontal = if (twoPane) 20.dp else 12.dp)
                             .padding(bottom = bottomReserve, top = 8.dp)
                     ) {
-                        composable("chat") {
+                        composable("chat") { Box(Modifier.fillMaxSize().screenCanvas()) {
                             if (twoPane) {
                                 Row(Modifier.fillMaxSize(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                                     Box(Modifier.width(360.dp).fillMaxHeight()) {
@@ -183,18 +194,23 @@ class MainActivity : ComponentActivity() {
                             } else {
                                 ChatScreen(vm, showBackButton = true, onBack = { backToSessions() })
                             }
-                        }
-                        composable("sessions") {
+                        } }
+                        composable("sessions") { Box(Modifier.fillMaxSize().screenCanvas()) {
                             SessionsScreen(vm, onOpenChat = { openChat() })
-                        }
-                        composable("tools") { ToolsScreen() }
-                        composable("settings") { SettingsScreen() }
+                        } }
+                        composable("tools") { Box(Modifier.fillMaxSize().screenCanvas()) { ToolsScreen() } }
+                        composable("settings") { Box(Modifier.fillMaxSize().screenCanvas()) { SettingsScreen() } }
                     }
                     // Interactive liquid bottom tabs — only outside the chat composer.
                     AnimatedVisibility(
                         visible = showTabBar,
-                        enter = fadeIn(tween(180)) + slideInVertically(tween(220)) { it / 2 },
-                        exit = fadeOut(tween(140)) + slideOutVertically(tween(200)) { it / 2 },
+                        // Rises from below with a gentle bounce; drops away quickly.
+                        enter = fadeIn(GlassMotion.fade()) +
+                            slideInVertically(GlassMotion.offsetBouncy()) { it } +
+                            scaleIn(GlassMotion.bouncy(), initialScale = 0.9f),
+                        exit = fadeOut(GlassMotion.fade()) +
+                            slideOutVertically(GlassMotion.offsetSmooth()) { it } +
+                            scaleOut(GlassMotion.exit(), targetScale = 0.94f),
                         modifier = Modifier.align(Alignment.BottomCenter)
                     ) {
                         GlassBottomBar(
