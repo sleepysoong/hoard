@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,8 +18,6 @@ import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.ui.Alignment
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,38 +46,74 @@ fun ModelPickerSheet(
     onPick: (String) -> Unit,
     onDismiss: () -> Unit
 ) {
-    // Anchored glass popup (same overlay as settings/long-press menu).
+    val scheme = MaterialTheme.colorScheme
+    val cornerRad = 20.dp
+    // Anchored glass popup — same overlay as settings / long-press menu.
+    // Content must be wrapped in a glass card, not float free.
     GlassAnchoredOverlay(anchor = anchor, onDismiss = onDismiss) {
-        Text("모델 선택", style = MaterialTheme.typography.titleLarge)
-        Text(
-            "응답은 목업 데이터로 생성됩니다.",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            items(MockData.models, key = { it.id }) { model ->
+        // Header card
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(cornerRad))
+                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
+                .padding(horizontal = 18.dp, vertical = 14.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text("모델 선택", style = MaterialTheme.typography.headlineSmall, maxLines = 1)
+                Text(
+                    "응답은 목업 데이터로 생성됩니다.",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = scheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
+        }
+
+        // Model list card
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(cornerRad))
+                .glassMaterial(RoundedCornerShape(cornerRad), scheme.surface)
+                .padding(vertical = 4.dp)
+        ) {
+            MockData.models.forEachIndexed { i, model ->
+                if (i > 0) {
+                    HorizontalDivider(
+                        modifier = Modifier.padding(start = 16.dp),
+                        thickness = 0.5.dp,
+                        color = scheme.onSurface.copy(alpha = 0.12f)
+                    )
+                }
                 val selected = model.id == currentModelId
                 Row(
                     Modifier
                         .fillMaxWidth()
-                        .liquidClickable { onPick(model.id); onDismiss() }
-                        .padding(horizontal = 4.dp, vertical = 10.dp),
+                        .heightIn(min = 52.dp)
+                        .clickable {
+                            onPick(model.id)
+                            onDismiss()
+                        }
+                        .padding(horizontal = 16.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(model.displayName, style = MaterialTheme.typography.bodyLarge)
+                        Text(model.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
                         Text(
                             "${model.vendor} · ${model.description}",
                             style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            color = scheme.onSurfaceVariant,
+                            maxLines = 1
                         )
                     }
                     if (selected) {
                         Icon(
                             Icons.Rounded.Check,
                             contentDescription = "선택됨",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = scheme.primary,
                             modifier = Modifier.size(20.dp)
                         )
                     }

@@ -67,6 +67,17 @@ class HoardRepository {
         touch(sessionId)
     }
 
+    // Regenerate in place: drop the target message and everything after,
+    // then stream a new response at that same spot.
+    fun replaceSessionTail(sessionId: String, fromIndex: Int) {
+        _messages.update { map ->
+            map[sessionId]?.let { full ->
+                if (fromIndex < full.size) map + (sessionId to full.take(fromIndex)) else map
+            } ?: map
+        }
+        touch(sessionId)
+    }
+
     fun deleteMessage(sessionId: String, messageId: String) {
         _messages.update { map -> map + (sessionId to map[sessionId].orEmpty().filterNot { it.id == messageId }) }
         touch(sessionId)

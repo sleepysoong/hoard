@@ -108,10 +108,15 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun retryFrom(messageId: String) {
         val state = uiState.value
         val session = state.session ?: return
-        val msg = state.messages.firstOrNull { it.id == messageId } ?: return
-        val prompt = if (msg.role == MessageRole.User) msg.text else {
-            state.messages.lastOrNull { it.role == MessageRole.User }?.text.orEmpty()
-        }
+        val messages = state.messages
+        val idx = messages.indexOfFirst { it.id == messageId }
+        if (idx < 0) return
+        val prompt = messages.asSequence().drop(idx + 1).lastOrNull { it.role == MessageRole.User }?.text
+            ?: messages.withIndex().firstOrNull { it.index <= idx && it.value.role == MessageRole.User }?.value?.text
+            ?: return
+        // Remove the old reply (same position) and everything after; then
+        // regenerate at that same spot.
+        repo.replaceSessionTail(session.id, idx)
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(getApplication(), session.id, prompt, session.modelId, replyId, false)
     }
