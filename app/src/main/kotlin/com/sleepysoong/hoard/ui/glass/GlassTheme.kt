@@ -178,20 +178,17 @@ internal fun Modifier.glassMaterial(
                 colorControls(saturation = 1.06f, brightness = if (dark) 0f else 0.015f)
                 blur(spec.blur.toPx())
                 if (mode == GlassMode.Full) {
+                    // depthEffect off — keeps the tint from becoming a white
+                    // band at the card edge (the "painted white bottom" artifact).
                     lens(
                         refractionHeight = minOf(spec.lensHeight.toPx(), size.minDimension / 2.6f),
-                        refractionAmount = minOf(spec.lensAmount.toPx(), size.minDimension * 0.45f)
+                        refractionAmount = minOf(spec.lensAmount.toPx(), size.minDimension * 0.45f),
+                        depthEffect = false,
+                        chromaticAberration = false
                     )
                 }
             },
-            highlight = {
-                // Plain rim specular only — the Default style paints an angled
-                // wash across the surface and would turn the lower half of the
-                // card into a "white-painted" look (against the design rule).
-                Highlight.Plain.copy(
-                    alpha = if (enabled) (if (dark) 0.16f else 0.22f) else 0.06f
-                )
-            },
+            highlight = null,  // specular washes the tint into a white sheen on light; rim/outline carries the surface instead
             shadow = if (lifted) {
                 {
                     Shadow(
@@ -202,7 +199,7 @@ internal fun Modifier.glassMaterial(
                     )
                 }
             } else null,
-            innerShadow = if (enabled) {
+            innerShadow = if (enabled && tone != GlassTone.Thin) {
                 {
                     InnerShadow(
                         radius = 10.dp,
