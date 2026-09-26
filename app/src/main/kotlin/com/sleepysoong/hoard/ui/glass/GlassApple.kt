@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
@@ -122,12 +123,9 @@ fun IOSGroupedSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(12.dp),
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface
-    ) {
+    // Same glass card as everywhere else. An opaque Surface here was flat white on
+    // the white canvas and painted over the shadow of whatever sat above it.
+    GlassSurface(modifier = modifier.fillMaxWidth(), shape = RoundedCornerShape(GlassTokens.cardRadius)) {
         androidx.compose.foundation.layout.Column(content = content)
     }
 }

@@ -63,6 +63,12 @@ object GlassTokens {
     val modalActionHeight: Dp = 54.dp
     /** Max width of every popup (menus, pickers, dialogs). */
     val popupWidth: Dp = 360.dp
+    /**
+     * How far a lifted card's drop shadow reaches below it (radius 18 + offset 6).
+     * Scrolling containers clip at their edges, so pad them by this much or the
+     * shadow is cut into a hard line ("painted white" band under the last card).
+     */
+    val shadowBleed: Dp = 24.dp
 }
 
 /** Always choose the strongest effect supported by the running Android version. */

@@ -102,9 +102,12 @@ fun SessionsScreen(
                     color = scheme.onSurfaceVariant,
                     modifier = Modifier.padding(start = 6.dp)
                 )
+                // Fill the rest of the screen: a wrap-content list would end (and
+                // clip) right under the last card, cutting its shadow off.
                 LazyColumn(
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
-                    contentPadding = PaddingValues(bottom = 12.dp)
+                    contentPadding = PaddingValues(bottom = GlassTokens.shadowBleed)
                 ) {
                     items(state.sessions, key = { it.id }) { s ->
                         SessionCard(

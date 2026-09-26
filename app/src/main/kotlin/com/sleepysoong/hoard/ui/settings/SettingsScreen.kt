@@ -33,6 +33,7 @@ import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.parseContextLimit
 import com.sleepysoong.hoard.ui.glass.GlassTokenField
+import com.sleepysoong.hoard.ui.glass.GlassTokens
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSectionHeader
@@ -50,7 +51,10 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val themeIndex = listOf("system", "light", "dark").indexOf(settings.theme).coerceAtLeast(0)
 
-    Column(modifier.fillMaxSize().verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Column(
+        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = GlassTokens.shadowBleed),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         LargeTitle("설정", modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
 
         IOSSectionHeader("화면 스타일")

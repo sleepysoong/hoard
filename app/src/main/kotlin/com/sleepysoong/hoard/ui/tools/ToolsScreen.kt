@@ -32,6 +32,7 @@ import com.sleepysoong.hoard.ui.glass.GlassPopup
 import com.sleepysoong.hoard.ui.glass.GlassSecondaryButton
 import com.sleepysoong.hoard.ui.glass.GlassSwitch
 import com.sleepysoong.hoard.ui.glass.GlassTextField
+import com.sleepysoong.hoard.ui.glass.GlassTokens
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
@@ -60,7 +61,8 @@ fun ToolsScreen(modifier: Modifier = Modifier) {
             onSelect = { tab = it },
             modifier = Modifier.fillMaxWidth()
         )
-        Column(Modifier.weight(1f).verticalScroll(rememberScrollState())) {
+        // Bottom padding = shadow reach, so the last card's shadow isn't clipped at the scroll end.
+        Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(top = 4.dp, bottom = GlassTokens.shadowBleed)) {
             when (tab) {
                 0 -> McpTab(repo)
                 1 -> {
