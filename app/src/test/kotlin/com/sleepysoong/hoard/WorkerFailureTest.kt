@@ -43,7 +43,7 @@ class WorkerFailureTest {
         MockAiEngine.faultInjector = { _, i -> if (i == 4 && failures++ == 0) throw IOException("network down") }
 
         h.vm.send("끊겼다가 다시 이어지는 답변", emptyList(), "hoard-1-pro")
-        h.idle()
+        h.awaitNoRunningWork()
         h.snapshot("after first failed attempt")
         assertEquals(1, replies().size)
         assertFalse("failed attempt must not keep spinning", replies().single().isStreaming)
@@ -106,7 +106,7 @@ class WorkerFailureTest {
         MockAiEngine.faultInjector = { _, i -> if (i == 1 && failures++ == 0) throw IOException("blip") }
 
         h.vm.send("삭제될 답변", emptyList(), "hoard-1-pro")
-        h.idle()
+        h.awaitNoRunningWork()
         val failed = replies().single()
         h.vm.deleteMessage(failed.id)
         h.snapshot("deleted during backoff")

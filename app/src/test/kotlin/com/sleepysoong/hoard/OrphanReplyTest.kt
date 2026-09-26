@@ -59,7 +59,7 @@ class OrphanReplyTest {
         MockAiEngine.faultInjector = { _, i -> if (i == 0 && failures++ == 0) throw IOException("blip") }
         val session = h.vm.newSession("곧 사라질 세션")
         h.vm.send("프로세스가 죽기 전에 보낸 질문", emptyList(), "hoard-1-pro")
-        h.idle()
+        h.awaitNoRunningWork()
         h.snapshot("before death", session)
 
         h.simulateProcessDeath()

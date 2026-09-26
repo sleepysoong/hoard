@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 
 private val Context.prefs by preferencesDataStore("hoard-settings")
@@ -37,4 +38,9 @@ object SettingsStore {
     suspend fun setDefaultModel(ctx: Context, v: String) { ctx.prefs.edit { it[DEFAULT_MODEL] = v } }
     suspend fun setDefaultContext(ctx: Context, v: Int) { ctx.prefs.edit { it[DEFAULT_CONTEXT] = v } }
     suspend fun setBackground(ctx: Context, v: Boolean) { ctx.prefs.edit { it[BACKGROUND] = v } }
+
+    suspend fun current(ctx: Context): Settings = flow(ctx).first()
+
+    /** Back to factory defaults. */
+    suspend fun reset(ctx: Context) { ctx.prefs.edit { it.clear() } }
 }

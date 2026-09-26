@@ -10,6 +10,7 @@ import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.UiAttachment
 import com.sleepysoong.hoard.work.ChatResponseWorker
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +39,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = HoardRepository.get()
     private val _activeSessionId = MutableStateFlow(repo.sessions.value.firstOrNull()?.id ?: "")
 
+    val settings: StateFlow<SettingsStore.Settings> = SettingsStore.flow(app)
+        .stateIn(viewModelScope, SharingStarted.Eagerly, SettingsStore.Settings())
+
     /** Draft + attachments live in the ViewModel so folding/unfolding never loses them. */
     var input by mutableStateOf("")
     var attachments by mutableStateOf<List<UiAttachment>>(emptyList())
@@ -63,11 +67,16 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun selectSession(id: String) { _activeSessionId.value = id }
 
+    /** New sessions start from the defaults chosen in Settings. */
     fun newSession(name: String = "새 세션"): String {
-        val base = uiState.value.session
-        val s = repo.createSession(name, base)
+        val s = createDefaultSession(name)
         _activeSessionId.value = s.id
         return s.id
+    }
+
+    private fun createDefaultSession(name: String = "새 세션"): ChatSession {
+        val d = settings.value
+        return repo.createSession(name, modelId = d.defaultModel, contextLimit = d.defaultContext)
     }
 
     fun send(text: String, attachments: List<UiAttachment>, modelId: String) {
@@ -152,7 +161,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         repo.deleteSession(id)
         viewModelScope.launch {
             val remaining = repo.sessions.value
-            _activeSessionId.value = remaining.firstOrNull()?.id ?: repo.createSession().id
+            _activeSessionId.value = remaining.firstOrNull()?.id ?: createDefaultSession().id
         }
     }
 

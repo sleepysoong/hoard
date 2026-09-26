@@ -29,13 +29,17 @@ class HoardRepository {
 
     fun sessionOf(sessionId: String): ChatSession? = _sessions.value.firstOrNull { it.id == sessionId }
 
-    fun createSession(name: String = "새 세션", copyFrom: ChatSession? = null): ChatSession {
+    fun createSession(
+        name: String = "새 세션",
+        modelId: String = MockData.models[1].id,
+        contextLimit: Int = 32_000
+    ): ChatSession {
         val s = ChatSession(
             id = "session-" + UUID.randomUUID().toString().take(8),
             name = name,
-            systemPrompt = copyFrom?.systemPrompt ?: MockData.DEFAULT_SYSTEM_PROMPT,
-            modelId = copyFrom?.modelId ?: MockData.models[1].id,
-            contextLimit = copyFrom?.contextLimit ?: 32_000
+            systemPrompt = MockData.DEFAULT_SYSTEM_PROMPT,
+            modelId = modelId,
+            contextLimit = contextLimit
         )
         _sessions.update { listOf(s) + it }
         _messages.update { it + (s.id to emptyList()) }

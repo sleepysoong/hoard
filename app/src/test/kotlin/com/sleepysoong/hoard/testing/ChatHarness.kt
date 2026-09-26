@@ -13,6 +13,8 @@ import androidx.work.testing.SynchronousExecutor
 import androidx.work.testing.WorkManagerTestInitHelper
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.HoardRepository
+import com.sleepysoong.hoard.data.SettingsStore
+import kotlinx.coroutines.runBlocking
 import com.sleepysoong.hoard.engine.MockAiEngine
 import com.sleepysoong.hoard.ui.chat.ChatViewModel
 import org.robolectric.Shadows.shadowOf
@@ -33,6 +35,7 @@ class ChatHarness(pace: Float = 0f) {
 
     init {
         HoardRepository.resetForTests()
+        runBlocking { SettingsStore.reset(app) }
         MockAiEngine.pace = pace
         MockAiEngine.faultInjector = null
         WorkManagerTestInitHelper.initializeTestWorkManager(
@@ -85,9 +88,22 @@ class ChatHarness(pace: Float = 0f) {
 
     /** Fast-forwards WorkManager backoff so every retried reply runs its next attempt now. */
     fun fireBackoff() {
+        awaitNoRunningWork()
         val driver = WorkManagerTestInitHelper.getTestDriver(app)!!
         workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.ENQUEUED)).get()
             .forEach { driver.setInitialDelayMet(it.id) }
+        idle()
+    }
+
+    /** Waits until the current attempt of every reply has ended (succeeded, failed, or backing off). */
+    fun awaitNoRunningWork(timeoutMs: Long = 10_000) {
+        val deadline = System.currentTimeMillis() + timeoutMs
+        while (workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.RUNNING)).get().isNotEmpty() ||
+            repo.messages.value.values.flatten().any { it.isStreaming }
+        ) {
+            idle(); Thread.sleep(5)
+            check(System.currentTimeMillis() < deadline) { "attempt did not end" }
+        }
         idle()
     }
 

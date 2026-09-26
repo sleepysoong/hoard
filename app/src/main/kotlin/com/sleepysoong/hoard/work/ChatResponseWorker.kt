@@ -17,6 +17,7 @@ import com.sleepysoong.hoard.R
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.engine.MockAiEngine
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -52,6 +53,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // Nobody is waiting for this reply any more: finish quietly, never resurrect it.
         if (!hasTarget) return Result.success()
 
+        // Background replies off: no foreground service, and HoardApp cancels the
+        // reply when the app leaves the screen.
+        val background = SettingsStore.current(applicationContext).backgroundWork
+        val promote: suspend (String) -> Unit = { if (background) promote(it) }
+
         return try {
             promote("Hoard가 생각 중…")
             MockAiEngine.streamReply(prompt, modelId, hasAttachments) { ev ->
@@ -69,7 +75,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 if (!written) throw TargetGone()
                 if (!ev.done) promote("Hoard가 답변 중…")
             }
-            notifyDone(sessionId)
+            if (background) notifyDone(sessionId)
             Result.success()
         } catch (_: TargetGone) {
             Result.success()
@@ -169,6 +175,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .addTag("hoard-reply-$sessionId")
+                .addTag(TAG_ALL)
                 .build()
             // One reply at a time per session, in send order. Regenerate/edit rewrites the
             // tail, so whatever was running or queued for the old tail is replaced.
@@ -177,6 +184,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 if (replacePending) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
                 req
             )
+        }
+
+        /** Every reply, in every session. */
+        const val TAG_ALL = "hoard-reply"
+
+        fun cancelAll(ctx: Context) {
+            WorkManager.getInstance(ctx).cancelAllWorkByTag(TAG_ALL)
         }
 
         fun cancel(ctx: Context, sessionId: String) {
