@@ -13,3 +13,4 @@ captures/
 .idea/
 *.iml
 .DS_Store
+.kotlin/

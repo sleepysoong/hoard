@@ -20,7 +20,10 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -28,7 +31,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.SettingsStore
-import com.sleepysoong.hoard.ui.glass.GlassSlider
+import com.sleepysoong.hoard.data.parseContextLimit
+import com.sleepysoong.hoard.ui.glass.GlassTokenField
 import com.sleepysoong.hoard.ui.glass.GlassSwitch
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
@@ -44,7 +48,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val settings by SettingsStore.flow(ctx).collectAsState(SettingsStore.Settings())
-    val options = listOf(4_000, 8_000, 16_000, 32_000, 64_000, 128_000)
     val scheme = MaterialTheme.colorScheme
     val themeIndex = listOf("system", "light", "dark").indexOf(settings.theme).coerceAtLeast(0)
 
@@ -88,19 +91,20 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         IOSSectionHeader("기본 컨텍스트")
         IOSGroupedSection {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text("토큰 상한", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                    Text("${settings.defaultContext}", style = MaterialTheme.typography.bodyLarge, color = scheme.onSurfaceVariant)
-                }
-                val idx = options.indexOf(settings.defaultContext).coerceAtLeast(0)
-                GlassSlider(
-                    value = idx.toFloat(),
-                    onValueChange = { scope.launch { SettingsStore.setDefaultContext(ctx, options[it.toInt().coerceIn(0, options.lastIndex)]) } },
-                    valueRange = 0f..options.lastIndex.toFloat(),
-                    steps = options.size - 2
-                )
-            }
+            // Typed, saved as soon as the number is valid (new sessions start with it).
+            var contextText by rememberSaveable { mutableStateOf<String?>(null) }
+            val shown = contextText ?: settings.defaultContext.toString()
+            val parsed = parseContextLimit(shown)
+            GlassTokenField(
+                value = shown,
+                onValueChange = { text ->
+                    contextText = text
+                    parseContextLimit(text)?.let { scope.launch { SettingsStore.setDefaultContext(ctx, it) } }
+                },
+                valid = parsed != null,
+                label = "새 세션의 컨텍스트",
+                modifier = Modifier.padding(12.dp)
+            )
         }
 
         IOSSectionHeader("백그라운드")

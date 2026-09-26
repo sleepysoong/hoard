@@ -94,6 +94,13 @@ data class SlashCommand(
     val hint: String
 )
 
+/** Allowed context window range (tokens) for typed input. */
+val CONTEXT_LIMIT_RANGE = 1_000..2_000_000
+
+/** Parses a typed context limit ("32000", "32,000"); null when not a number or out of range. */
+fun parseContextLimit(text: String): Int? =
+    text.filterNot { it == ',' || it.isWhitespace() }.toIntOrNull()?.takeIf { it in CONTEXT_LIMIT_RANGE }
+
 fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
 
 fun formatElapsed(ms: Long): String = when {

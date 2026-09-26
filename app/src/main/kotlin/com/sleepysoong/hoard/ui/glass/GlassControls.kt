@@ -38,6 +38,8 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.ui.theme.IOSGreen
@@ -236,6 +238,35 @@ fun GlassTextField(
             focusedLabelColor = scheme.primary,
             unfocusedLabelColor = scheme.onSurfaceVariant
         )
+    )
+}
+
+/**
+ * Token-count input (context window). Digits only, number keyboard, "토큰" suffix,
+ * inline error when [valid] is false. Shared by session settings and Settings.
+ */
+@Composable
+fun GlassTokenField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    valid: Boolean,
+    modifier: Modifier = Modifier,
+    label: String = "컨텍스트",
+    errorText: String = "1,000 ~ 2,000,000 사이 숫자",
+    imeAction: ImeAction = ImeAction.Done,
+    onDone: (() -> Unit)? = null
+) {
+    GlassTextField(
+        value = value,
+        onValueChange = { onValueChange(it.filter(Char::isDigit).take(7)) },
+        modifier = modifier,
+        label = { Text(label) },
+        trailingIcon = { Text("토큰", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+        supportingText = if (!valid) { { Text(errorText) } } else null,
+        isError = !valid,
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = imeAction),
+        keyboardActions = KeyboardActions(onDone = { onDone?.invoke() })
     )
 }
 

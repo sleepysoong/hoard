@@ -2,7 +2,13 @@ package com.sleepysoong.hoard.ui
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.performTextReplacement
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.longClick
 import androidx.compose.ui.test.onAllNodesWithText
@@ -68,6 +74,25 @@ open class PopupScreenshotTest {
         shot("session-settings")
         compose.onNodeWithText("취소").performClick()
         assertClosed("세션 설정")
+    }
+
+    @Test fun contextLimitIsTypedNotSlid() {
+        compose.onNodeWithContentDescription("세션 설정").performClick()
+        compose.onAllNodes(hasSetTextAction() and hasText("32000")).assertCountEquals(1)
+        val field = compose.onNode(hasSetTextAction() and hasText("컨텍스트"))
+
+        // Out of range / not a number → error shown, save disabled.
+        field.performTextReplacement("12")
+        shot("session-settings-context-invalid")
+        compose.onNodeWithText("저장").assertIsNotEnabled()
+        field.performTextReplacement("abc")
+        compose.onNodeWithText("저장").assertIsNotEnabled()
+
+        field.performTextReplacement("50000")
+        compose.onNodeWithText("저장").assertIsEnabled().performClick()
+        compose.waitForIdle()
+        check(HoardRepository.get().sessionOf("session-welcome")!!.contextLimit == 50_000)
+        compose.onNodeWithText("/50000 토큰", substring = true).assertExists()
     }
 
     @Test fun modelPicker() {
