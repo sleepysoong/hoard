@@ -15,7 +15,7 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
-import androidx.compose.foundation.isSystemInDarkTheme
+import com.sleepysoong.hoard.ui.theme.LocalHoardDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -154,7 +154,7 @@ fun IOSSegmentedControl(
 ) {
     if (options.isEmpty()) return
     val scheme = MaterialTheme.colorScheme
-    val dark = isSystemInDarkTheme()
+    val dark = LocalHoardDarkTheme.current
     BoxWithConstraints(
         modifier
             .height(36.dp)

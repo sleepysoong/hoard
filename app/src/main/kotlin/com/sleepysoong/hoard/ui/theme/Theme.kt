@@ -1,6 +1,8 @@
 package com.sleepysoong.hoard.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Shapes
@@ -84,6 +86,12 @@ val HoardShapes = Shapes(
     extraLarge = RoundedCornerShape(20.dp)
 )
 
+/**
+ * Whether the *app* is dark (설정 → 화면 스타일), which can differ from the phone.
+ * Read this — never isSystemInDarkTheme() — anywhere colours depend on the theme.
+ */
+val LocalHoardDarkTheme = staticCompositionLocalOf { false }
+
 @Composable
 fun HoardTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
@@ -94,8 +102,10 @@ fun HoardTheme(
         shapes = HoardShapes,
         typography = HoardTypography,
         content = {
-            GlassTheme {
-                GlassHost { content() }
+            CompositionLocalProvider(LocalHoardDarkTheme provides darkTheme) {
+                GlassTheme {
+                    GlassHost { content() }
+                }
             }
         }
     )

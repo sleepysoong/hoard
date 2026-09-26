@@ -8,7 +8,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.isSystemInDarkTheme
+import com.sleepysoong.hoard.ui.theme.LocalHoardDarkTheme
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.fillMaxSize
@@ -157,7 +157,7 @@ internal fun Modifier.glassMaterial(
     val backdrop = LocalGlassBackdrop.current
     val mode = LocalGlassMode.current
     val scheme = MaterialTheme.colorScheme
-    val dark = isSystemInDarkTheme()
+    val dark = LocalHoardDarkTheme.current
     val spec = specFor(tone, mode, dark)
     val surface = if (enabled) tint else scheme.surfaceContainerHighest
     val alpha = if (enabled) spec.tintAlpha else 0f
