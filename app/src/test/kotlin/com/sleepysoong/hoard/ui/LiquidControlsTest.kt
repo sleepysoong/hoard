@@ -114,6 +114,21 @@ class LiquidControlsTest {
         }
     }
 
+    /** At rest the thumb is glass: the green track shows through it (not an opaque white knob). */
+    @Test fun switchThumbIsGlassAtRest() {
+        checked = true
+        content()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        shot("light-rest-switch-on")
+        val b = compose.onNodeWithTag("switch-thumb", useUnmergedTree = true).fetchSemanticsNode().boundsInRoot
+        val bmp = compose.onRoot().captureToImage().asAndroidBitmap()
+        val c = bmp.getPixel(b.center.x.toInt(), b.center.y.toInt())
+        val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val bl = c and 0xFF
+        assertTrue("thumb centre shows the green track through the glass: rgb=($r,$g,$bl)", g - r > 25 && g - bl > 25)
+        assertTrue("…but frosted, lighter than the raw track: g=$g r=$r", r > 80)
+    }
+
     @Test fun switchThumbSwellsIntoGlassWhilePressed() {
         content()
         compose.waitForIdle()

@@ -102,6 +102,12 @@ private fun Modifier.liquidThumb(
      */
     squeezeTrack: Boolean = true,
     /**
+     * Glass at rest too: a frosted lens that shows the track through it, with a
+     * specular rim. Off = Kyant's original (solid white at rest, glass only when
+     * pressed), which reads as the old opaque iOS knob.
+     */
+    glassAtRest: Boolean = false,
+    /**
      * Scale/stretch of the thumb. Must go through drawBackdrop's layerBlock, not an
      * outer graphicsLayer: an outer scale is invisible to the backdrop's position
      * mapping, so the refracted track would be drawn shifted inside the lens.
@@ -116,14 +122,24 @@ private fun Modifier.liquidThumb(
             .graphicsLayer(layerBlock)
             .shadow(3.dp, shape, clip = false)
             .clip(shape)
-            .drawBehind { drawRect(restColor.copy(alpha = 1f - 0.45f * press())) }
+            .drawBehind { drawRect(restColor.copy(alpha = (if (glassAtRest) 0.75f else 1f) - 0.45f * press())) }
     }
     val refracted = rememberCombinedBackdrop(
         global,
         rememberBackdrop(trackLayer) { drawTrack ->
             // At rest the track is squeezed away (solid thumb); pressed, it fills the lens.
             val p = press()
-            if (squeezeTrack) scale(0.667f + 0.083f * p, 0.75f * p) { drawTrack() } else drawTrack()
+            when {
+                // Glass at rest: the lens looks straight through at the track, squeezing in
+                // only as it's pressed (squeezing at rest pulls the void past the track's
+                // edge into the thumb as a grey crescent).
+                glassAtRest -> {
+                    val k = 1f - 0.25f * p
+                    scale(k, k) { drawTrack() }
+                }
+                squeezeTrack -> scale(0.667f + 0.083f * p, 0.75f * p) { drawTrack() }
+                else -> drawTrack()
+            }
         }
     )
     return drawBackdrop(
@@ -131,11 +147,13 @@ private fun Modifier.liquidThumb(
         shape = { shape },
         effects = {
             val p = press()
-            blur(8.dp.toPx() * (1f - p))
+            // At rest (glassAtRest): lightly frosted lens; pressed: clear, stronger lens.
+            val rest = if (glassAtRest) 1f else 0f
+            blur(if (glassAtRest) 2.dp.toPx() * (1f - p) else 8.dp.toPx() * (1f - p))
             if (mode == GlassMode.Full) {
                 lens(
-                    refractionHeight = 5.dp.toPx() * p,
-                    refractionAmount = 10.dp.toPx() * p,
+                    refractionHeight = (4.dp.toPx() * rest * (1f - p)) + 5.dp.toPx() * p,
+                    refractionAmount = (2.dp.toPx() * rest * (1f - p)) + 10.dp.toPx() * p,
                     depthEffect = false,
                     chromaticAberration = true
                 )
@@ -143,16 +161,23 @@ private fun Modifier.liquidThumb(
         },
         highlight = {
             val p = press()
-            Highlight.Ambient.copy(
+            // Glass at rest carries a full-strength specular rim — that's what reads as glass
+            // on a flat track; Kyant's pressed-only rim is thinner.
+            if (glassAtRest) Highlight.Default.copy(alpha = 0.9f + 0.1f * p)
+            else Highlight.Ambient.copy(
                 width = Highlight.Ambient.width / 1.5f,
                 blurRadius = Highlight.Ambient.blurRadius / 1.5f,
                 alpha = p
             )
         },
         shadow = { Shadow(radius = 4.dp, offset = DpOffset(0.dp, 1.dp), color = Color.Black, alpha = 0.14f) },
-        innerShadow = { InnerShadow(radius = 4.dp * press(), offset = DpOffset(0.dp, 1.dp), color = Color.Black, alpha = press()) },
+        innerShadow = {
+            val k = if (glassAtRest) 0.35f + 0.65f * press() else press()
+            InnerShadow(radius = 4.dp * k, offset = DpOffset(0.dp, 1.dp), color = Color.Black, alpha = k)
+        },
         layerBlock = layerBlock,
-        onDrawSurface = { drawRect(restColor.copy(alpha = 1f - press())) }
+        // glassAtRest: milky-white frost (still see-through), thinning as it's pressed.
+        onDrawSurface = { drawRect(restColor.copy(alpha = if (glassAtRest) 0.42f * (1f - press()) + 0.08f else 1f - press())) }
     )
 }
 
@@ -242,6 +267,8 @@ fun GlassSwitch(
             ),
         contentAlignment = Alignment.CenterStart
     ) {
+        // Glass under the track, so the (translucent) off state is glass, not flat grey.
+        Box(Modifier.matchParentSize().glassMaterial(Capsule, MaterialTheme.colorScheme.surface, GlassTone.Thin, lifted = false))
         // Track — recorded so the liquid thumb can refract it.
         Box(
             Modifier
@@ -255,7 +282,7 @@ fun GlassSwitch(
                 .graphicsLayer { translationX = 2.dp.toPx() + travel.toPx() * fraction.value }
                 .testTag("switch-thumb")
                 .size(thumbW, thumbH)
-                .liquidThumb(trackLayer, press = { press.value }, restColor = Color.White) {
+                .liquidThumb(trackLayer, press = { press.value }, restColor = Color.White, glassAtRest = true) {
                     // Swell while pressed (1 → 1.5) and stretch with speed, like a drop.
                     val s = 1f + 0.5f * press.value
                     val v = (fraction.velocity / 12f).coerceIn(-0.2f, 0.2f)
