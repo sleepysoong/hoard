@@ -27,7 +27,10 @@ The dev box is small (3 cores / 6 GB) and **freezes when a build or test run tak
   - Tests: `scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q`
   - One class: `scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q --tests '*PopupMotionTest'`
   - APK: `scripts/gradlew-lowspec.sh :app:assembleDebug -q`
-- **Run the narrowest thing first.** Iterate with `--tests '*OneTest*'`; run the full suite once, at the end, before committing.
+- **Never run the full suite locally — it lags the machine even at low spec.** Locally run only the one or two
+  test classes you touched (`--tests '*OneTest*'`). The full suite (including `RealSleepyrouterTest` against a
+  freshly built sleepyrouter) runs in GitHub Actions (`.github/workflows/test.yml`) on every push; check it with
+  `gh run list --workflow=Tests` and read failures in the run summary / `hoard-test-output` artifact.
 - **Never combine heavy tasks in one invocation** (e.g. full test suite + assemble) and never start a second Gradle run while one is going.
 - Don't raise the limits in `gradle.properties` / `testOptions` (Gradle heap 1280m, one Robolectric fork with 1024m, serial GC, `ActiveProcessorCount=2`). If something runs out of memory, split the run instead.
 

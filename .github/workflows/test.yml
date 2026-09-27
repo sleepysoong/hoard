@@ -1,0 +1,90 @@
+name: Tests
+
+# The full Robolectric/E2E suite runs here, not on the (low-spec) dev machine.
+# It also builds the real sleepyrouter and runs RealSleepyrouterTest against it.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unit-and-e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout Hoard
+        uses: actions/checkout@v4
+
+      - name: Checkout sleepyrouter
+        uses: actions/checkout@v4
+        with:
+          repository: sleepysoong/sleepyrouter
+          path: sleepyrouter
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: sleepyrouter/go.mod
+          cache-dependency-path: sleepyrouter/go.sum
+
+      - name: Build sleepyrouter
+        run: go build -o "$RUNNER_TEMP/sleepyrouter" ./cmd/sleepyrouter
+        working-directory: sleepyrouter
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v3
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Install compile SDK
+        run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+
+      - name: Run tests (incl. real sleepyrouter)
+        env:
+          SLEEPYROUTER_BIN: ${{ runner.temp }}/sleepyrouter
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:testDebugUnitTest --no-daemon
+
+      - name: Summarize
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import glob, re, os
+          t = s = f = 0
+          fails = []
+          for p in glob.glob('app/build/test-results/testDebugUnitTest/*.xml'):
+              x = open(p, encoding='utf-8').read()
+              m = re.search(r'tests="(\d+)" skipped="(\d+)" failures="(\d+)" errors="(\d+)"', x)
+              t += int(m[1]); s += int(m[2]); f += int(m[3]) + int(m[4])
+              for c in re.finditer(r'<testcase name="([^"]+)" classname="([^"]+)"[^>]*>\s*<failure message="([^"]{0,300})', x):
+                  fails.append(f"- `{c[2].split('.')[-1]}.{c[1]}`: {c[3]}")
+          out = [f"**{t} tests · {s} skipped · {f} failed**", *fails]
+          print("\n".join(out))
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as fh:
+              fh.write("\n".join(out) + "\n")
+          EOF
+
+      - name: Upload test results and artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoard-test-output
+          path: |
+            app/build/test-results/testDebugUnitTest/
+            app/build/test-artifacts/
+            app/build/reports/tests/
+          retention-days: 14
