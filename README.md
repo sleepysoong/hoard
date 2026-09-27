@@ -10,6 +10,8 @@ chat with **mock data only**: sending a message streams fake thinking + reply te
 - Chat with streaming replies from sleepyrouter (offline mock when no router is set), per-message elapsed seconds + token counts
 - Routing trace per reply: answering model, tried models, why each failed
 - Photo (`PickMultipleVisualMedia`) and file (`OpenMultipleDocuments`) attachments, sent as real content
+- Conversations persist across restarts (`data/HoardStore.kt`: one JSON file in app storage, atomic writes,
+  debounced + flushed when the app leaves the screen; a corrupt file is kept aside, not overwritten)
 - System prompt editing, per-session context limit, session rename/delete
 - Edit my message (save & regenerate), branch from a message, delete message, retry
 - Model thinking blocks (expandable steps) + model picker (router groups/models, mock when offline)

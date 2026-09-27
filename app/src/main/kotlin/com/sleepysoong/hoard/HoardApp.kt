@@ -15,11 +15,23 @@ class HoardApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        com.sleepysoong.hoard.data.HoardRepository.init(java.io.File(filesDir, "hoard-store.json"))
         val channel = NotificationChannel(
             "hoard-replies",
             "Hoard 백그라운드 답변",
             NotificationManager.IMPORTANCE_LOW
         )
         getSystemService(NotificationManager::class.java)?.createNotificationChannel(channel)
+        // Leaving the screen (or being killed from the background) must not lose the last
+        // ~400 ms of debounced changes: write through when the UI goes away.
+        registerActivityLifecycleCallbacks(object : ActivityLifecycleCallbacks {
+            override fun onActivityStopped(a: android.app.Activity) = com.sleepysoong.hoard.data.HoardRepository.get().flush()
+            override fun onActivityCreated(a: android.app.Activity, b: android.os.Bundle?) {}
+            override fun onActivityStarted(a: android.app.Activity) {}
+            override fun onActivityResumed(a: android.app.Activity) {}
+            override fun onActivityPaused(a: android.app.Activity) {}
+            override fun onActivitySaveInstanceState(a: android.app.Activity, b: android.os.Bundle) {}
+            override fun onActivityDestroyed(a: android.app.Activity) {}
+        })
     }
 }

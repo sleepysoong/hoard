@@ -4,10 +4,18 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.cancel
 import java.util.UUID
 
-/** In-memory shell repository. A real backend replaces MockData/MockAiEngine only. */
-class HoardRepository {
+/**
+ * Conversation store: in-memory StateFlows, persisted to [HoardStore] so sessions,
+ * messages (with routing traces) and tool toggles survive process death.
+ * Writes are batched (debounced) off the main thread; [flush] forces one.
+ */
+class HoardRepository(private val store: HoardStore? = null) {
     private val _sessions = MutableStateFlow<List<ChatSession>>(listOf(MockData.welcomeSession()))
     val sessions: StateFlow<List<ChatSession>> = _sessions.asStateFlow()
 
@@ -195,13 +203,76 @@ class HoardRepository {
         _sessions.update { list -> list.map { if (it.id == sessionId) it.copy(updatedAt = System.currentTimeMillis()) else it } }
     }
 
+    // ---- persistence -----------------------------------------------------------
+
+    private val saver = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
+
+    init {
+        store?.load()?.let(::restore)
+        if (store != null) {
+            saver.launch {
+                // Any change → save at most every SAVE_DEBOUNCE_MS (streaming updates are frequent).
+                // combine() emits once per change of any of the five; skip the initial state.
+                kotlinx.coroutines.flow.combine(_sessions, _messages, _mcpServers, _plugins, _skills) { a, b, c, d, e -> listOf(a, b, c, d, e) }
+                    .drop(1)
+                    .debounce(SAVE_DEBOUNCE_MS)
+                    .collect { flush() }
+            }
+        }
+    }
+
+    /** Write the current state now (also called on app background by HoardApp). */
+    fun flush() {
+        val s = store ?: return
+        runCatching { s.save(snapshot()) }
+    }
+
+    private fun snapshot() = with(HoardStore) {
+        HoardStore.Snapshot(
+            sessions = _sessions.value.map { it.toS() },
+            messages = _messages.value.mapValues { (_, list) -> list.map { it.toS() } },
+            mcpServers = _mcpServers.value.map { HoardStore.SMcp(it.id, it.name, it.url, it.enabled, it.toolCount, it.status) },
+            pluginEnabled = _plugins.value.associate { it.id to it.enabled },
+            skillEnabled = _skills.value.associate { it.id to it.enabled }
+        )
+    }
+
+    private fun restore(s: HoardStore.Snapshot) = with(HoardStore) {
+        if (s.sessions.isEmpty()) return@with
+        _sessions.value = s.sessions.map { it.toModel() }
+        _messages.value = s.sessions.associate { sess ->
+            sess.id to s.messages[sess.id].orEmpty().map { m ->
+                val msg = m.toModel()
+                // A reply that was streaming when the process died: its worker will either
+                // resume it (same bubble) or it's gone — never leave a spinner forever.
+                if (msg.isStreaming) msg.copy(isStreaming = false, errorText = msg.errorText ?: "앱이 종료되어 답변이 중단됐습니다.") else msg
+            }
+        }
+        if (s.mcpServers.isNotEmpty()) {
+            _mcpServers.value = s.mcpServers.map { McpServer(it.id, it.name, it.url, it.enabled, it.toolCount, it.status) }
+        }
+        _plugins.value = _plugins.value.map { p -> s.pluginEnabled[p.id]?.let { p.copy(enabled = it) } ?: p }
+        _skills.value = _skills.value.map { k -> s.skillEnabled[k.id]?.let { k.copy(enabled = it) } ?: k }
+    }
+
     companion object {
+        const val SAVE_DEBOUNCE_MS = 400L
         @Volatile private var instance: HoardRepository? = null
+        @Volatile private var storeFile: java.io.File? = null
+
+        /** Called once from Application.onCreate: where the conversation file lives. */
+        fun init(file: java.io.File) { storeFile = file }
+
         fun get(): HoardRepository = instance ?: synchronized(this) {
-            instance ?: HoardRepository().also { instance = it }
+            instance ?: HoardRepository(storeFile?.let(::HoardStore)).also { instance = it }
         }
 
-        /** Simulates a fresh process: the in-memory store starts over. */
-        internal fun resetForTests() = synchronized(this) { instance = null }
+        internal fun initForTests(file: java.io.File?) { storeFile = file }
+
+        /** Simulates a fresh process: memory is gone, whatever reached disk is reloaded. */
+        internal fun resetForTests() = synchronized(this) {
+            instance?.saver?.cancel()
+            instance = null
+        }
     }
 }

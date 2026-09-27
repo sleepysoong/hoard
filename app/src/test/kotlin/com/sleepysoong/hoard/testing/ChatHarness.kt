@@ -24,7 +24,7 @@ import java.io.File
  * Drives the real chat stack (ChatViewModel → WorkManager → ChatResponseWorker →
  * MockAiEngine → HoardRepository) on Robolectric. Only the clock is faked (engine pace).
  */
-class ChatHarness(pace: Float = 0f) {
+class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null) {
     val app: Application = ApplicationProvider.getApplicationContext()
     lateinit var workManager: WorkManager
     /** Always the live store; after [simulateProcessDeath] this is the fresh instance. */
@@ -35,6 +35,8 @@ class ChatHarness(pace: Float = 0f) {
 
     init {
         HoardRepository.resetForTests()
+        // Persistence is opt-in per test: null = memory only (process death loses everything).
+        HoardRepository.initForTests(storeFile)
         runBlocking { SettingsStore.reset(app) }
         MockAiEngine.pace = pace
         MockAiEngine.testHook = null
