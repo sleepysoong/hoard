@@ -42,10 +42,12 @@ class WebFetchTool(
         put("additionalProperties", false)
     }
 
-    override fun label(args: JsonObject): String {
+    override val title = "페이지 읽기"
+
+    override fun subject(args: JsonObject): String {
         val url = args.string("url").orEmpty()
         val short = runCatching { URI(url).let { (it.host ?: "") + (it.rawPath ?: "") } }.getOrNull()?.takeIf { it.isNotBlank() } ?: url
-        return "페이지 읽기 · " + short.take(80)
+        return short.take(120)
     }
 
     override fun summarize(output: JsonObject): String {

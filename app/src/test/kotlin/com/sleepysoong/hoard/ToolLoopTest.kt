@@ -96,8 +96,9 @@ class ToolLoopTest {
         assertNull(r.errorText)
         assertEquals("오늘 서울은 맑습니다. (출처: https://weather.example/seoul)", r.text)
         assertFalse(r.isStreaming)
-        assertEquals(listOf("모델 추론", "웹 검색 · 서울 날씨"), r.thinking.map { it.title })
-        assertTrue(r.thinking[1].detail, r.thinking[1].detail.startsWith("결과 1개"))
+        // Every tool step is title + body: the tool's name, then subject and result.
+        assertEquals(listOf("모델 추론", "웹 검색"), r.thinking.map { it.title })
+        assertEquals("서울 날씨\n결과 1개: 서울 날씨", r.thinking[1].detail)
         assertEquals("tokens of both rounds", 5 + 12, r.completionTokens)
 
         assertEquals(listOf("서울 날씨"), searched.map { it.query })
@@ -133,7 +134,9 @@ class ToolLoopTest {
         val r = h.messages().last()
         assertNull(r.errorText)
         assertEquals("그 주소는 읽을 수 없어요.", r.text)
-        assertTrue(r.thinking.last().detail, r.thinking.last().detail.startsWith("실패"))
+        assertEquals("페이지 읽기", r.thinking.last().title)
+        assertTrue(r.thinking.last().detail, r.thinking.last().detail.startsWith("192.168.0.1/\n실패"))
+        assertTrue(r.thinking.last().failed)
         val out = body(1)["input"]!!.jsonArray.last().jsonObject["output"]!!.jsonPrimitive.content
         assertTrue(out, out.contains("\"error\"") && out.contains("blocked"))
     }

@@ -57,7 +57,9 @@ class WebSearchTool(private val provider: SearchProvider) : Tool {
         put("additionalProperties", false)
     }
 
-    override fun label(args: JsonObject) = "웹 검색 · " + (args.string("query") ?: "")
+    override val title = "웹 검색"
+
+    override fun subject(args: JsonObject) = args.string("query").orEmpty()
 
     override fun summarize(output: JsonObject): String {
         val results = (output["results"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonObject)?.string("title") }

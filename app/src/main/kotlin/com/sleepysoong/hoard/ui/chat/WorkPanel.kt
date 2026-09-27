@@ -20,17 +20,10 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.rounded.Bolt
-import androidx.compose.material.icons.rounded.ErrorOutline
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
-import androidx.compose.material.icons.rounded.Language
-import androidx.compose.material.icons.rounded.Psychology
-import androidx.compose.material.icons.rounded.TravelExplore
-import androidx.compose.material.icons.rounded.Build
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -43,7 +36,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.TransformOrigin
-import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -112,7 +104,6 @@ fun WorkPanel(steps: List<ThinkingStep>, textColor: Color) {
     val running = steps.any { it.running }
     Column(Modifier.testTag("work-panel"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         GlassPill(onClick = { open = !open }, accent = scheme.primary, modifier = Modifier.testTag("work-pill")) {
-            Icon(Icons.Rounded.Bolt, contentDescription = null, modifier = Modifier.size(15.dp), tint = scheme.primary)
             Text(
                 if (running) "작업 중 · ${steps.size}단계" else "작업 ${steps.size}단계",
                 style = MaterialTheme.typography.labelLarge,
@@ -148,72 +139,74 @@ private fun GroupHeader(title: String, count: Int) {
     }
 }
 
-/** A session-list style glass card: icon badge, title, detail, duration. Long reasoning expands on tap. */
+/** A work step as a [WorkCard]: title, small body, duration. Long bodies expand on tap. */
 @Composable
 private fun StepCard(step: ThinkingStep, textColor: Color) {
     val scheme = MaterialTheme.colorScheme
+    WorkCard(
+        title = step.title,
+        body = step.detail,
+        textColor = textColor,
+        trailing = if (step.running) "실행 중" else formatElapsed(step.durationMs),
+        titleColor = if (step.failed) scheme.error else textColor,
+        collapsedBodyLines = if (step.kind == StepKind.Reasoning) 4 else 3,
+        modifier = Modifier.testTag("work-step")
+    )
+}
+
+/**
+ * The one card every work item uses — model reasoning, every tool (web_search,
+ * web_fetch, future ones), router attempts: a title line (+ optional trailing
+ * text and badge) with a smaller body under it. A body longer than
+ * [collapsedBodyLines] expands on tap.
+ */
+@Composable
+fun WorkCard(
+    title: String,
+    body: String,
+    textColor: Color,
+    modifier: Modifier = Modifier,
+    trailing: String? = null,
+    titleColor: Color = textColor,
+    badge: (@Composable () -> Unit)? = null,
+    collapsedBodyLines: Int = 3
+) {
+    val scheme = MaterialTheme.colorScheme
     var expanded by remember { mutableStateOf(false) }
-    val accent = when {
-        step.failed -> scheme.error
-        step.kind == StepKind.Tool -> scheme.tertiary
-        else -> scheme.primary
-    }
-    val icon = stepIcon(step)
-    val long = step.kind == StepKind.Reasoning && step.detail.length > 160
+    var overflowing by remember { mutableStateOf(false) }
     GlassCardBox(
-        modifier = Modifier
-            .testTag("work-step")
-            .then(if (long) Modifier.liquidClickable(pressedScale = 0.97f, haptic = false) { expanded = !expanded } else Modifier)
+        modifier.then(
+            if (overflowing || expanded) Modifier.liquidClickable(pressedScale = 0.97f, haptic = false) { expanded = !expanded } else Modifier
+        )
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-            Badge(icon, accent)
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(
-                        step.title,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (step.failed) scheme.error else textColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f, fill = true)
-                    )
-                    Text(
-                        if (step.running) "실행 중" else formatElapsed(step.durationMs),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = scheme.onSurfaceVariant,
-                        modifier = Modifier.padding(start = 8.dp)
-                    )
-                }
-                if (step.detail.isNotBlank()) {
-                    Text(
-                        step.detail,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = textColor.copy(alpha = 0.68f),
-                        maxLines = if (expanded) Int.MAX_VALUE else if (step.kind == StepKind.Reasoning) 4 else 2,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.animateContentSize(GlassMotion.sizeSmooth())
-                    )
+        Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    title,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = titleColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = true)
+                )
+                badge?.let { Box(Modifier.padding(start = 8.dp)) { it() } }
+                trailing?.let {
+                    Text(it, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, modifier = Modifier.padding(start = 8.dp))
                 }
             }
+            if (body.isNotBlank()) {
+                Text(
+                    body,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = textColor.copy(alpha = 0.68f),
+                    maxLines = if (expanded) Int.MAX_VALUE else collapsedBodyLines,
+                    overflow = TextOverflow.Ellipsis,
+                    onTextLayout = { if (!expanded) overflowing = it.hasVisualOverflow },
+                    modifier = Modifier.animateContentSize(GlassMotion.sizeSmooth())
+                )
+            }
         }
-    }
-}
-
-private fun stepIcon(step: ThinkingStep): ImageVector = when {
-    step.failed -> Icons.Rounded.ErrorOutline
-    step.kind == StepKind.Reasoning -> Icons.Rounded.Psychology
-    step.title.startsWith("웹 검색") -> Icons.Rounded.TravelExplore
-    step.title.startsWith("페이지 읽기") -> Icons.Rounded.Language
-    else -> Icons.Rounded.Build
-}
-
-@Composable
-private fun Badge(icon: ImageVector, accent: Color) {
-    Box(
-        Modifier.size(28.dp).background(accent.copy(alpha = 0.16f), CircleShape),
-        contentAlignment = Alignment.Center
-    ) {
-        Icon(icon, contentDescription = null, tint = accent, modifier = Modifier.size(16.dp))
     }
 }
 
@@ -248,7 +241,8 @@ fun RoutingPanel(routing: RoutingInfo, textColor: Color) {
     val failures = routing.failures.size
     val selected = routing.selectedModel
     val accent = if (selected == null) scheme.error else scheme.primary
-    val name = selected?.substringAfterLast('/') ?: "응답 없음"
+    // The pill names what was asked for (the group, e.g. "coding"); the log says who answered.
+    val name = routing.requestedModel.ifBlank { selected ?: "응답 없음" }
     val description = buildString {
         append(selected?.let { "응답 모델 $it" } ?: "응답한 모델 없음")
         if (failures > 0) append(" · ${failures}개 실패")
@@ -271,7 +265,6 @@ fun RoutingPanel(routing: RoutingInfo, textColor: Color) {
         }
         AnimatedVisibility(open, enter = panelEnter, exit = panelExit) {
             Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                GroupHeader("라우팅 로그" + (routing.requestedModel.takeIf { it.isNotBlank() }?.let { " · 요청 $it" } ?: ""), routing.attempts.size)
                 routing.attempts.forEach { AttemptCard(it, textColor) }
             }
         }
@@ -289,29 +282,21 @@ private fun AttemptCard(a: RouteAttempt, textColor: Color) {
         "incomplete" -> "잘림" to scheme.error
         else -> a.outcome to scheme.onSurfaceVariant
     }
-    GlassCardBox(Modifier.testTag("routing-attempt")) {
-        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.Top) {
-            Box(Modifier.size(28.dp).background(color.copy(alpha = 0.16f), CircleShape), contentAlignment = Alignment.Center) {
-                Text("${a.index}", style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold, color = color)
+    val facts = listOfNotNull(
+        a.statusCode?.let { "HTTP $it" },
+        // Skipped candidates were never sent: their class is meaningless ("unknown").
+        a.errorClass?.takeIf { a.outcome == "failed" || a.outcome == "incomplete" },
+        a.durationMs.takeIf { it > 0 }?.let { formatElapsed(it) }
+    ).joinToString(" · ")
+    WorkCard(
+        title = "${a.index}. ${a.model}",
+        body = listOf(facts, a.reason.orEmpty()).filter { it.isNotBlank() }.joinToString("\n"),
+        textColor = textColor,
+        badge = {
+            Box(Modifier.background(color.copy(alpha = 0.14f), Capsule).padding(horizontal = 7.dp, vertical = 1.dp)) {
+                Text(label, style = MaterialTheme.typography.labelSmall, color = color)
             }
-            Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(a.model, style = MaterialTheme.typography.labelLarge, color = textColor, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = true))
-                    Box(Modifier.padding(start = 8.dp).background(color.copy(alpha = 0.14f), Capsule).padding(horizontal = 7.dp, vertical = 1.dp)) {
-                        Text(label, style = MaterialTheme.typography.labelSmall, color = color)
-                    }
-                }
-                val detail = listOfNotNull(
-                    a.statusCode?.let { "HTTP $it" },
-                    // Skipped candidates were never sent: their class is meaningless ("unknown").
-                    a.errorClass?.takeIf { a.outcome == "failed" || a.outcome == "incomplete" },
-                    a.durationMs.takeIf { it > 0 }?.let { formatElapsed(it) }
-                ).joinToString(" · ")
-                if (detail.isNotEmpty()) Text(detail, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.68f))
-                a.reason?.takeIf { it.isNotBlank() }?.let {
-                    Text(it, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.68f), maxLines = 3, overflow = TextOverflow.Ellipsis)
-                }
-            }
-        }
-    }
+        },
+        modifier = Modifier.testTag("routing-attempt")
+    )
 }

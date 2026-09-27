@@ -12,6 +12,7 @@ import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
@@ -54,9 +55,9 @@ class WorkPanelTest {
         elapsedMs = 8400, promptTokens = 120, completionTokens = 80,
         thinking = listOf(
             ThinkingStep("모델 추론", "사용자가 서울 날씨를 묻는다. 최신 정보가 필요하니 웹 검색을 하자.", 1800),
-            ThinkingStep("웹 검색 · 서울 오늘 날씨", "결과 5개: 서울 날씨 - 기상청 · 네이버 날씨", 900, StepKind.Tool),
-            ThinkingStep("페이지 읽기 · www.weather.go.kr/w/index.do", "날씨누리 · 4120자", 1300, StepKind.Tool),
-            ThinkingStep("페이지 읽기 · 192.168.0.1", "실패: blocked non-public address", 3, StepKind.Tool, failed = true),
+            ThinkingStep("웹 검색", "서울 오늘 날씨\n결과 5개: 서울 날씨 - 기상청 · 네이버 날씨", 900, StepKind.Tool),
+            ThinkingStep("페이지 읽기", "www.weather.go.kr/w/index.do\n날씨누리 · 4120자", 1300, StepKind.Tool),
+            ThinkingStep("페이지 읽기", "192.168.0.1/\n실패: blocked non-public address", 3, StepKind.Tool, failed = true),
             ThinkingStep("모델 추론", "기상청 페이지에서 최고 24도, 맑음을 확인했다. 간단히 답하자.", 700)
         ),
         routing = RoutingInfo(
@@ -95,7 +96,10 @@ class WorkPanelTest {
         assertEquals(5, compose.onAllNodesWithTag("work-step", useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals(2, compose.onAllNodesWithTag("routing-attempt", useUnmergedTree = true).fetchSemanticsNodes().size)
         compose.onNodeWithText("도구 사용", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText("HTTP 429 Too Many Requests", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("HTTP 429 · rate_limit · 120ms\nHTTP 429 Too Many Requests", useUnmergedTree = true).assertExists()
+        // The # pill names the requested group; the log has no extra header line.
+        compose.onNodeWithText("coding", useUnmergedTree = true).assertExists()
+        assertEquals(0, compose.onAllNodesWithText("라우팅 로그", substring = true, useUnmergedTree = true).fetchSemanticsNodes().size)
         assertEquals("model name no longer in the footer", 0, compose.onAllNodesWithTag("footer-model", useUnmergedTree = true).fetchSemanticsNodes().size)
         shot("light-open")
     }

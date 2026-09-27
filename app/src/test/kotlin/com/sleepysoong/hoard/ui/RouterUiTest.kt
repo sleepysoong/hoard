@@ -141,7 +141,7 @@ class RouterUiTest {
 
         compose.onNodeWithTag("routing-summary", useUnmergedTree = true).performClick()
         compose.mainClock.advanceTimeBy(800)
-        compose.onNodeWithText("zen/a").assertExists()
+        compose.onNodeWithText("1. zen/a").assertExists()
         compose.onNodeWithText("rate_limit_error: rate_limited: slow down").assertExists()
         compose.onNodeWithText("missing_api_key: API key missing for provider gemini").assertExists()
         assertEquals(3, compose.onAllNodesWithTag("routing-attempt", useUnmergedTree = true).fetchSemanticsNodes().size)

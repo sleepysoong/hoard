@@ -25,18 +25,24 @@ interface Tool {
     /** Runs the call. Throw [ToolException] for a failure the model should see. */
     suspend fun execute(args: JsonObject): JsonObject
 
-    /** One-line label for the reply's thinking steps, e.g. "웹 검색 · 서울 날씨". */
-    fun label(args: JsonObject): String = name
+    /** Card title in the reply's 작업 list, e.g. "웹 검색". */
+    val title: String get() = name
 
-    /** Short human summary of a result for the thinking steps. */
+    /** What this call is about (card body, first line), e.g. the query or the URL. */
+    fun subject(args: JsonObject): String = ""
+
+    /** Short human summary of a result (card body, after the subject). */
     fun summarize(output: JsonObject): String = ""
 }
 
 /** A failure reported back to the model as `{"error": message}` (it can adapt or answer anyway). */
 class ToolException(message: String) : Exception(message)
 
-/** What running one call produced: the JSON string sent back as function_call_output, plus UI text. */
-data class ToolOutcome(val output: String, val label: String, val summary: String, val isError: Boolean)
+/**
+ * What running one call produced: the JSON string sent back as function_call_output,
+ * plus the card text ([title] / [body]) every tool shows the same way.
+ */
+data class ToolOutcome(val output: String, val title: String, val body: String, val isError: Boolean)
 
 class ToolRegistry(val tools: List<Tool>) {
     private val byName = tools.associateBy { it.name }
@@ -58,32 +64,34 @@ class ToolRegistry(val tools: List<Tool>) {
      * unknown tools and tool failures become an `{"error": …}` output the model reads.
      */
     suspend fun execute(name: String, argumentsJson: String): ToolOutcome {
-        val tool = byName[name] ?: return error(name, "unknown tool \"$name\"; available: ${byName.keys.joinToString()}")
+        val tool = byName[name] ?: return error(name, "", "unknown tool \"$name\"; available: ${byName.keys.joinToString()}")
         val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull()
-            ?: return error(tool.name, "arguments must be a JSON object")
-        val label = runCatching { tool.label(args) }.getOrDefault(tool.name)
+            ?: return error(tool.title, "", "arguments must be a JSON object")
+        val subject = runCatching { tool.subject(args) }.getOrDefault("")
         return try {
             val out = tool.execute(args)
-            ToolOutcome(out.toString(), label, runCatching { tool.summarize(out) }.getOrDefault(""), isError = false)
+            ToolOutcome(out.toString(), tool.title, body(subject, runCatching { tool.summarize(out) }.getOrDefault("")), isError = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ToolException) {
-            error(label, e.message ?: "failed")
+            error(tool.title, subject, e.message ?: "failed")
         } catch (e: Exception) {
-            error(label, "${e::class.simpleName}: ${e.message}")
+            error(tool.title, subject, "${e::class.simpleName}: ${e.message}")
         }
     }
 
-    /** The step label for a call before it runs (e.g. "웹 검색 · 서울 날씨"). */
-    fun label(name: String, argumentsJson: String): String {
-        val tool = byName[name] ?: return name
-        val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull() ?: return tool.name
-        return runCatching { tool.label(args) }.getOrDefault(tool.name)
+    /** Card title/body for a call before it runs. */
+    fun preview(name: String, argumentsJson: String): Pair<String, String> {
+        val tool = byName[name] ?: return name to ""
+        val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull() ?: return tool.title to ""
+        return tool.title to runCatching { tool.subject(args) }.getOrDefault("")
     }
 
-    private fun error(label: String, message: String) = ToolOutcome(
+    private fun body(subject: String, detail: String) = listOf(subject, detail).filter { it.isNotBlank() }.joinToString("\n")
+
+    private fun error(title: String, subject: String, message: String) = ToolOutcome(
         output = buildJsonObject { put("error", message) }.toString(),
-        label = label, summary = "실패: $message", isError = true
+        title = title, body = body(subject, "실패: $message"), isError = true
     )
 
     companion object {

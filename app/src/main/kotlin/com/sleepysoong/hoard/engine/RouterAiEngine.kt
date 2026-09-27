@@ -84,9 +84,9 @@ class RouterAiEngine(
             prior.absorb(state)
             for (call in state.toolCalls) {
                 val t0 = System.currentTimeMillis()
-                onEvent(prior.event(request, started, running = runCatching { active!!.label(call.name, call.arguments) }.getOrDefault(call.name)))
-                val outcome = active!!.execute(call.name, call.arguments)
-                prior.thinking += ThinkingStep(outcome.label, outcome.summary, System.currentTimeMillis() - t0, StepKind.Tool, failed = outcome.isError)
+                onEvent(prior.event(request, started, running = active!!.preview(call.name, call.arguments)))
+                val outcome = active.execute(call.name, call.arguments)
+                prior.thinking += ThinkingStep(outcome.title, outcome.body, System.currentTimeMillis() - t0, StepKind.Tool, failed = outcome.isError)
                 toolItems += buildJsonObject {
                     put("type", "function_call")
                     put("call_id", call.callId)
@@ -330,11 +330,11 @@ class RouterAiEngine(
             routing = s.routing ?: routing
         }
 
-        fun event(request: ReplyRequest, started: Long, running: String? = null): StreamEvent {
+        fun event(request: ReplyRequest, started: Long, running: Pair<String, String>? = null): StreamEvent {
             val elapsed = System.currentTimeMillis() - started
             roundStartMs = elapsed
             return StreamEvent(
-                thinking = thinking + listOfNotNull(running?.let { ThinkingStep(it, "실행 중…", 0, StepKind.Tool, running = true) }),
+                thinking = thinking + listOfNotNull(running?.let { (title, subject) -> ThinkingStep(title, subject, 0, StepKind.Tool, running = true) }),
                 deltaText = text,
                 done = false,
                 elapsedMs = elapsed,
