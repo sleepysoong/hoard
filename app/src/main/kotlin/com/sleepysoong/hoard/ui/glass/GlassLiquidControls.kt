@@ -60,11 +60,12 @@ import com.kyant.backdrop.backdrops.rememberLayerBackdrop
 import com.kyant.backdrop.drawBackdrop
 import com.kyant.backdrop.effects.blur
 import com.kyant.backdrop.effects.lens
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
 import com.sleepysoong.hoard.ui.theme.IOSGreen
-import com.sleepysoong.hoard.ui.theme.IOSSegmentThumbDark
 import com.sleepysoong.hoard.ui.theme.LocalHoardDarkTheme
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -266,9 +267,14 @@ fun GlassSwitch(
 }
 
 /**
- * iOS 26 liquid segmented control: glass track, a liquid thumb that glides between
- * segments with a soft overshoot (stretching while it travels), swells into clear
- * glass while pressed, and can be dragged — release picks the nearest segment.
+ * iOS 26 liquid segmented control, built like Kyant's LiquidBottomTabs (and our tab bar):
+ *  - track: a lifted glass capsule (same material as the floating tab bar)
+ *  - pill: tinted glass (primaryContainer) filling the track with a 3dp inset; while
+ *    pressed it swells and becomes a clear lens with a specular rim
+ *  - labels: an accent copy is recorded into a hidden layer; the pill refracts *that*,
+ *    so the label under the pill is accent-coloured and bends through the lens
+ *  - glides with a soft overshoot and stretches while travelling; the pill can be
+ *    dragged, release snaps to the nearest segment
  */
 @Composable
 fun IOSSegmentedControl(
@@ -276,13 +282,14 @@ fun IOSSegmentedControl(
     selectedIndex: Int,
     onSelect: (Int) -> Unit,
     modifier: Modifier = Modifier,
-    height: Dp = 36.dp
+    height: Dp = 44.dp
 ) {
     if (options.isEmpty()) return
     val scheme = MaterialTheme.colorScheme
-    val dark = LocalHoardDarkTheme.current
     val haptics = LocalHapticFeedback.current
     val scope = rememberCoroutineScope()
+    val global = LocalGlassBackdrop.current
+    val mode = LocalGlassMode.current
     val n = options.size
     val selected = selectedIndex.coerceIn(0, n - 1)
     val pos = remember { Animatable(selected.toFloat(), visibilityThreshold = 0.001f) }
@@ -294,21 +301,38 @@ fun IOSSegmentedControl(
     LaunchedEffect(selected) {
         if (!dragging) pos.animateTo(selected.toFloat(), spring(dampingRatio = 0.7f, stiffness = 420f, visibilityThreshold = 0.001f))
     }
-    val trackLayer = rememberLayerBackdrop()
-    val trackFill = scheme.surfaceContainerHighest
-    val thumbColor = if (dark) IOSSegmentThumbDark else Color.White
+    val labelsLayer = rememberLayerBackdrop()
+    val accent = scheme.onPrimaryContainer
+    val pillTint = scheme.primaryContainer
+    val inset = 3.dp
+    val labelStyle = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.SemiBold)
+
+    @Composable
+    fun labels(color: (Int) -> Color, m: Modifier, accessible: Boolean) {
+        Row(m.fillMaxSize().padding(horizontal = inset)) {
+            options.forEachIndexed { i, label ->
+                val a11y = if (!accessible) Modifier else Modifier.semantics {
+                    role = Role.Tab
+                    this.selected = i == selected
+                    onClick { currentOnSelect(i); true }
+                }
+                Box(Modifier.weight(1f).fillMaxHeight().then(a11y), contentAlignment = Alignment.Center) {
+                    Text(label, style = labelStyle, color = color(i), maxLines = 1)
+                }
+            }
+        }
+    }
 
     BoxWithConstraints(
         modifier
-            .heightIn(min = height)
             .height(height)
             .pointerInput(n) {
                 awaitEachGesture {
-                    val segW = size.width.toFloat() / n
+                    val segW = (size.width - 2 * inset.toPx()) / n
                     val down = awaitFirstDown(requireUnconsumed = false)
-                    // Press anywhere on the thumb → it liquefies; elsewhere → just a tap.
-                    val onThumb = abs(down.position.x / segW - 0.5f - pos.value) < 0.6f
-                    if (onThumb) scope.launch { press.animateTo(1f, GlassMotion.exit()) }
+                    val at = { x: Float -> (x - inset.toPx()) / segW }
+                    val onPill = abs(at(down.position.x) - 0.5f - pos.value) < 0.6f
+                    if (onPill) scope.launch { press.animateTo(1f, GlassMotion.exit()) }
                     var x = down.position.x
                     var moved = 0f
                     while (true) {
@@ -317,14 +341,14 @@ fun IOSSegmentedControl(
                         if (!c.pressed) break
                         moved += abs(c.position.x - x)
                         x = c.position.x
-                        if (onThumb && moved > viewConfiguration.touchSlop) {
+                        if (onPill && moved > viewConfiguration.touchSlop) {
                             dragging = true
                             c.consume()
-                            scope.launch { pos.snapTo((x / segW - 0.5f).coerceIn(0f, (n - 1).toFloat())) }
+                            scope.launch { pos.snapTo((at(x) - 0.5f).coerceIn(0f, (n - 1).toFloat())) }
                         }
                     }
                     scope.launch { press.animateTo(0f, GlassMotion.release()) }
-                    val target = if (dragging) pos.value.roundToInt() else (x / segW).toInt().coerceIn(0, n - 1)
+                    val target = if (dragging) pos.value.roundToInt() else at(x).toInt().coerceIn(0, n - 1)
                     dragging = false
                     scope.launch { pos.animateTo(target.toFloat(), spring(dampingRatio = 0.7f, stiffness = 420f, visibilityThreshold = 0.001f)) }
                     if (target != currentSelected) {
@@ -334,65 +358,58 @@ fun IOSSegmentedControl(
                 }
             }
     ) {
-        val segW = maxWidth / n
-        // Track: glass capsule, fill recorded for the thumb to refract.
-        Box(
-            Modifier
-                .matchParentSize()
-                .glassMaterial(Capsule, trackFill, tone = GlassTone.Thin, lifted = false)
+        val segW = (maxWidth - inset * 2) / n
+        // Track: the tab bar's glass capsule.
+        Box(Modifier.matchParentSize().glassMaterial(Capsule, scheme.surface, GlassTone.Thick))
+        // Accent labels, recorded for the pill to refract, never shown directly.
+        // The pill tint lives in this layer, *under* the accent text: tint drawn as the
+        // pill's surface would sit on top of the refracted label and wash it out.
+        labels(
+            { accent },
+            Modifier.clearAndSetSemantics {}.alpha(0f).layerBackdrop(labelsLayer).drawBehind { drawRect(pillTint) },
+            accessible = false
         )
-        Box(
-            Modifier
-                .matchParentSize()
-                .layerBackdrop(trackLayer)
-                .clip(Capsule)
-                .drawBehind { drawRect(trackFill.copy(alpha = 0.9f)) }
+        // Visible labels: colour follows the pill as it arrives (also the fallback look).
+        labels(
+            { i -> lerp(scheme.onSurfaceVariant, accent, (1f - abs(pos.value - i)).coerceIn(0f, 1f)) },
+            Modifier,
+            accessible = true
         )
-        // Liquid thumb.
-        Box(
-            Modifier
-                .graphicsLayer { translationX = segW.toPx() * pos.value }
-                .testTag("segment-thumb")
-                .width(segW)
-                .fillMaxHeight()
-                .padding(2.dp)
-                .liquidThumb(trackLayer, press = { press.value }, restColor = thumbColor, squeezeTrack = false) {
-                    val s = 1f + 0.12f * press.value
-                    val stretch = 0.18f * kotlin.math.tanh(abs(pos.velocity) * 0.12f)
-                    scaleX = s * (1f + stretch)
-                    scaleY = s * (1f - stretch * 0.3f)
-                }
-        )
-        // Labels on top, crisp. The label under the thumb turns bold/primary as it arrives.
-        Row(Modifier.fillMaxSize()) {
-            options.forEachIndexed { i, label ->
-                val isSel = i == selected
-                Box(
-                    Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .semantics {
-                            role = Role.Tab
-                            this.selected = isSel
-                            onClick { currentOnSelect(i); true }
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    val closeness = { (1f - abs(pos.value - i)).coerceIn(0f, 1f) }
-                    Text(
-                        label,
-                        style = MaterialTheme.typography.labelMedium.copy(
-                            fontWeight = if (isSel) FontWeight.SemiBold else FontWeight.Medium
-                        ),
-                        color = if (isSel) scheme.onSurface else scheme.onSurfaceVariant,
-                        maxLines = 1,
-                        modifier = Modifier.graphicsLayer {
-                            val k = 1f + 0.06f * press.value * closeness()
-                            scaleX = k; scaleY = k
+        // Liquid pill.
+        val pillModifier = Modifier
+            .graphicsLayer { translationX = (inset + segW * pos.value).toPx() }
+            .testTag("segment-thumb")
+            .width(segW)
+            .fillMaxHeight()
+            .padding(vertical = inset)
+        val layer: GraphicsLayerScope.() -> Unit = {
+            val sc = 1f + 0.1f * press.value
+            val stretch = 0.18f * kotlin.math.tanh(abs(pos.velocity) * 0.12f)
+            scaleX = sc * (1f + stretch)
+            scaleY = sc * (1f - stretch * 0.3f)
+        }
+        if (global == null || mode == GlassMode.Off) {
+            Box(pillModifier.graphicsLayer(layer).clip(Capsule).drawBehind { drawRect(pillTint) })
+        } else {
+            Box(
+                pillModifier.drawBackdrop(
+                    backdrop = rememberCombinedBackdrop(global, labelsLayer),
+                    shape = { Capsule },
+                    effects = {
+                        vibrancy()
+                        if (mode == GlassMode.Full) {
+                            val p = press.value
+                            lens(10.dp.toPx() * p, 14.dp.toPx() * p, depthEffect = false, chromaticAberration = true)
                         }
-                    )
-                }
-            }
+                    },
+                    highlight = { Highlight.Default.copy(alpha = 0.35f + 0.65f * press.value) },
+                    shadow = { Shadow(radius = 6.dp, offset = DpOffset(0.dp, 2.dp), color = Color.Black, alpha = 0.06f + 0.08f * press.value) },
+                    innerShadow = { InnerShadow(radius = 6.dp * press.value, color = Color.Black, alpha = 0.5f * press.value) },
+                    layerBlock = layer,
+                    // A faint frost while pressed so the lens reads as glass.
+                    onDrawSurface = { drawRect(Color.White.copy(alpha = 0.12f * press.value)) }
+                )
+            )
         }
     }
 }

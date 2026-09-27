@@ -232,14 +232,16 @@ fun GlassBottomBar(
             Modifier
                 .offset(x = tabWidth * position)
                 .width(tabWidth)
-                .height(GlassTokens.barHeight - 12.dp)
+                // Fills the bar with a 4dp inset (Kyant LiquidBottomTabs: 64dp bar, 56dp pill);
+                // a shorter pill floats in the middle and looks cut off.
+                .height(GlassTokens.barHeight)
                 .graphicsLayer {
                     // Stretch while moving, swell slightly while a tab is held.
                     scaleX = 1f + stretch + 0.06f * press
                     scaleY = 1f - stretch * 0.35f + 0.06f * press
                 }
                 .testTag("tab-capsule")
-                .padding(horizontal = 5.dp, vertical = 6.dp)
+                .padding(4.dp)
                 .then(
                     if (backdrop == null) {
                         Modifier.background(scheme.primary.copy(alpha = 0.12f), capsule)
