@@ -70,6 +70,12 @@ jobs:
       - name: Build Signed Release APK
         run: ./gradlew :app:assembleRelease --no-daemon
 
+      - name: Name APK after the version
+        run: |
+          apk="hoard-${{ steps.version_bump.outputs.version_name }}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/$apk"
+          echo "Built $apk"
+
       - name: Commit and Push Version Bump
         run: |
           git config --global user.name "github-actions[bot]"
@@ -100,6 +106,6 @@ jobs:
           draft: false
           prerelease: false
           files: |
-            app/build/outputs/apk/release/app-release.apk
+            app/build/outputs/apk/release/hoard-${{ steps.version_bump.outputs.version_name }}.apk
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

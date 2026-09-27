@@ -48,7 +48,7 @@ Still no gradients: every colour is solid.
   glassmorphism fallback on older APIs / preview. **No gradients** — solid colors only.
   How it was built, every pitfall hit and how to verify it: [`LIQUID_GLASS.md`](LIQUID_GLASS.md).
 - Signed release APK via `.github/workflows/build-and-release.yml`:
-  auto-bumps `version.properties`, tags, and attaches `app-release.apk` to a Release.
+  auto-bumps `version.properties`, tags, and attaches `hoard-<version>.apk` (e.g. `hoard-1.0.61.apk`) to a Release.
 
 ## Backend: sleepyrouter
 
