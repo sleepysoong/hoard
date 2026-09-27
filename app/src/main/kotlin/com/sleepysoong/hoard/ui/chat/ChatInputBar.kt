@@ -65,6 +65,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.UiAttachment
+import com.sleepysoong.hoard.engine.AttachmentEncoder
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassTone
 import com.sleepysoong.hoard.ui.glass.glassMaterial
@@ -92,34 +93,19 @@ fun ChatInputBar(
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
+    val context = androidx.compose.ui.platform.LocalContext.current
+    // Real name / MIME / size from the provider (the worker later reads the bytes).
+    fun describe(uri: Uri, fallback: String) = AttachmentEncoder.describe(
+        context.contentResolver, uri, "att-" + UUID.randomUUID().toString().take(6), fallback
+    )
     val photoPicker = rememberLauncherForActivityResult(ActivityResultContracts.PickMultipleVisualMedia()) { uris ->
         if (uris.isNotEmpty()) {
-            onAttachmentsChange(
-                attachments + uris.mapIndexed { i, uri: Uri ->
-                    UiAttachment(
-                        id = "att-" + UUID.randomUUID().toString().take(6),
-                        name = "사진 ${attachments.size + i + 1}.jpg",
-                        mime = "image/*",
-                        sizeBytes = 0,
-                        uri = uri
-                    )
-                }
-            )
+            onAttachmentsChange(attachments + uris.mapIndexed { i, uri: Uri -> describe(uri, "사진 ${attachments.size + i + 1}.jpg") })
         }
     }
     val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenMultipleDocuments()) { uris ->
         if (uris.isNotEmpty()) {
-            onAttachmentsChange(
-                attachments + uris.map { uri ->
-                    UiAttachment(
-                        id = "att-" + UUID.randomUUID().toString().take(6),
-                        name = uri.lastPathSegment?.substringAfterLast('/') ?: "파일",
-                        mime = "*/*",
-                        sizeBytes = 0,
-                        uri = uri
-                    )
-                }
-            )
+            onAttachmentsChange(attachments + uris.map { uri -> describe(uri, uri.lastPathSegment?.substringAfterLast('/') ?: "파일") })
         }
     }
     val showSlash = value.trimStart().startsWith("/") && !value.contains(" ")

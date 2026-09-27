@@ -17,6 +17,7 @@ import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.SettingsStore
+import com.sleepysoong.hoard.engine.AttachmentEncoder
 import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
@@ -64,7 +65,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // Nobody is waiting for this reply any more: finish quietly, never resurrect it.
         if (!hasTarget) return Result.success()
 
-        val engine = Engines.forRouter(SettingsStore.current(applicationContext).routerUrl)
+        val engine = Engines.forRouter(
+            SettingsStore.current(applicationContext).routerUrl,
+            AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver))
+        )
         return try {
             promote("Hoard가 생각 중…")
             engine.streamReply(request) { ev ->

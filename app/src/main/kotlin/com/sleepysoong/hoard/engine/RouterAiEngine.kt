@@ -44,7 +44,9 @@ class RouterAiEngine(
     private val baseUrl: String,
     private val connectTimeoutMs: Int = 10_000,
     /** Max silence between SSE events (mirrors sleepyrouter's stream_idle). */
-    private val readTimeoutMs: Int = 330_000
+    private val readTimeoutMs: Int = 330_000,
+    /** Reads attachment bytes (ContentResolver in the app). Null = describe attachments only. */
+    private val attachments: AttachmentEncoder? = null
 ) : AiEngine {
 
     override suspend fun streamReply(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) =
@@ -59,8 +61,9 @@ class RouterAiEngine(
             conn.setRequestProperty("Accept", "text/event-stream")
             // Connecting happens lazily on the first write, so unreachable routers
             // (refused, DNS, no route) surface here, not at responseCode.
+            val body = encodeRequest(request, attachments)
             val status = try {
-                conn.outputStream.use { it.write(encodeRequest(request).toByteArray()) }
+                conn.outputStream.use { it.write(body.toByteArray()) }
                 conn.responseCode
             } catch (e: SocketTimeoutException) {
                 throw RouterException.Transient("라우터 응답 시간 초과", null, e)
@@ -215,29 +218,37 @@ class RouterAiEngine(
         }
 
         /** OpenAI Responses request body built from the Hoard conversation. */
-        fun encodeRequest(r: ReplyRequest): String = buildJsonObject {
+        fun encodeRequest(r: ReplyRequest, attachments: AttachmentEncoder? = null): String = buildJsonObject {
             put("model", r.modelId)
             put("stream", true)
             if (r.systemPrompt.isNotBlank()) put("instructions", r.systemPrompt)
+            // Only the newest user message ships file bytes; earlier turns (already
+            // answered) mention their attachments by name to keep requests small.
+            val lastUser = r.history.indexOfLast { it.role == MessageRole.User }
             put("input", buildJsonArray {
-                for (m in r.history) add(encodeMessage(m))
+                r.history.forEachIndexed { i, m -> add(encodeMessage(m, if (i == lastUser) attachments else null)) }
             })
         }.toString()
 
-        private fun encodeMessage(m: ChatMessage): JsonObject = buildJsonObject {
+        private fun encodeMessage(m: ChatMessage, files: AttachmentEncoder?): JsonObject = buildJsonObject {
             val assistant = m.role == MessageRole.Assistant
+            // Explicit item type: typed decoders (the official SDKs, which sleepyrouter uses)
+            // silently drop the *entire* input array when a message item has no "type".
+            put("type", "message")
             put("role", if (assistant) "assistant" else if (m.role == MessageRole.System) "system" else "user")
             put("content", buildJsonArray {
                 var text = m.text
-                // Attachments are not uploaded yet; tell the model they exist rather than
-                // silently dropping them.
-                if (!assistant && m.attachments.isNotEmpty()) {
+                val attached = !assistant && m.attachments.isNotEmpty()
+                if (attached && files == null) {
                     text += "\n\n[첨부: " + m.attachments.joinToString { "${it.name} (${it.mime})" } + "]"
                 }
-                add(buildJsonObject {
-                    put("type", if (assistant) "output_text" else "input_text")
-                    put("text", text)
-                })
+                if (text.isNotEmpty() || !attached) {
+                    add(buildJsonObject {
+                        put("type", if (assistant) "output_text" else "input_text")
+                        put("text", text)
+                    })
+                }
+                if (attached && files != null) m.attachments.forEach { add(files.encode(it)) }
             })
         }
 

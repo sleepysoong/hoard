@@ -119,6 +119,8 @@ class RouterIntegrationTest {
         assertEquals("너는 간결하다.", body["instructions"]!!.jsonPrimitive.content)
         val input = body["input"]!!.jsonArray.map { it.jsonObject }
         assertEquals(listOf("assistant", "user", "assistant", "user"), input.map { it["role"]!!.jsonPrimitive.content })
+        assertTrue("every item is a typed message (untyped items make typed decoders drop all input)",
+            input.all { it["type"]?.jsonPrimitive?.content == "message" })
         val texts = input.map { it["content"]!!.jsonArray[0].jsonObject }
         assertEquals("output_text", texts[2]["type"]!!.jsonPrimitive.content)
         assertEquals("첫 답", texts[2]["text"]!!.jsonPrimitive.content)

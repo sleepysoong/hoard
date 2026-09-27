@@ -36,6 +36,12 @@ which one answered).
 3. Chat. Each reply bubble shows `via <answering model> · N개 실패`; tap it for every attempt
    (outcome, HTTP status, error class, duration, reason). Failed replies show the reason instead of an empty bubble.
 
+Attachments are sent as real content with the newest message (`engine/AttachmentEncoder.kt`):
+images → `input_image` data URL (photos over 1.5 MB are re-encoded to ≤2048 px JPEG), text/code files →
+inlined `input_text`, other files (e.g. PDF) → `input_file`. Files over 20 MB or unreadable ones are
+reported to the model instead of silently dropped. Earlier turns only name their attachments.
+Whether a model can use `input_file` depends on the provider.
+
 With no router URL the app uses the offline mock engine. Plain HTTP is allowed
 (`network_security_config.xml`) because sleepyrouter is a local gateway; note it applies app-wide.
 

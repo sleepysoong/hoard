@@ -28,6 +28,6 @@ interface AiEngine {
 object Engines {
     @Volatile var override: AiEngine? = null
 
-    fun forRouter(routerUrl: String): AiEngine =
-        override ?: if (routerUrl.isBlank()) MockAiEngine else RouterAiEngine(routerUrl)
+    fun forRouter(routerUrl: String, attachments: AttachmentEncoder? = null): AiEngine =
+        override ?: if (routerUrl.isBlank()) MockAiEngine else RouterAiEngine(routerUrl, attachments = attachments)
 }

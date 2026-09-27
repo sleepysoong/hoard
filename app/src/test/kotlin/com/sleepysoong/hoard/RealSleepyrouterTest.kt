@@ -46,6 +46,7 @@ class RealSleepyrouterTest {
     private lateinit var home: File
     private var port = 0
     private val log = StringBuilder()
+    private val upstreamBodies = mutableListOf<String>()
 
     @Before fun start() {
         val bin = System.getenv("SLEEPYROUTER_BIN")
@@ -55,7 +56,10 @@ class RealSleepyrouterTest {
             createContext("/v1/responses") { ex ->
                 val body = ex.requestBody.readBytes().decodeToString()
                 val model = Regex("\"model\"\\s*:\\s*\"([^\"]+)\"").find(body)?.groupValues?.get(1)
-                synchronized(log) { log.append("upstream got model=$model stream=${body.contains("\"stream\":true")}\n") }
+                synchronized(log) {
+                    log.append("upstream got model=$model stream=${body.contains("\"stream\":true")}\n")
+                    upstreamBodies += body
+                }
                 when (model) {
                     "a" -> reply(ex, 429, "application/json", """{"error":{"type":"rate_limit_error","code":"rate_limited","message":"Rate limit reached for a","param":null}}""")
                     "b" -> reply(ex, 503, "text/html", "<html>down</html>")
@@ -170,6 +174,10 @@ class RealSleepyrouterTest {
         val r = h.messages().last()
         assertEquals(MessageRole.Assistant, r.role)
         assertEquals("real answer", r.text)
+        // What the answering model actually received — not just what Hoard sent.
+        val sent = synchronized(log) { upstreamBodies.last() }
+        assertTrue("the question reaches the upstream model: $sent", sent.contains("real router, please"))
+        assertTrue("system prompt too", sent.contains("\"instructions\""))
         assertNull(r.errorText)
         assertEquals("answered by the model sleepyrouter selected", "p2/c", r.modelId)
         val route = r.routing!!
@@ -209,5 +217,35 @@ class RealSleepyrouterTest {
         log.append("models=$models\n")
         assertEquals(listOf("coding", "broken"), models.filter { it.isGroup }.map { it.id })
         assertTrue(models.any { it.id == "p2/c" && !it.isGroup })
+    }
+
+    @Test fun imageAttachmentReachesTheUpstreamModelIntact() {
+        val h = ChatHarness()
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port") }
+        val f = File.createTempFile("photo", ".png").apply { deleteOnExit() }
+        val bmp = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFFF0000.toInt()) }
+        f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        val att = com.sleepysoong.hoard.data.UiAttachment("att-1", "red.png", "image/*", f.length(), android.net.Uri.fromFile(f))
+        h.vm.send("무슨 색이야?", listOf(att), "coding")
+        h.awaitReplies(timeoutMs = 30_000)
+
+        val sentToModel = synchronized(log) { upstreamBodies.last() } // the candidate that answered (p2/c)
+        log.append("upstream body (truncated): ${sentToModel.take(600)}\n")
+        val expected = "data:image/png;base64," + android.util.Base64.encodeToString(f.readBytes(), android.util.Base64.NO_WRAP)
+        assertTrue("router forwards input_image unchanged", sentToModel.contains("\"input_image\"") && sentToModel.contains(expected))
+        assertTrue(sentToModel.contains("무슨 색이야?"))
+        assertEquals("real answer", h.messages().last().text)
+    }
+
+    /** Other OpenAI clients may omit item "type"; the router must still forward the conversation. */
+    @Test fun untypedInputItemsStillReachTheModel() {
+        val conn = URL("http://127.0.0.1:$port/hoard/v1/responses").openConnection() as java.net.HttpURLConnection
+        conn.requestMethod = "POST"; conn.doOutput = true
+        conn.setRequestProperty("Content-Type", "application/json")
+        conn.outputStream.use { it.write("""{"model":"p2/c","stream":true,"input":[{"role":"user","content":"untyped hello"}]}""".toByteArray()) }
+        assertEquals(200, conn.responseCode)
+        conn.inputStream.use { it.readBytes() } // drain the SSE stream
+        val sent = synchronized(log) { upstreamBodies.last() }
+        assertTrue("conversation forwarded: $sent", sent.contains("untyped hello"))
     }
 }
