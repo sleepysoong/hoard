@@ -4,7 +4,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.flow.drop
+import kotlinx.coroutines.flow.dropWhile
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.cancel
@@ -201,11 +201,14 @@ class HoardRepository(private val store: HoardStore? = null) {
     init {
         store?.load()?.let(::restore)
         if (store != null) {
+            val initialState = listOf(_sessions.value, _messages.value, _mcpServers.value, _plugins.value, _skills.value)
             saver.launch {
                 // Any change → save at most every SAVE_DEBOUNCE_MS (streaming updates are frequent).
-                // combine() emits once per change of any of the five; skip the initial state.
+                // combine() emits once per change of any of the five. Skip only what equals the
+                // state captured *before* this coroutine started: a plain drop(1) raced — a change
+                // made before collection began arrived as the first value and was never saved.
                 kotlinx.coroutines.flow.combine(_sessions, _messages, _mcpServers, _plugins, _skills) { a, b, c, d, e -> listOf(a, b, c, d, e) }
-                    .drop(1)
+                    .dropWhile { it == initialState }
                     .debounce(SAVE_DEBOUNCE_MS)
                     .collect { flush() }
             }
