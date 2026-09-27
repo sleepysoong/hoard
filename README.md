@@ -19,6 +19,7 @@ chat with **mock data only**: sending a message streams fake thinking + reply te
   Always on by design — there is no setting to disable it.
 - Liquid glass everywhere via Backdrop 2.0.1 (`drawBackdrop` + `blur` + `lens`),
   glassmorphism fallback on older APIs / preview. **No gradients** — solid colors only.
+  How it was built, every pitfall hit and how to verify it: [`LIQUID_GLASS.md`](LIQUID_GLASS.md).
 - Signed release APK via `.github/workflows/build-and-release.yml`:
   auto-bumps `version.properties`, tags, and attaches `app-release.apk` to a Release.
 
@@ -32,7 +33,7 @@ UI (`ChatViewModel`, `ChatScreen`, `ChatResponseWorker`) stays unchanged.
 ## Tests
 
 ```bash
-./gradlew :app:testDebugUnitTest
+scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q   # low-spec wrapper, see AGENTS.md
 ```
 
 Robolectric E2E flows drive the real ViewModel → WorkManager → worker → engine → store
