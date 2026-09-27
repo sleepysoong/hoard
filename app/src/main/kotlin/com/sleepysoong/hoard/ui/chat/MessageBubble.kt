@@ -232,7 +232,12 @@ fun MessageBubble(
                 if (message.text.isEmpty() && message.isStreaming) {
                     IOSTypingDots(Modifier.padding(vertical = 6.dp))
                 } else if (message.text.isNotEmpty()) {
-                    Text(message.text, style = MaterialTheme.typography.bodyLarge, color = textColor)
+                    if (isUser) {
+                        // What I typed is shown verbatim.
+                        Text(message.text, style = MaterialTheme.typography.bodyLarge, color = textColor)
+                    } else {
+                        MarkdownText(message.text, color = textColor, isStreaming = message.isStreaming)
+                    }
                 }
                 // A failed reply says why instead of leaving an empty bubble.
                 message.errorText?.let { err ->

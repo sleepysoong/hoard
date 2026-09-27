@@ -38,6 +38,10 @@ Still no gradients: every colour is solid.
   debounced + flushed when the app leaves the screen; a corrupt file is kept aside, not overwritten)
 - System prompt editing, per-session context limit, session rename/delete
 - Edit my message (save & regenerate), branch from a message, delete message, retry
+- Model replies render as Markdown (`ui/chat/MarkdownText.kt`, [huarangmeng/Markdown](https://github.com/huarangmeng/Markdown)):
+  headings, **bold**/*italic*/~~strike~~, lists, task lists, GFM tables, quotes, code blocks with
+  highlighting, and LaTeX (`$…$` inline, `$$…$$` block). What I type is shown verbatim.
+  Remote images in replies are not fetched (alt text shown instead).
 - Model thinking blocks (expandable steps) + model picker (router groups/models, mock when offline)
 - Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data (not sent to the router yet)
 - Top floating bar: session name + live context usage
@@ -96,6 +100,9 @@ stack. Each test writes a conversation transcript to `app/build/test-artifacts/`
   Skipped when `SLEEPYROUTER_BIN` is unset (CI).
 
 ## Build
+
+Requires **JDK 21** to run Gradle/tests (the Markdown/LaTeX libraries ship Java 21 bytecode;
+the app itself still targets Java 17 and D8 handles the rest).
 
 ```bash
 ./gradlew :app:assembleDebug

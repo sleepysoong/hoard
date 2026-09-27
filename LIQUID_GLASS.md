@@ -57,7 +57,7 @@ Backdrop 2.0.1 AAR은 **`minCompileSdk = 37`** 을 요구한다. 의존성 한 �
 | AGP / Gradle | 9.3.2 / 9.7.1 | |
 | Kotlin | 2.4.10 | Compose 플러그인 동일 버전 |
 | Compose BOM | 2026.09.00 | |
-| JDK | 17 | |
+| JDK | 21 (Gradle·테스트 실행) | 앱 바이트코드 타깃은 17. Markdown/LaTeX 라이브러리가 Java 21 클래스라 로컬 JVM 테스트에 21 필요 |
 
 CI(`.github/workflows/build-and-release.yml`)는 `sdkmanager "platforms;android-37.0"`을 별도로 설치한다.
 

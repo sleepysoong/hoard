@@ -17,8 +17,17 @@ androidxTestCore = "1.6.1"
 androidxTestExtJunit = "1.2.1"
 kyantShapes = "1.2.1"
 kyantBackdrop = "2.0.1"
+hrmMarkdown = "1.5.3"
+hrmLatex = "1.5.4"
+hrmCodeHighlight = "1.1.2"
 
 [libraries]
+# Markdown (CommonMark+GFM tables) with integrated LaTeX, LLM streaming mode.
+hrm-markdown-parser = { module = "io.github.huarangmeng:markdown-parser", version.ref = "hrmMarkdown" }
+hrm-markdown-runtime = { module = "io.github.huarangmeng:markdown-runtime", version.ref = "hrmMarkdown" }
+hrm-markdown-renderer = { module = "io.github.huarangmeng:markdown-renderer", version.ref = "hrmMarkdown" }
+hrm-latex-renderer = { module = "io.github.huarangmeng:latex-renderer", version.ref = "hrmLatex" }
+hrm-codehighlight-render = { module = "io.github.huarangmeng:codehighlight-render", version.ref = "hrmCodeHighlight" }
 kyant-backdrop = { module = "io.github.kyant0:backdrop", version.ref = "kyantBackdrop" }
 kyant-shapes = { module = "io.github.kyant0:shapes", version.ref = "kyantShapes" }
 androidx-window = { group = "androidx.window", name = "window", version.ref = "window" }

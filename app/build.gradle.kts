@@ -98,9 +98,21 @@ kotlin {
     }
 }
 
+// hrm-markdown pulls the JetBrains material3 wrapper, which would lift androidx
+// material3 to an alpha. It only uses stable APIs (Text, MaterialTheme, Checkbox,
+// HorizontalDivider...), so keep the BOM's stable material3.
+configurations.configureEach {
+    exclude(group = "org.jetbrains.compose.material3")
+}
+
 dependencies {
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
+    implementation(libs.hrm.markdown.parser)
+    implementation(libs.hrm.markdown.runtime)
+    implementation(libs.hrm.markdown.renderer)
+    implementation(libs.hrm.latex.renderer) // LatexTheme (transparent math background)
+    implementation(libs.hrm.codehighlight.render) // light/dark code themes
 
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
