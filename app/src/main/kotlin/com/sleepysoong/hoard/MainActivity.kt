@@ -178,7 +178,9 @@ class MainActivity : ComponentActivity() {
                             .statusBarsPadding()
                             .imePadding()
                             .padding(horizontal = if (twoPane) 20.dp else 12.dp)
-                            .padding(bottom = bottomReserve, top = 8.dp)
+                            // The spring overshoots past its target; heading to 0.dp (keyboard up)
+                            // that dips below zero, and negative padding throws — clamp.
+                            .padding(bottom = bottomReserve.coerceAtLeast(0.dp), top = 8.dp)
                     ) {
                         composable("chat") { Box(Modifier.fillMaxSize().screenCanvas()) {
                             if (twoPane) {
