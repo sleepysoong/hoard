@@ -6,9 +6,22 @@ import androidx.compose.ui.graphics.Color
  * iOS system palette. Solid colors only — no gradients anywhere in the app.
  * Chrome (bars, sheets, tab bar) is liquid glass; content controls are iOS-solid.
  */
-val IOSBlueLight = Color(0xFF007AFF)
-val IOSBlueDark = Color(0xFF0A84FF)
-val IOSGreen = Color(0xFF34C759)
+/*
+ * Hoard key colours, from the mascot (app icon): matcha body + cocoa face.
+ *  - Cocoa is the text/icon accent (links, selected labels, my bubbles): 6.9:1 on white.
+ *  - Matcha is the fill accent (selected pills, switches, success): too light for text on
+ *    white (2.1:1), so text in "matcha" uses MatchaDeep (4.9:1).
+ *  - Dark mode lifts cocoa to Latte and matcha to MatchaLight to stay readable on black.
+ */
+val HoardCocoa = Color(0xFF7E4E30)
+val HoardCocoaDeep = Color(0xFF4A2A14)
+val HoardEspresso = Color(0xFF411C03)
+val HoardLatte = Color(0xFFD7A57C)
+val HoardMatcha = Color(0xFF9CC054)
+val HoardMatchaLight = Color(0xFFB4D866)
+val HoardMatchaDeep = Color(0xFF5E7A24)
+val HoardMatchaPale = Color(0xFFE4F0CB)
+val HoardMatchaNight = Color(0xFF2E3E17)
 val IOSRedLight = Color(0xFFFF3B30)
 val IOSRedDark = Color(0xFFFF453A)
 

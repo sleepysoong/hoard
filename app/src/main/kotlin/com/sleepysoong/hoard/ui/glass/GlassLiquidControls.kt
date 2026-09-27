@@ -65,7 +65,8 @@ import com.kyant.backdrop.effects.vibrancy
 import com.kyant.backdrop.highlight.Highlight
 import com.kyant.backdrop.shadow.InnerShadow
 import com.kyant.backdrop.shadow.Shadow
-import com.sleepysoong.hoard.ui.theme.IOSGreen
+import com.sleepysoong.hoard.ui.theme.HoardMatcha
+import com.sleepysoong.hoard.ui.theme.HoardMatchaLight
 import com.sleepysoong.hoard.ui.theme.LocalHoardDarkTheme
 import kotlinx.coroutines.launch
 import kotlin.math.abs
@@ -193,7 +194,7 @@ fun GlassSwitch(
     enabled: Boolean = true
 ) {
     val dark = LocalHoardDarkTheme.current
-    val accent = if (dark) Color(0xFF30D158) else IOSGreen
+    val accent = if (dark) HoardMatchaLight else HoardMatcha
     val trackOff = if (dark) Color(0xFF787880).copy(alpha = 0.36f) else Color(0xFF787878).copy(alpha = 0.2f)
     val trackW = 64.dp
     val trackH = 28.dp

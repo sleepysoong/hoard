@@ -202,7 +202,8 @@ internal fun Modifier.glassMaterial(
                     Shadow(
                         radius = 18.dp,
                         offset = DpOffset(0.dp, 6.dp),
-                        color = if (dark) Color.Black else Color(0xFF1B2A4A),
+                        // Warm cocoa-tinted shadow to match the palette (was blue-grey).
+                        color = if (dark) Color.Black else Color(0xFF2E2016),
                         alpha = if (dark) 0.34f else 0.13f
                     )
                 }

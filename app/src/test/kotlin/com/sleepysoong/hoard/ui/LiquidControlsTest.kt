@@ -125,7 +125,8 @@ class LiquidControlsTest {
         val bmp = compose.onRoot().captureToImage().asAndroidBitmap()
         val c = bmp.getPixel(b.center.x.toInt(), b.center.y.toInt())
         val r = (c shr 16) and 0xFF; val g = (c shr 8) and 0xFF; val bl = c and 0xFF
-        assertTrue("thumb centre shows the green track through the glass: rgb=($r,$g,$bl)", g - r > 25 && g - bl > 25)
+        // The (matcha) track shows through: tinted towards it, not an opaque white knob.
+        assertTrue("thumb centre shows the track through the glass: rgb=($r,$g,$bl)", g >= r && g - bl > 25)
         assertTrue("…but frosted, lighter than the raw track: g=$g r=$r", r > 80)
     }
 

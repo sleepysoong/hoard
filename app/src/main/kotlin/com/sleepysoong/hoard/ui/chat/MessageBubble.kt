@@ -101,7 +101,7 @@ fun MessageBubble(
         bottomStart = if (isUser) 19.dp else 5.dp,
         bottomEnd = if (isUser) 5.dp else 19.dp
     )
-    val textColor = if (isUser) Color.White else scheme.onSurface
+    val textColor = if (isUser) scheme.onPrimary else scheme.onSurface
 
     Box(
         modifier
@@ -161,7 +161,7 @@ fun MessageBubble(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(10.dp))
                                     .background(
-                                        if (isUser) Color.White.copy(alpha = 0.18f)
+                                        if (isUser) scheme.onPrimary.copy(alpha = 0.18f)
                                         else scheme.onSurface.copy(alpha = 0.07f)
                                     )
                                     .padding(horizontal = 8.dp, vertical = 4.dp),
@@ -187,7 +187,7 @@ fun MessageBubble(
                         Text(
                             "추론 ${message.thinking.size}단계",
                             style = MaterialTheme.typography.labelMedium,
-                            color = if (isUser) Color.White else scheme.primary
+                            color = if (isUser) scheme.onPrimary else scheme.primary
                         )
                         Icon(
                             if (thinkingOpen) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,

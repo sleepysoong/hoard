@@ -1,9 +1,33 @@
 # Hoard
 
+<p align="center"><img src="docs/hoard-icon.png" width="160" alt="Hoard 앱 아이콘 — 말차색 고양이 마스코트"></p>
+
 AI chat app shell by **sleepysoong** — https://github.com/sleepysoong/hoard
 
 Liquid-glass design shell (white-first + dark mode). ChatGPT/Claude/Gemini-style
 chat with **mock data only**: sending a message streams fake thinking + reply text.
+
+## Brand colours
+
+![Hoard palette](docs/palette.png)
+
+The mascot (app icon) sets the two key colours: **matcha** and **cocoa**.
+
+| Token | Hex | Role |
+| --- | --- | --- |
+| `HoardMatcha` | `#9CC054` | Fill accent: switches on, success fills (light) |
+| `HoardMatchaLight` | `#B4D866` | Matcha on dark backgrounds, secondary (dark) |
+| `HoardMatchaDeep` | `#5E7A24` | Matcha-coloured *text* on white (4.9:1), e.g. "연결됨" |
+| `HoardMatchaPale` | `#E4F0CB` | Selected pills / tab capsule (`primaryContainer`, light) |
+| `HoardMatchaNight` | `#2E3E17` | Selected pills / tab capsule (dark) |
+| `HoardCocoa` | `#7E4E30` | Text & icon accent, my bubbles (`primary`, light; 6.9:1 on white) |
+| `HoardCocoaDeep` | `#4A2A14` | Text on matcha pills (10.8:1) |
+| `HoardLatte` | `#D7A57C` | Cocoa on dark backgrounds (`primary`, dark; 8.9:1) |
+| `HoardEspresso` | `#411C03` | Mascot eyes / deepest brown |
+
+Matcha is too light for text on white (2.1:1), so it's used as a fill; text in
+the accent colour uses cocoa (or matcha deep). Defined in `ui/theme/Color.kt`, wired in `ui/theme/Theme.kt`.
+Still no gradients: every colour is solid.
 
 ## What is implemented
 

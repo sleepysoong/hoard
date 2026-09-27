@@ -1,6 +1,5 @@
 package com.sleepysoong.hoard.ui.settings
 
-import com.sleepysoong.hoard.ui.theme.IOSGreen
 import com.sleepysoong.hoard.ui.glass.GlassTextField
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassPillButton
@@ -196,7 +195,7 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
             val (text, color) = when (val st = status) {
                 RouterStatus.Offline -> "미연결 · 목업 응답" to scheme.onSurfaceVariant
                 RouterStatus.Checking -> "확인 중…" to scheme.onSurfaceVariant
-                is RouterStatus.Connected -> "연결됨 · 그룹 ${st.groups} · 모델 ${st.models}" to IOSGreen
+                is RouterStatus.Connected -> "연결됨 · 그룹 ${st.groups} · 모델 ${st.models}" to scheme.tertiary
                 is RouterStatus.Failed -> "연결 실패 · ${st.reason}" to scheme.error
             }
             Text(text, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 2, modifier = Modifier.testTag("router-status"))

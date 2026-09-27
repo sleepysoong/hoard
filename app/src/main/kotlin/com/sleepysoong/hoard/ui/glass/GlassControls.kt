@@ -43,7 +43,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
-import com.sleepysoong.hoard.ui.theme.IOSGreen
 
 /**
  * Primary action button — iOS-style filled glass pill (primary container tint).

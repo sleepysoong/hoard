@@ -242,11 +242,11 @@ fun GlassBottomBar(
                 .padding(4.dp)
                 .then(
                     if (backdrop == null) {
-                        Modifier.background(scheme.primary.copy(alpha = 0.12f), capsule)
+                        Modifier.background(scheme.secondary.copy(alpha = 0.35f), capsule)
                     } else {
                         Modifier.glassMaterial(
                             shape = capsule,
-                            tint = scheme.primary,
+                            tint = scheme.secondary, // matcha capsule, cocoa icon — the mascot's two colours
                             tone = GlassTone.Thin,
                             lifted = false
                         )
