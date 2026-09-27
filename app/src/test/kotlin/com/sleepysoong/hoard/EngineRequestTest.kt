@@ -70,11 +70,12 @@ class EngineRequestTest {
         assertEquals("hoard-1-ultra", r.modelId)
         assertEquals("둘째 질문", r.question)
         assertEquals(
-            listOf(MessageRole.Assistant, MessageRole.User, MessageRole.Assistant, MessageRole.User),
+            "welcome bubble is not a model turn",
+            listOf(MessageRole.User, MessageRole.Assistant, MessageRole.User),
             r.history.map { it.role }
         )
-        assertEquals("첫 질문", r.history[1].text)
-        assertTrue("prior reply is context", r.history[2].text.contains("첫 질문"))
+        assertEquals("첫 질문", r.history[0].text)
+        assertTrue("prior reply is context", r.history[1].text.contains("첫 질문"))
         assertEquals(0, r.droppedCount)
         assertTrue("streaming placeholder never leaks into history", r.history.none { it.isStreaming || it.text.isBlank() })
     }
@@ -92,7 +93,7 @@ class EngineRequestTest {
 
         val r = requests.single()
         assertEquals("바나나", r.question)
-        assertEquals(4, r.history.size) // welcome, 사과, A1, 바나나
+        assertEquals(3, r.history.size) // 사과, A1, 바나나 (welcome bubble excluded)
         assertFalse(r.history.any { it.text.contains("체리") })
     }
 

@@ -69,7 +69,7 @@ fun SessionSettingsSheet(
     GlassPopup(
         onDismiss = onDismiss,
         title = "세션 설정",
-        message = "이 세션에만 적용됩니다 (목업).",
+        message = "이 세션에만 적용됩니다.",
         anchor = anchor,
         confirmLabel = "저장",
         confirmEnabled = name.isNotBlank() && contextLimit != null,

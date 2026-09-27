@@ -84,8 +84,16 @@ class ChatMotionTest {
 
     @Test fun thinkingPanelGrowsOpen() {
         openChat()
+        // A reply with reasoning steps (the welcome bubble is plain guidance now).
+        compose.runOnUiThread {
+            HoardRepository.get().appendMessage("session-welcome", com.sleepysoong.hoard.data.ChatMessage(
+                id = "msg-thinking", role = com.sleepysoong.hoard.data.MessageRole.Assistant, text = "답",
+                thinking = com.sleepysoong.hoard.data.MockData.mockThinking("추론", 1, 0, emptyList())
+            ))
+        }
+        compose.waitForIdle()
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithText("추론 2단계", substring = true).performClick()
+        compose.onNodeWithText("추론 3단계", substring = true).performClick()
         val heights = (1..30).map {
             compose.mainClock.advanceTimeByFrame()
             compose.onAllNodesWithText("요청 파악", substring = true).fetchSemanticsNodes().firstOrNull()?.boundsInRoot?.bottom ?: 0f

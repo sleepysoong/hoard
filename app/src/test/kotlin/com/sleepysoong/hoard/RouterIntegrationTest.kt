@@ -118,14 +118,14 @@ class RouterIntegrationTest {
         assertEquals("true", body["stream"]!!.jsonPrimitive.content)
         assertEquals("너는 간결하다.", body["instructions"]!!.jsonPrimitive.content)
         val input = body["input"]!!.jsonArray.map { it.jsonObject }
-        assertEquals(listOf("assistant", "user", "assistant", "user"), input.map { it["role"]!!.jsonPrimitive.content })
+        assertEquals("welcome bubble excluded", listOf("user", "assistant", "user"), input.map { it["role"]!!.jsonPrimitive.content })
         assertTrue("every item is a typed message (untyped items make typed decoders drop all input)",
             input.all { it["type"]?.jsonPrimitive?.content == "message" })
         val texts = input.map { it["content"]!!.jsonArray[0].jsonObject }
-        assertEquals("output_text", texts[2]["type"]!!.jsonPrimitive.content)
-        assertEquals("첫 답", texts[2]["text"]!!.jsonPrimitive.content)
-        assertEquals("input_text", texts[3]["type"]!!.jsonPrimitive.content)
-        assertEquals("둘째 질문", texts[3]["text"]!!.jsonPrimitive.content)
+        assertEquals("output_text", texts[1]["type"]!!.jsonPrimitive.content)
+        assertEquals("첫 답", texts[1]["text"]!!.jsonPrimitive.content)
+        assertEquals("input_text", texts[2]["type"]!!.jsonPrimitive.content)
+        assertEquals("둘째 질문", texts[2]["text"]!!.jsonPrimitive.content)
     }
 
     @Test
@@ -251,5 +251,38 @@ class RouterIntegrationTest {
         val models = runBlocking { RouterAiEngine(router.url).listModels() }
         assertEquals(listOf("coding", "zen/a"), models.map { it.id })
         assertEquals(listOf(true, false), models.map { it.isGroup })
+    }
+
+    /** Sessions made offline carry mock IDs the router doesn't know: connecting moves them. */
+    @Test
+    fun connectingMigratesStaleSessionModelsToTheRoutersFirstGroup() {
+        start()
+        val welcome = h.vm.uiState.value.session!!
+        assertEquals("hoard-1-pro", welcome.modelId)
+        router.modelsBody = """{"object":"list","data":[{"id":"coding","owned_by":"sleepyrouter"},{"id":"zen/a","owned_by":"zen"}]}"""
+        val routerSession = h.repo.createSession("라우터 모델 세션", modelId = "zen/a")
+        runBlocking { com.sleepysoong.hoard.engine.RouterConnection.refresh(router.url, h.repo) }
+        h.idle()
+        assertEquals("stale mock ID → router's first group", "coding", h.repo.sessionOf(welcome.id)!!.modelId)
+        assertEquals("a model the router knows is kept", "zen/a", h.repo.sessionOf(routerSession.id)!!.modelId)
+
+        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
+        h.vm.send("질문", emptyList(), h.vm.uiState.value.session!!.modelId)
+        h.awaitReplies()
+        val body = Json.parseToJsonElement(router.requests.last().body).jsonObject
+        assertEquals("coding", body["model"]!!.jsonPrimitive.content)
+    }
+
+    /** The canned welcome bubble is guidance, not a model turn: never sent to the router. */
+    @Test
+    fun welcomeBubbleIsNotSentAsConversationHistory() {
+        start()
+        assertTrue(h.messages().first().id.startsWith(com.sleepysoong.hoard.data.MockData.WELCOME_PREFIX))
+        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
+        sendAndSettle("첫 질문")
+        val input = Json.parseToJsonElement(router.requests.last().body).jsonObject["input"]!!.jsonArray
+        assertEquals("only the user's question", 1, input.size)
+        assertEquals("user", input[0].jsonObject["role"]!!.jsonPrimitive.content)
+        assertTrue(!router.requests.last().body.contains("Hoard입니다"))
     }
 }

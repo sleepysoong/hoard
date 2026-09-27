@@ -1,6 +1,9 @@
 package com.sleepysoong.hoard.data
 
 object MockData {
+    /** Id prefix of the canned welcome bubbles (never sent to a model). */
+    const val WELCOME_PREFIX = "msg-welcome"
+
     const val DEFAULT_SYSTEM_PROMPT =
         "너는 Hoard라는 친절한 AI 어시스턴트다. 사용자의 언어로 간결하게 답하라."
 
@@ -50,20 +53,13 @@ object MockData {
         contextLimit = 32_000
     )
 
+    /** App guidance shown in the first session. Never sent to a model (see WELCOME_PREFIX). */
     fun welcomeMessages(): List<ChatMessage> = listOf(
         ChatMessage(
-            id = "msg-welcome-1",
+            id = "$WELCOME_PREFIX-1",
             role = MessageRole.Assistant,
-            text = "안녕하세요, Hoard입니다 (목업). 편하게 질문해 보세요. " +
-                "사진이나 파일을 첨부할 수 있고, / 를 입력하면 명령어, 도구 탭에서 MCP 서버·플러그인·스킬을 관리할 수 있어요.",
-            modelId = "hoard-1-pro",
-            thinking = listOf(
-                ThinkingStep("요청 파악", "인사 의도로 판단.", 210),
-                ThinkingStep("답변 계획", "채팅·첨부·명령어·도구 안내.", 340)
-            ),
-            elapsedMs = 1240,
-            promptTokens = 18,
-            completionTokens = 42
+            text = "안녕하세요, Hoard입니다. 설정 → 라우터에서 sleepyrouter 주소를 연결하면 실제 모델이 답해요 " +
+                "(연결 전에는 목업 답변). 사진·파일을 첨부할 수 있고, / 를 입력하면 명령어가 나와요."
         )
     )
 

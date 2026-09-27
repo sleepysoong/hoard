@@ -94,7 +94,7 @@ fun SessionsScreen(
             if (state.sessions.isEmpty()) {
                 GlassEmptyState(
                     title = "세션이 없어요",
-                    description = "첫 목업 세션을 만들어 보세요.",
+                    description = "첫 세션을 만들어 보세요.",
                     action = { GlassButton(onClick = { vm.newSession(); onOpenChat() }) { Text("새 세션") } }
                 )
             } else {

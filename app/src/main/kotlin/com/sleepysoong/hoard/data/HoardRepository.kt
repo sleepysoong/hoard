@@ -29,7 +29,22 @@ class HoardRepository {
     private val _routerModels = MutableStateFlow<List<AiModel>>(emptyList())
     val routerModels: StateFlow<List<AiModel>> = _routerModels.asStateFlow()
 
-    fun setRouterModels(models: List<AiModel>) { _routerModels.value = models }
+    fun setRouterModels(models: List<AiModel>) {
+        _routerModels.value = models
+        if (models.isNotEmpty()) migrateSessionModels(models)
+    }
+
+    /**
+     * Sessions created offline (or before the router's catalog changed) may carry a
+     * model the router doesn't know, e.g. the mock "hoard-1-pro". The router would
+     * silently fall back to its default group while the top bar keeps showing the
+     * stale ID — move those sessions to the router's first entry (its first group).
+     */
+    private fun migrateSessionModels(models: List<AiModel>) {
+        val known = models.mapTo(HashSet()) { it.id }
+        val target = models.first().id
+        _sessions.update { list -> list.map { if (it.modelId in known) it else it.copy(modelId = target) } }
+    }
 
     /** Models offered in the picker / Settings. */
     fun modelCatalog(): List<AiModel> = _routerModels.value.ifEmpty { MockData.models }

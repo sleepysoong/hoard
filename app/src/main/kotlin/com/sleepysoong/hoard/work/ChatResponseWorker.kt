@@ -153,7 +153,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val session = HoardRepository.get().sessionOf(sessionId) ?: return
         val notification = NotificationCompat.Builder(applicationContext, "hoard-replies")
             .setContentTitle("Hoard — ${session.name}")
-            .setContentText("답변이 준비됐습니다 (목업).")
+            .setContentText("답변이 준비됐습니다.")
             .setSmallIcon(R.drawable.ic_stat_hoard)
             .setAutoCancel(true)
             .build()

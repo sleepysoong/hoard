@@ -396,7 +396,7 @@ fun ChatScreen(
     if (deleteTarget != null) {
         DeleteConfirmDialog(
             title = "메시지를 삭제할까요?",
-            message = "세션에서 메시지가 삭제됩니다 (목업).",
+            message = "세션에서 메시지가 삭제됩니다.",
             onConfirm = { vm.deleteMessage(deleteTarget!!); deleteTarget = null },
             onDismiss = { deleteTarget = null }
         )

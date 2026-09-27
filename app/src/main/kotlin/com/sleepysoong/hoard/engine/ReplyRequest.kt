@@ -3,6 +3,7 @@ package com.sleepysoong.hoard.engine
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.estimateTokens
 
 /**
@@ -31,7 +32,7 @@ data class ReplyRequest(
          * always kept even if it alone exceeds the limit.
          */
         fun build(session: ChatSession, conversation: List<ChatMessage>, tools: List<String>, modelId: String = session.modelId): ReplyRequest {
-            val usable = conversation.filterNot { it.isStreaming || it.text.isBlank() }
+            val usable = conversation.filter(::isSendable)
             var budget = session.contextLimit - estimateTokens(session.systemPrompt)
             val kept = ArrayDeque<ChatMessage>()
             for (m in usable.asReversed()) {
@@ -52,6 +53,14 @@ data class ReplyRequest(
 
         /** Token estimate of a prompt: system prompt + every message text. Also the top-bar usage. */
         fun contextTokens(systemPrompt: String, messages: List<ChatMessage>): Int =
-            estimateTokens(systemPrompt) + messages.filterNot { it.text.isBlank() }.sumOf { estimateTokens(it.text) }
+            estimateTokens(systemPrompt) + messages.filter { !it.isWelcome && it.text.isNotBlank() }.sumOf { estimateTokens(it.text) }
+
+        /**
+         * Whether a message goes to the model. The canned welcome bubble is app chrome,
+         * not a model reply: sending it would put a fake assistant turn into the conversation.
+         */
+        fun isSendable(m: ChatMessage): Boolean = !m.isStreaming && m.text.isNotBlank() && !m.isWelcome
+
+        private val ChatMessage.isWelcome: Boolean get() = id.startsWith(MockData.WELCOME_PREFIX)
     }
 }
