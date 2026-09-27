@@ -73,8 +73,12 @@ class RouterAiEngine(
             // Connecting happens lazily on the first write, so unreachable routers
             // (refused, DNS, no route) surface here, not at responseCode.
             val body = encodeRequest(request, attachments)
+            // Stream the body: without a streaming mode HttpURLConnection buffers the whole
+            // request (base64 attachments included) in memory, on top of the String and its
+            // byte[] copy — ~5× the payload at once.
+            conn.setChunkedStreamingMode(64 * 1024)
             val status = try {
-                conn.outputStream.use { it.write(body.toByteArray()) }
+                conn.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
                 conn.responseCode
             } catch (e: SocketTimeoutException) {
                 throw RouterException.Transient("라우터 응답 시간 초과", null, e)
@@ -318,8 +322,14 @@ class RouterAiEngine(
                 "model_not_found" -> "라우터에 없는 모델입니다"
                 else -> msg
             }
-            // 4xx = the request itself is wrong (retrying won't help); 5xx/other = transient.
-            return if (status in 400..499) RouterException.Permanent(text, routing, status)
+            // 4xx = the request itself is wrong (retrying won't help); 5xx/other = transient —
+            // unless every candidate failed for a reason time can't fix (bad/missing keys),
+            // where retrying just replays the same failures against every provider.
+            val hopeless = routing != null && routing.failures.isNotEmpty() &&
+                routing.failures.all { it.outcome == "skipped" || it.errorClass == "auth" }
+            return if (status in 400..499 || hopeless) RouterException.Permanent(
+                if (hopeless) "$text (API 키 확인 필요)" else text, routing, status
+            )
             else RouterException.Transient(text, routing, null, status)
         }
 

@@ -55,6 +55,12 @@ class RouterIntegrationTest {
         h = ChatHarness()
         router = FakeRouter()
         runBlocking { SettingsStore.setRouterUrl(h.app, router.url) }
+        // Like the real app: the ViewModel has loaded the setting before the user sends.
+        val deadline = System.currentTimeMillis() + 5_000
+        while (h.vm.settings.value.routerUrl != router.url) {
+            h.idle(); Thread.sleep(5)
+            check(System.currentTimeMillis() < deadline) { "settings never reached the ViewModel" }
+        }
     }
 
     @After fun tearDown() {
@@ -284,5 +290,39 @@ class RouterIntegrationTest {
         assertEquals("only the user's question", 1, input.size)
         assertEquals("user", input[0].jsonObject["role"]!!.jsonPrimitive.content)
         assertTrue(!router.requests.last().body.contains("Hoard입니다"))
+    }
+
+    /** Offline in router mode: the reply waits for a network instead of burning its retries. */
+    @Test
+    fun offlineReplyWaitsForNetworkWithoutUsingAttempts() {
+        start()
+        h.networkUp = false
+        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("네트워크 복구 후 답"))))
+        h.vm.send("지하철에서 보낸 질문", emptyList(), "coding")
+        repeat(20) { h.idle(); Thread.sleep(10) }
+        val waiting = h.allWork().single()
+        assertEquals(WorkInfo.State.ENQUEUED, waiting.state)
+        assertEquals("no attempt spent while offline", 0, waiting.runAttemptCount)
+        assertTrue("nothing sent", router.requests.none { it.path.endsWith("/responses") })
+
+        h.networkUp = true
+        h.awaitReplies()
+        assertEquals("네트워크 복구 후 답", reply().text)
+    }
+
+    /** Every candidate failed on keys (auth / missing): retrying only replays the same failures. */
+    @Test
+    fun allFailedOnKeysIsNotRetried() {
+        start()
+        val keysTrace = """{"requested_model":"coding","route_reason":"model-group","candidates":["zen/a","gemini/d"],"attempts":[
+            {"index":1,"model":"zen/a","provider":"zen","outcome":"failed","error_class":"auth","status_code":401,"reason":"invalid api key","failed_over":true,"duration_ms":3},
+            {"index":2,"model":"gemini/d","provider":"gemini","outcome":"skipped","error_class":"unknown","reason":"missing_api_key: API key missing for provider gemini","duration_ms":0}]}""".replace("\n", "")
+        router.enqueue(FakeRouter.Reply.Json(502, """{"error":{"message":"All configured candidates failed","type":"upstream_error","param":null,"code":"all_candidates_failed"},"sleepyrouter":{"routing":$keysTrace}}"""))
+        h.vm.send("키가 전부 틀린 라우터", emptyList(), "coding")
+        repeat(3) { h.fireBackoff() }
+        h.awaitReplies()
+        assertEquals("one request, no retries", 1, router.requests.count { it.path.endsWith("/responses") })
+        assertTrue(reply().errorText!!, reply().errorText!!.contains("API 키 확인"))
+        assertEquals(WorkInfo.State.FAILED, h.allWork().single().state)
     }
 }

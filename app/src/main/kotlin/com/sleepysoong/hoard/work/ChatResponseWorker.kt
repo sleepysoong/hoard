@@ -5,7 +5,9 @@ import android.content.Context
 import android.content.pm.ServiceInfo
 import androidx.core.app.NotificationCompat
 import androidx.work.BackoffPolicy
+import androidx.work.Constraints
 import androidx.work.CoroutineWorker
+import androidx.work.NetworkType
 import androidx.work.ExistingWorkPolicy
 import androidx.work.ForegroundInfo
 import androidx.work.OneTimeWorkRequestBuilder
@@ -179,7 +181,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             modelId: String,
             messageId: String,
             parentId: String,
-            replacePending: Boolean = false
+            replacePending: Boolean = false,
+            /** Router mode: wait for a network instead of burning retries offline. */
+            needsNetwork: Boolean = false
         ) {
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
@@ -191,6 +195,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                     )
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
+                .apply {
+                    if (needsNetwork) {
+                        setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                    }
+                }
                 .addTag("hoard-reply-$sessionId")
                 .build()
             // One reply at a time per session, in send order. Regenerate/edit rewrites the

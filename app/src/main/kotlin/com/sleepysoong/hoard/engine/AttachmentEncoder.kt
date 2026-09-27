@@ -30,8 +30,10 @@ class AttachmentEncoder(private val read: (UiAttachment) -> ByteArray?) {
         } catch (e: Exception) {
             return note(a, "읽을 수 없음: ${e.javaClass.simpleName}")
         } ?: return note(a, "읽을 수 없음")
-        if (bytes.size > MAX_FILE_BYTES) return note(a, "너무 큼 (${bytes.size / 1_000_000}MB > ${MAX_FILE_BYTES / 1_000_000}MB)")
         val mime = sniffMime(a, bytes)
+        // Photos are re-encoded small below, so only raw-sent content is capped tightly.
+        val cap = if (mime.startsWith("image/")) MAX_IMAGE_BYTES else MAX_FILE_BYTES
+        if (bytes.size > cap) return note(a, "너무 큼 (${bytes.size / 1_000_000}MB > ${cap / 1_000_000}MB)")
         return when {
             mime.startsWith("image/") -> {
                 val (outMime, outBytes) = shrinkImage(mime, bytes)
@@ -82,7 +84,10 @@ class AttachmentEncoder(private val read: (UiAttachment) -> ByteArray?) {
     }
 
     companion object {
-        const val MAX_FILE_BYTES = 20_000_000
+        /** Base64 + JSON inflate a file ~2.7× in memory while sending; 10 MB keeps that bounded. */
+        const val MAX_FILE_BYTES = 10_000_000
+        /** Camera photos are often >10 MB; they are downscaled before sending. */
+        const val MAX_IMAGE_BYTES = 40_000_000
         const val IMAGE_SEND_AS_IS_BYTES = 1_500_000
         const val MAX_IMAGE_SIDE = 2048
         const val MAX_INLINE_CHARS = 100_000

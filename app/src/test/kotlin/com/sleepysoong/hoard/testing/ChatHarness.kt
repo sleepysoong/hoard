@@ -26,7 +26,7 @@ import java.io.File
  */
 class ChatHarness(pace: Float = 0f) {
     val app: Application = ApplicationProvider.getApplicationContext()
-    val workManager: WorkManager
+    lateinit var workManager: WorkManager
     /** Always the live store; after [simulateProcessDeath] this is the fresh instance. */
     val repo: HoardRepository get() = HoardRepository.get()
     private val store = ViewModelStore()
@@ -64,7 +64,21 @@ class ChatHarness(pace: Float = 0f) {
         idle()
     }
 
-    fun idle() = shadowOf(Looper.getMainLooper()).idle()
+    /** Simulated connectivity: while true, network constraints of queued replies are met. */
+    @Volatile var networkUp = true
+
+    fun idle() {
+        shadowOf(Looper.getMainLooper()).idle()
+        if (networkUp && ::workManager.isInitialized) {
+            val driver = WorkManagerTestInitHelper.getTestDriver(app)!!
+            workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.ENQUEUED)).get()
+                // First attempts only: a retry must wait for fireBackoff(), which releases
+                // both its backoff and its constraint (releasing it here would skip backoff).
+                .filter { it.runAttemptCount == 0 && it.constraints.requiredNetworkType != androidx.work.NetworkType.NOT_REQUIRED }
+                .forEach { driver.setAllConstraintsMet(it.id) }
+            shadowOf(Looper.getMainLooper()).idle()
+        }
+    }
 
     fun unfinishedWork(): List<WorkInfo> = workManager.getWorkInfos(
         WorkQuery.fromStates(WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED)
@@ -93,15 +107,23 @@ class ChatHarness(pace: Float = 0f) {
         awaitNoRunningWork()
         val driver = WorkManagerTestInitHelper.getTestDriver(app)!!
         workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.ENQUEUED)).get()
-            .forEach { driver.setInitialDelayMet(it.id) }
+            .forEach {
+                driver.setInitialDelayMet(it.id)
+                if (networkUp && it.constraints.requiredNetworkType != androidx.work.NetworkType.NOT_REQUIRED) {
+                    driver.setAllConstraintsMet(it.id)
+                }
+            }
         idle()
     }
 
     /** Waits until the current attempt of every reply has ended (succeeded, failed, or backing off). */
     fun awaitNoRunningWork(timeoutMs: Long = 10_000) {
         val deadline = System.currentTimeMillis() + timeoutMs
+        idle()
         while (workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.RUNNING)).get().isNotEmpty() ||
-            repo.messages.value.values.flatten().any { it.isStreaming }
+            repo.messages.value.values.flatten().any { it.isStreaming } ||
+            // Queued (e.g. waiting for its network constraint) and never attempted yet.
+            (networkUp && workManager.getWorkInfos(WorkQuery.fromStates(WorkInfo.State.ENQUEUED)).get().any { it.runAttemptCount == 0 })
         ) {
             idle(); Thread.sleep(5)
             check(System.currentTimeMillis() < deadline) { "attempt did not end" }

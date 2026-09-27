@@ -39,7 +39,7 @@ which one answered).
 
 Attachments are sent as real content with the newest message (`engine/AttachmentEncoder.kt`):
 images → `input_image` data URL (photos over 1.5 MB are re-encoded to ≤2048 px JPEG), text/code files →
-inlined `input_text`, other files (e.g. PDF) → `input_file`. Files over 20 MB or unreadable ones are
+inlined `input_text`, other files (e.g. PDF) → `input_file`. Files over 10 MB or unreadable ones are
 reported to the model instead of silently dropped. Earlier turns only name their attachments.
 Whether a model can use `input_file` depends on the provider.
 

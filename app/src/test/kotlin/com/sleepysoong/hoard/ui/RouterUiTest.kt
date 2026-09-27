@@ -82,6 +82,11 @@ class RouterUiTest {
     private fun waitFor(what: String, timeoutMs: Long = 10_000, cond: () -> Boolean) {
         val deadline = System.currentTimeMillis() + timeoutMs
         while (!cond()) {
+            // Network is "up": let router replies (network-constrained) run.
+            val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+            val wm = androidx.work.WorkManager.getInstance(app)
+            wm.getWorkInfos(androidx.work.WorkQuery.fromStates(androidx.work.WorkInfo.State.ENQUEUED)).get()
+                .forEach { WorkManagerTestInitHelper.getTestDriver(app)!!.setAllConstraintsMet(it.id) }
             compose.waitForIdle(); Thread.sleep(20)
             check(System.currentTimeMillis() < deadline) { "timed out: $what" }
         }

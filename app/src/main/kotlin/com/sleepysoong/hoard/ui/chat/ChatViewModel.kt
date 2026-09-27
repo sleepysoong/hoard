@@ -102,7 +102,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         // Worker owns the reply so it survives the app going to background.
         ChatResponseWorker.enqueue(
-            getApplication(), session.id, modelId, replyId, parentId = userMsg.id
+            getApplication(), session.id, modelId, replyId, parentId = userMsg.id,
+            needsNetwork = usesRouter()
         )
     }
 
@@ -121,9 +122,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(
             getApplication(), session.id, session.modelId, replyId,
-            parentId = messageId, replacePending = true
+            parentId = messageId, replacePending = true, needsNetwork = usesRouter()
         )
     }
+
+    private fun usesRouter() = settings.value.routerUrl.isNotBlank()
 
     /** Stop the reply being generated in the open session (keeps what arrived so far). */
     fun stopReply() {
@@ -152,7 +155,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val replyId = "msg-" + UUID.randomUUID().toString().take(8)
         ChatResponseWorker.enqueue(
             getApplication(), session.id, session.modelId, replyId,
-            parentId = parent.id, replacePending = true
+            parentId = parent.id, replacePending = true, needsNetwork = usesRouter()
         )
     }
 

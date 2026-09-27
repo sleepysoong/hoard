@@ -144,7 +144,28 @@ val CONTEXT_LIMIT_RANGE = 1_000..2_000_000
 fun parseContextLimit(text: String): Int? =
     text.filterNot { it == ',' || it.isWhitespace() }.toIntOrNull()?.takeIf { it in CONTEXT_LIMIT_RANGE }
 
-fun estimateTokens(text: String): Int = (text.length / 4).coerceAtLeast(1)
+/**
+ * Token estimate without a tokenizer. Latin text is ~4 chars/token, but Hangul, kanji
+ * and kana cost about one token per character — `length / 4` under-counted Korean by
+ * ~4×, so context trimming sent far more than the session limit.
+ */
+fun estimateTokens(text: String): Int {
+    var cjk = 0
+    var other = 0
+    var i = 0
+    while (i < text.length) {
+        val cp = text.codePointAt(i)
+        if (isWideScript(cp)) cjk++ else other++
+        i += Character.charCount(cp)
+    }
+    return (cjk + (other + 3) / 4).coerceAtLeast(1)
+}
+
+private fun isWideScript(cp: Int): Boolean =
+    cp in 0xAC00..0xD7A3 || // Hangul syllables
+        cp in 0x1100..0x11FF || cp in 0x3130..0x318F || // Hangul jamo
+        cp in 0x3040..0x30FF || // kana
+        cp in 0x4E00..0x9FFF || cp in 0x3400..0x4DBF // CJK ideographs
 
 fun formatElapsed(ms: Long): String = when {
     ms < 1000 -> "${ms}ms"
