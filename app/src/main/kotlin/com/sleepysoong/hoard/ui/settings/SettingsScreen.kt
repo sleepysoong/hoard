@@ -1,5 +1,15 @@
 package com.sleepysoong.hoard.ui.settings
 
+import com.sleepysoong.hoard.ui.theme.IOSGreen
+import com.sleepysoong.hoard.ui.glass.GlassTextField
+import com.sleepysoong.hoard.ui.glass.GlassPillTint
+import com.sleepysoong.hoard.ui.glass.GlassPillButton
+import com.sleepysoong.hoard.engine.RouterStatus
+import com.sleepysoong.hoard.engine.RouterConnection
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.platform.testTag
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -30,6 +40,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.MockData
+import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.parseContextLimit
 import com.sleepysoong.hoard.ui.glass.GlassTokenField
@@ -69,9 +80,15 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        IOSSectionHeader("기본 모델 (목업)")
+        IOSSectionHeader("라우터")
         IOSGroupedSection {
-            MockData.models.forEachIndexed { i, m ->
+            RouterSection(settings.routerUrl)
+        }
+
+        val routerModels by HoardRepository.get().routerModels.collectAsState()
+        IOSSectionHeader(if (routerModels.isEmpty()) "기본 모델 (목업)" else "기본 모델 (라우터)")
+        IOSGroupedSection {
+            routerModels.ifEmpty { MockData.models }.forEachIndexed { i, m ->
                 if (i > 0) IOSRowDivider()
                 val selected = settings.defaultModel == m.id
                 Row(
@@ -117,9 +134,58 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text("Hoard", style = MaterialTheme.typography.bodyLarge)
                 Text("sleepysoong 제작 · github.com/sleepysoong/hoard", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                Text("리퀴드 글래스 껍데기 · 목업 데이터 전용 · 그라데이션 없음", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+                Text("sleepyrouter /hoard/v1/responses로 답변 · 라우터 미연결 시 목업", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             }
         }
     }
+    }
+}
+
+/**
+ * Router URL + connection check. The URL is saved on "연결" (not per keystroke),
+ * then /v1/models is fetched: success swaps the model catalog to the router's
+ * groups/models, failure keeps the previous catalog and shows why.
+ */
+@Composable
+private fun RouterSection(savedUrl: String) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+    val status by RouterConnection.status.collectAsState()
+    var url by rememberSaveable(savedUrl) { mutableStateOf(savedUrl) }
+    val valid = url.isBlank() || url.trim().let { it.startsWith("http://") || it.startsWith("https://") }
+
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        GlassTextField(
+            value = url,
+            onValueChange = { url = it },
+            label = { Text("라우터 주소") },
+            placeholder = { Text("http://192.168.0.10:4567") },
+            singleLine = true,
+            isError = !valid,
+            supportingText = if (!valid) { { Text("http:// 또는 https:// 로 시작해야 합니다") } } else null,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
+            modifier = Modifier.testTag("router-url")
+        )
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassPillButton(
+                label = if (url.isBlank()) "연결 해제" else "연결",
+                tint = GlassPillTint.Accent,
+                enabled = valid && status !is RouterStatus.Checking,
+                onClick = {
+                    scope.launch {
+                        SettingsStore.setRouterUrl(ctx, url)
+                        RouterConnection.refresh(url.trim())
+                    }
+                }
+            )
+            val (text, color) = when (val st = status) {
+                RouterStatus.Offline -> "미연결 · 목업 응답" to scheme.onSurfaceVariant
+                RouterStatus.Checking -> "확인 중…" to scheme.onSurfaceVariant
+                is RouterStatus.Connected -> "연결됨 · 그룹 ${st.groups} · 모델 ${st.models}" to IOSGreen
+                is RouterStatus.Failed -> "연결 실패 · ${st.reason}" to scheme.error
+            }
+            Text(text, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 2, modifier = Modifier.testTag("router-status"))
+        }
     }
 }

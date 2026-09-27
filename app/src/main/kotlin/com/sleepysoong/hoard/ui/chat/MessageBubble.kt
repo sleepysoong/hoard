@@ -60,6 +60,9 @@ import com.sleepysoong.hoard.ui.glass.glassMaterial
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import androidx.compose.ui.platform.testTag
+import com.sleepysoong.hoard.data.RouteAttempt
+import com.sleepysoong.hoard.data.RoutingInfo
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.shrinkVertically
@@ -236,9 +239,19 @@ fun MessageBubble(
 
                 if (message.text.isEmpty() && message.isStreaming) {
                     IOSTypingDots(Modifier.padding(vertical = 6.dp))
-                } else {
+                } else if (message.text.isNotEmpty()) {
                     Text(message.text, style = MaterialTheme.typography.bodyLarge, color = textColor)
                 }
+                // A failed reply says why instead of leaving an empty bubble.
+                message.errorText?.let { err ->
+                    Text(
+                        "⚠ $err",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = scheme.error,
+                        modifier = Modifier.testTag("reply-error")
+                    )
+                }
+                if (!isUser) message.routing?.let { RoutingPanel(it, textColor) }
             }
 
             if (showFooter) {
@@ -268,6 +281,94 @@ fun MessageBubble(
                     }
                 }
             }
+        }
+    }
+}
+
+/**
+ * Router trace inside a Hoard bubble: a one-line summary (answering model, how
+ * many candidates failed) that expands into every attempt with its reason.
+ */
+@Composable
+private fun RoutingPanel(routing: RoutingInfo, textColor: Color) {
+    val scheme = MaterialTheme.colorScheme
+    var open by remember { mutableStateOf(false) }
+    val failures = routing.failures.size
+    val summary = buildString {
+        append(routing.selectedModel?.let { "via $it" } ?: "응답한 모델 없음")
+        if (failures > 0) append(" · ${failures}개 실패")
+        if (routing.requestedModel.isNotBlank() && routing.requestedModel != routing.selectedModel) {
+            append(" · 요청 ${routing.requestedModel}")
+        }
+    }
+    Column(Modifier.testTag("routing-panel")) {
+        Row(
+            Modifier
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClickLabel = "라우팅 상세") { open = !open }
+                .padding(vertical = 2.dp, horizontal = 2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            Text(
+                summary,
+                style = MaterialTheme.typography.labelMedium,
+                color = if (routing.selectedModel == null) scheme.error else scheme.primary,
+                modifier = Modifier.testTag("routing-summary")
+            )
+            Icon(
+                if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
+                contentDescription = null,
+                modifier = Modifier.size(15.dp),
+                tint = textColor.copy(alpha = 0.7f)
+            )
+        }
+        AnimatedVisibility(
+            open,
+            enter = expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Top) + fadeIn(GlassMotion.fade()),
+            exit = shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Top) + fadeOut(GlassMotion.fade())
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(13.dp))
+                    .background(scheme.onSurface.copy(alpha = 0.06f))
+                    .padding(10.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                routing.attempts.forEach { a -> AttemptRow(a, textColor) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AttemptRow(a: RouteAttempt, textColor: Color) {
+    val scheme = MaterialTheme.colorScheme
+    val (label, color) = when (a.outcome) {
+        "succeeded" -> "성공" to scheme.primary
+        "streaming" -> "응답 중" to scheme.primary
+        "failed" -> "실패" to scheme.error
+        "skipped" -> "건너뜀" to scheme.onSurfaceVariant
+        "incomplete" -> "잘림" to scheme.error
+        else -> a.outcome to scheme.onSurfaceVariant
+    }
+    Column(Modifier.testTag("routing-attempt")) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text("${a.index}. ${a.model}", style = MaterialTheme.typography.labelMedium, color = textColor, modifier = Modifier.weight(1f, fill = false))
+            Text(label, style = MaterialTheme.typography.labelMedium, color = color)
+        }
+        val detail = listOfNotNull(
+            a.statusCode?.let { "HTTP $it" },
+            // Skipped candidates were never sent: their class is meaningless ("unknown").
+            a.errorClass?.takeIf { a.outcome == "failed" || a.outcome == "incomplete" },
+            a.durationMs.takeIf { it > 0 }?.let { formatElapsed(it) }
+        ).joinToString(" · ")
+        if (detail.isNotEmpty()) {
+            Text(detail, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.65f))
+        }
+        a.reason?.takeIf { it.isNotBlank() }?.let {
+            Text(it, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.65f), maxLines = 3)
         }
     }
 }

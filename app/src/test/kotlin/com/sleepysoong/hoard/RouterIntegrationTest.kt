@@ -245,7 +245,9 @@ class RouterIntegrationTest {
         assertEquals("http://h:4567/v1/models", RouterAiEngine.endpoint("http://h:4567/v1", "models", hoard = false))
         router = FakeRouter()
         h = ChatHarness()
+        router.modelsBody = """{"object":"list","data":[{"id":"coding","owned_by":"sleepyrouter"},{"id":"zen/a","owned_by":"zen"}]}"""
         val models = runBlocking { RouterAiEngine(router.url).listModels() }
-        assertEquals(listOf("coding", "zen/a"), models)
+        assertEquals(listOf("coding", "zen/a"), models.map { it.id })
+        assertEquals(listOf(true, false), models.map { it.isGroup })
     }
 }

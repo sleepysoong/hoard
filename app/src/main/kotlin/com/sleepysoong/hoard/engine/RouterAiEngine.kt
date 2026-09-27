@@ -93,8 +93,8 @@ class RouterAiEngine(
         }
     }
 
-    /** Health + model list for Settings: `GET /v1/models` (groups first). */
-    suspend fun listModels(): List<String> = withContext(Dispatchers.IO) {
+    /** Health + model list for Settings: `GET /v1/models` (groups first, then models). */
+    suspend fun listModels(): List<RouterModel> = withContext(Dispatchers.IO) {
         val conn = openConnection(endpoint(baseUrl, "models", hoard = false))
         try {
             conn.requestMethod = "GET"
@@ -294,9 +294,14 @@ class RouterAiEngine(
             else RouterException.Transient(text, routing, null, status)
         }
 
-        fun parseModelList(body: String): List<String> {
+        fun parseModelList(body: String): List<RouterModel> {
             val data = runCatching { json.parseToJsonElement(body).jsonObject["data"]?.jsonArray }.getOrNull().orEmpty()
-            return data.mapNotNull { (it as? JsonObject)?.str("id") }
+            return data.mapNotNull { el ->
+                val o = el as? JsonObject ?: return@mapNotNull null
+                val id = o.str("id") ?: return@mapNotNull null
+                // sleepyrouter marks groups with owned_by = "sleepyrouter"; models carry their provider.
+                RouterModel(id, owner = o.str("owned_by").orEmpty())
+            }
         }
 
         /** Minimal SSE reader: `event:` / `data:` lines, blank line ends an event. */
@@ -328,6 +333,11 @@ class RouterAiEngine(
         private fun JsonObject.int(k: String) = (this[k] as? JsonPrimitive)?.intOrNull
         private fun JsonObject.obj(k: String) = this[k] as? JsonObject
     }
+}
+
+/** An entry of the router's `/v1/models`: a routing group or a concrete model. */
+data class RouterModel(val id: String, val owner: String) {
+    val isGroup: Boolean get() = owner == "sleepyrouter"
 }
 
 sealed class RouterException(message: String, val routing: RoutingInfo?, cause: Throwable?) : IOException(message, cause) {

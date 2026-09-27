@@ -79,7 +79,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun createDefaultSession(name: String = "새 세션"): ChatSession {
         val d = settings.value
-        return repo.createSession(name, modelId = d.defaultModel, contextLimit = d.defaultContext)
+        // With a router, the saved default may be a mock ID the router doesn't know:
+        // start on the router's first entry (its first group) instead.
+        val catalog = repo.modelCatalog()
+        val model = catalog.firstOrNull { it.id == d.defaultModel }?.id ?: catalog.first().id
+        return repo.createSession(name, modelId = model, contextLimit = d.defaultContext)
     }
 
     fun send(text: String, attachments: List<UiAttachment>, modelId: String) {

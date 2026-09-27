@@ -25,6 +25,15 @@ class HoardRepository {
     private val _skills = MutableStateFlow(MockData.skills)
     val skills: StateFlow<List<SkillItem>> = _skills.asStateFlow()
 
+    /** Router groups/models (empty = no router: fall back to the mock catalog). */
+    private val _routerModels = MutableStateFlow<List<AiModel>>(emptyList())
+    val routerModels: StateFlow<List<AiModel>> = _routerModels.asStateFlow()
+
+    fun setRouterModels(models: List<AiModel>) { _routerModels.value = models }
+
+    /** Models offered in the picker / Settings. */
+    fun modelCatalog(): List<AiModel> = _routerModels.value.ifEmpty { MockData.models }
+
     fun messagesOf(sessionId: String): List<ChatMessage> = _messages.value[sessionId].orEmpty()
 
     fun sessionOf(sessionId: String): ChatSession? = _sessions.value.firstOrNull { it.id == sessionId }

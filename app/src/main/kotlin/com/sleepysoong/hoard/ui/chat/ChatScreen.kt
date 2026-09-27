@@ -89,6 +89,8 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val state by vm.uiState.collectAsState()
+    val routerModels by com.sleepysoong.hoard.data.HoardRepository.get().routerModels.collectAsState()
+    val catalog = routerModels.ifEmpty { MockData.models }
     val session = state.session
     var showModels by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -244,7 +246,8 @@ fun ChatScreen(
                             MessageBubble(
                                 message = msg,
                                 modelName = msg.modelId?.let { id ->
-                                    MockData.models.firstOrNull { it.id == id }?.displayName
+                                    // Router models have no display name: show the ID itself.
+                                    catalog.firstOrNull { it.id == id }?.displayName ?: id
                                 },
                                 maxBubbleWidth = maxBubbleWidth,
                                 groupedWithPrevious = grouped,
@@ -358,6 +361,8 @@ fun ChatScreen(
     if (showModels && session != null) {
         ModelPickerSheet(
             currentModelId = session.modelId,
+            models = catalog,
+            fromRouter = routerModels.isNotEmpty(),
             anchor = barAnchor,   // drops down right below the title bar
             onPick = { vm.setModel(it) },
             onDismiss = { showModels = false }

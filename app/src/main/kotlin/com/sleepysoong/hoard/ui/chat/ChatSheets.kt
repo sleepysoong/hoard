@@ -27,6 +27,8 @@ import com.sleepysoong.hoard.ui.glass.GlassTextField
 @Composable
 fun ModelPickerSheet(
     currentModelId: String,
+    models: List<com.sleepysoong.hoard.data.AiModel>,
+    fromRouter: Boolean,
     anchor: Rect?,
     onPick: (String) -> Unit,
     onDismiss: () -> Unit
@@ -34,10 +36,10 @@ fun ModelPickerSheet(
     GlassPopup(
         onDismiss = onDismiss,
         title = "모델 선택",
-        message = "응답은 목업 데이터로 생성됩니다.",
+        message = if (fromRouter) "sleepyrouter 그룹·모델" else "라우터 미연결 · 목업 응답",
         anchor = anchor
     ) {
-        MockData.models.forEachIndexed { i, model ->
+        models.forEachIndexed { i, model ->
             if (i > 0) GlassPopupDivider()
             GlassPopupRow(
                 label = model.displayName,
