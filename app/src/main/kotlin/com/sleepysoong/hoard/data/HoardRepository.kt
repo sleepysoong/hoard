@@ -137,15 +137,6 @@ class HoardRepository(private val store: HoardStore? = null) {
         touch(sessionId)
     }
 
-    fun truncateAfter(sessionId: String, messageId: String) {
-        _messages.update { map ->
-            val list = map[sessionId] ?: return@update map
-            val idx = list.indexOfFirst { it.id == messageId }
-            if (idx < 0) map else map + (sessionId to list.take(idx + 1))
-        }
-        touch(sessionId)
-    }
-
     /** Branch a new session starting from (and including) the given message. */
     fun branchFrom(sessionId: String, messageId: String, branchName: String): ChatSession? {
         val src = sessionOf(sessionId) ?: return null

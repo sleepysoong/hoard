@@ -5,13 +5,10 @@ import android.content.pm.PackageManager
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -58,11 +55,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
@@ -421,15 +416,4 @@ private fun GlassSuggestionChip(text: String, onClick: () -> Unit) {
                 .padding(horizontal = 14.dp, vertical = 9.dp)
         )
     }
-}
-
-/** iOS-style tap target without the Material ripple. */
-@Composable
-private fun Modifier.noRippleClickable(onClick: () -> Unit): Modifier {
-    val interaction = remember { MutableInteractionSource() }
-    return this.clickable(
-        interactionSource = interaction,
-        indication = null,
-        onClick = onClick
-    )
 }

@@ -13,7 +13,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.ChatSession
-import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.parseContextLimit
 import com.sleepysoong.hoard.ui.glass.GlassPopup
 import com.sleepysoong.hoard.ui.glass.GlassPopupDivider
