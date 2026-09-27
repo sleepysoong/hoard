@@ -23,12 +23,25 @@ chat with **mock data only**: sending a message streams fake thinking + reply te
 - Signed release APK via `.github/workflows/build-and-release.yml`:
   auto-bumps `version.properties`, tags, and attaches `app-release.apk` to a Release.
 
-## The one seam for the real backend
+## Backend: sleepyrouter
 
-`engine/MockAiEngine.kt :: streamReply(ReplyRequest)` — replace with a real network call.
-`ReplyRequest` already carries the model, current system prompt, history trimmed to the
-session context limit, attachments and enabled plugin/MCP/skill names.
-UI (`ChatViewModel`, `ChatScreen`, `ChatResponseWorker`) stays unchanged.
+Replies come from [sleepyrouter](https://github.com/sleepysoong/sleepyrouter)'s
+`POST /hoard/v1/responses` — the OpenAI Responses API plus a routing trace
+(`sleepyrouter.routing`: which models were tried, why each failed or was skipped,
+which one answered).
+
+1. Run sleepyrouter (default `127.0.0.1:4567`; bind to a LAN/Tailscale address to reach it from the phone).
+2. In the app: **설정 → 라우터**, enter e.g. `http://192.168.0.10:4567`, tap **연결**.
+   The status shows the router's group/model counts, and the model picker switches to the router's catalog.
+3. Chat. Each reply bubble shows `via <answering model> · N개 실패`; tap it for every attempt
+   (outcome, HTTP status, error class, duration, reason). Failed replies show the reason instead of an empty bubble.
+
+With no router URL the app uses the offline mock engine. Plain HTTP is allowed
+(`network_security_config.xml`) because sleepyrouter is a local gateway; note it applies app-wide.
+
+Code: `engine/RouterAiEngine.kt` (HTTP + SSE, request encoding, trace parsing, error
+classification), `engine/RouterConnection.kt` (`/v1/models` check + catalog),
+`work/ChatResponseWorker.kt` (retries transient failures up to 3 attempts; 4xx are not retried).
 
 ## Tests
 
@@ -38,6 +51,14 @@ scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q   # low-spec wrapper, see A
 
 Robolectric E2E flows drive the real ViewModel → WorkManager → worker → engine → store
 stack. Each test writes a conversation transcript to `app/build/test-artifacts/`.
+
+- `RouterIntegrationTest`, `RouterUiTest`: against `FakeRouter`, which speaks sleepyrouter's exact wire format.
+- `RealSleepyrouterTest` (opt-in): runs the **real** sleepyrouter binary in front of fake upstreams.
+  ```bash
+  (cd ../sleepyrouter && go build -o /tmp/sleepyrouter-bin ./cmd/sleepyrouter)
+  SLEEPYROUTER_BIN=/tmp/sleepyrouter-bin scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q --tests '*RealSleepyrouterTest'
+  ```
+  Skipped when `SLEEPYROUTER_BIN` is unset (CI).
 
 ## Build
 

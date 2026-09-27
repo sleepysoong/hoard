@@ -30,3 +30,13 @@ The dev box is small (3 cores / 6 GB) and **freezes when a build or test run tak
 - **Run the narrowest thing first.** Iterate with `--tests '*OneTest*'`; run the full suite once, at the end, before committing.
 - **Never combine heavy tasks in one invocation** (e.g. full test suite + assemble) and never start a second Gradle run while one is going.
 - Don't raise the limits in `gradle.properties` / `testOptions` (Gradle heap 1280m, one Robolectric fork with 1024m, serial GC, `ActiveProcessorCount=2`). If something runs out of memory, split the run instead.
+
+## Backend contract (sleepyrouter)
+
+Hoard talks to sleepyrouter's `POST /hoard/v1/responses` (repo: `../sleepyrouter`). The wire contract
+lives in sleepyrouter's `docs/protocol-openai.md` ("Hoard endpoint"); Hoard's side is `engine/RouterAiEngine.kt`.
+
+- When changing either side, keep `FakeRouter` (app/src/test/.../testing) byte-compatible with the real
+  router and run `RealSleepyrouterTest` against a freshly built binary (see README). The fake alone once hid a
+  real bug (stream-path status codes lost in the router).
+- Commit and push each repository separately, one logical change at a time.
