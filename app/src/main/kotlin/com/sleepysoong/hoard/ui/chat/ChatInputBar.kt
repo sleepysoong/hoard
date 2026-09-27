@@ -1,6 +1,7 @@
 package com.sleepysoong.hoard.ui.chat
 
 import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.testTag
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
 import com.sleepysoong.hoard.ui.glass.GlassMotion
 import androidx.compose.ui.graphics.graphicsLayer
@@ -145,8 +146,9 @@ fun ChatInputBar(
                                     scaleY = 0.5f + 0.5f * pop.value
                                     alpha = pop.value.coerceIn(0f, 1f)
                                 }
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(scheme.surfaceContainerHighest)
+                                // Thin glass chip, like the rest of the composer chrome.
+                                .glassMaterial(RoundedCornerShape(50), scheme.surfaceContainerHighest, tone = GlassTone.Thin, lifted = false)
+                                .testTag("attachment-chip")
                                 .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
                         ) {
                             Text("📎 ${a.name}", style = MaterialTheme.typography.labelMedium)
@@ -182,8 +184,8 @@ fun ChatInputBar(
                 Box(
                     Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(scheme.surfaceContainerHigh)
+                        .glassMaterial(RoundedCornerShape(20.dp), scheme.surface, tone = GlassTone.Regular, lifted = false)
+                        .testTag("slash-menu")
                         .padding(vertical = 4.dp)
                 ) {
                     Column {
