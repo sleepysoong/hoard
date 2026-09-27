@@ -85,7 +85,7 @@ class RouterAiEngine(
             } catch (e: SocketTimeoutException) {
                 throw RouterException.Transient("라우터 응답 시간 초과", null, e)
             } catch (e: IOException) {
-                throw RouterException.Transient("라우터에 연결할 수 없습니다 (${e.message})", null, e)
+                throw RouterException.Transient(describeConnectError(e), null, e)
             }
             val contentType = conn.contentType.orEmpty()
             if (status !in 200..299 || !contentType.startsWith("text/event-stream")) {
@@ -235,9 +235,38 @@ class RouterAiEngine(
     companion object {
         internal val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
+        /**
+         * What the user typed → a base URL. A bare `host:port` (no scheme) means plain
+         * HTTP, sleepyrouter's default; explicit http/https is kept.
+         */
+        fun normalizeBaseUrl(input: String): String {
+            val t = input.trim().trimEnd('/')
+            if (t.isEmpty()) return ""
+            return if (Regex("^[a-zA-Z][a-zA-Z0-9+.-]*://").containsMatchIn(t)) t else "http://$t"
+        }
+
+        /**
+         * Human explanation of a connection failure. Java's own message
+         * ("Failed to connect to host/1.2.3.4:4567") looks like a mangled URL — the
+         * part after "/" is just the resolved IP — so say what actually went wrong.
+         */
+        fun describeConnectError(e: IOException): String {
+            val raw = e.message.orEmpty()
+            val target = Regex("to ([^/\\s]+)/[0-9a-fA-F.:]+:(\\d+)").find(raw)?.let { "${it.groupValues[1]}:${it.groupValues[2]}" }
+            return when (e) {
+                is java.net.UnknownHostException -> "주소를 찾을 수 없습니다 (${e.message}) · 호스트 이름을 확인하세요"
+                is java.net.ConnectException, is java.net.NoRouteToHostException ->
+                    "라우터에 연결할 수 없습니다" + (target?.let { " ($it)" } ?: "") +
+                        " · 서버가 켜져 있고 외부 접속을 받는지 확인하세요 (sleepyrouter [server] host = \"0.0.0.0\", 방화벽·포트)"
+                is SocketTimeoutException -> "라우터가 응답하지 않습니다" + (target?.let { " ($it)" } ?: "") + " · 방화벽이나 포트를 확인하세요"
+                is javax.net.ssl.SSLException -> "HTTPS 연결 실패 (${e.message}) · sleepyrouter는 기본이 http:// 입니다"
+                else -> "라우터에 연결할 수 없습니다 ($raw)"
+            }
+        }
+
         /** `http://host:4567` (or with trailing `/`, `/hoard/v1`) → `…/hoard/v1/<path>`. */
         fun endpoint(base: String, path: String, hoard: Boolean = true): String {
-            var b = base.trim().trimEnd('/')
+            var b = normalizeBaseUrl(base)
             b = b.removeSuffix("/hoard/v1").removeSuffix("/v1")
             return if (hoard) "$b/hoard/v1/$path" else "$b/v1/$path"
         }

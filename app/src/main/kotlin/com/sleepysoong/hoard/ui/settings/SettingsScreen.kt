@@ -4,6 +4,7 @@ import com.sleepysoong.hoard.ui.glass.GlassTextField
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.engine.RouterStatus
+import com.sleepysoong.hoard.engine.RouterAiEngine
 import com.sleepysoong.hoard.engine.RouterConnection
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -154,7 +155,9 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
     val status by RouterConnection.status.collectAsState()
     var url by rememberSaveable(savedUrl) { mutableStateOf(savedUrl) }
     var token by rememberSaveable(savedToken) { mutableStateOf(savedToken) }
-    val valid = url.isBlank() || url.trim().let { it.startsWith("http://") || it.startsWith("https://") }
+    // Bare "host:port" is fine (→ http://); only reject other schemes.
+    val normalized = RouterAiEngine.normalizeBaseUrl(url)
+    val valid = url.isBlank() || normalized.startsWith("http://") || normalized.startsWith("https://")
 
     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         GlassTextField(
@@ -164,7 +167,7 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
             placeholder = { Text("http://192.168.0.10:4567") },
             singleLine = true,
             isError = !valid,
-            supportingText = if (!valid) { { Text("http:// 또는 https:// 로 시작해야 합니다") } } else null,
+            supportingText = if (!valid) { { Text("http:// 또는 https:// 주소여야 합니다") } } else null,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
             modifier = Modifier.testTag("router-url")
         )
@@ -186,9 +189,10 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
                 enabled = valid && status !is RouterStatus.Checking,
                 onClick = {
                     scope.launch {
-                        SettingsStore.setRouterUrl(ctx, url)
+                        url = normalized // show what will actually be used
+                        SettingsStore.setRouterUrl(ctx, normalized)
                         SettingsStore.setRouterToken(ctx, token)
-                        RouterConnection.refresh(url.trim(), token = token.trim())
+                        RouterConnection.refresh(normalized, token = token.trim())
                     }
                 }
             )
