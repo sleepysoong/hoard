@@ -97,8 +97,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         } catch (e: CancellationException) {
             // Cancelled or stopped by the system: never leave a spinning bubble,
             // and let the coroutine machinery see the cancellation.
+            // Stopped by the user (stop button / regenerate) or the system: keep whatever
+            // text arrived, never leave a spinner.
             repo.updateMessage(sessionId, messageId) {
-                it.copy(isStreaming = false, errorText = it.errorText ?: "답변이 중단됐습니다.")
+                it.copy(isStreaming = false, errorText = it.errorText ?: "사용자가 중지함")
             }
             throw e
         } catch (e: RouterException.Permanent) {

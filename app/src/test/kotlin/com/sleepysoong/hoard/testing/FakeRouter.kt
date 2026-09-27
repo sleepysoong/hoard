@@ -14,7 +14,7 @@ import java.util.concurrent.Executors
 class FakeRouter : AutoCloseable {
     sealed interface Reply {
         /** SSE frames (event name, JSON data). [cut] = drop the connection after them. */
-        data class Sse(val frames: List<Pair<String, String>>, val cut: Boolean = false) : Reply
+        data class Sse(val frames: List<Pair<String, String>>, val cut: Boolean = false, val stallMs: Long = 0) : Reply
         data class Json(val status: Int, val body: String) : Reply
     }
 
@@ -61,6 +61,13 @@ class FakeRouter : AutoCloseable {
                 for ((name, data) in r.frames) {
                     out.write("event: $name\ndata: $data\n\n".toByteArray())
                     out.flush()
+                }
+                if (r.stallMs > 0) {
+                    // A thinking model: keep-alives only, until the client leaves.
+                    val until = System.currentTimeMillis() + r.stallMs
+                    try {
+                        while (System.currentTimeMillis() < until) { Thread.sleep(100); out.write(": ping\n\n".toByteArray()); out.flush() }
+                    } catch (_: Exception) { return }
                 }
                 if (r.cut) {
                     // Abort without the terminating chunk: the client sees a broken stream.

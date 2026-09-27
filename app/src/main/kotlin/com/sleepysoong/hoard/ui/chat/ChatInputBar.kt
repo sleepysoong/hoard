@@ -46,6 +46,7 @@ import androidx.compose.ui.input.key.type
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Add
 import androidx.compose.material.icons.rounded.ArrowUpward
+import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material3.HorizontalDivider
@@ -89,6 +90,9 @@ fun ChatInputBar(
     attachments: List<UiAttachment>,
     onAttachmentsChange: (List<UiAttachment>) -> Unit,
     onSend: () -> Unit,
+    /** A reply is streaming in this session: the send button becomes a stop button. */
+    replying: Boolean = false,
+    onStop: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -274,9 +278,10 @@ fun ChatInputBar(
                 // Send is liquid glass in both states; active just swaps the tint
                 // (blue-tinted glass, not a flat painted disc).
                 // Becoming sendable: the button swells past full size and settles.
+                val active = canSend || replying
                 val sendPop by animateFloatAsState(
-                    targetValue = if (canSend) 1f else 0.9f,
-                    animationSpec = if (canSend) GlassMotion.bouncy() else GlassMotion.exit(),
+                    targetValue = if (active) 1f else 0.9f,
+                    animationSpec = if (active) GlassMotion.bouncy() else GlassMotion.exit(),
                     label = "send-pop"
                 )
                 Box(
@@ -286,16 +291,16 @@ fun ChatInputBar(
                         .clip(CircleShape)
                         .glassMaterial(
                             shape = CircleShape,
-                            tint = if (canSend) scheme.primary else scheme.surface,
-                            tone = if (canSend) GlassTone.Regular else GlassTone.Thin
+                            tint = if (active) scheme.primary else scheme.surface,
+                            tone = if (active) GlassTone.Regular else GlassTone.Thin
                         )
-                        .liquidClickable(enabled = canSend) { onSend() },
+                        .liquidClickable(enabled = active) { if (replying) onStop() else onSend() },
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        Icons.Rounded.ArrowUpward,
-                        contentDescription = "보내기",
-                        tint = if (canSend) scheme.onPrimary else scheme.onSurfaceVariant.copy(alpha = 0.5f),
+                        if (replying) Icons.Rounded.Stop else Icons.Rounded.ArrowUpward,
+                        contentDescription = if (replying) "답변 중지" else "보내기",
+                        tint = if (active) scheme.onPrimary else scheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(20.dp)
                     )
                 }

@@ -8,6 +8,7 @@ import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
@@ -152,5 +153,24 @@ class RouterUiTest {
         compose.onNodeWithTag("reply-error", useUnmergedTree = true).assertTextContains("모든 모델이 실패했습니다", substring = true)
         compose.onNodeWithTag("routing-summary", useUnmergedTree = true).assertTextContains("응답한 모델 없음 · 2개 실패", substring = true)
         shot("reply-all-failed")
+    }
+
+    @Test fun stopButtonAppearsWhileReplyingAndStops() {
+        // Router that sends one delta and then stalls (keep-alives only).
+        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), delta("답하는 중", 1)), stallMs = 20_000))
+        connect()
+        compose.onNodeWithTag("tab-세션").performClick()
+        compose.onNodeWithContentDescription("새 세션").performClick()
+        compose.waitForIdle()
+        compose.onNode(hasSetTextAction()).performTextInput("길게 답해줘")
+        compose.onNodeWithContentDescription("보내기").performClick()
+        waitFor("streaming") { compose.onAllNodesWithText("답하는 중").fetchSemanticsNodes().isNotEmpty() }
+        waitFor("stop button") { compose.onAllNodesWithContentDescription("답변 중지").fetchSemanticsNodes().isNotEmpty() }
+        shot("replying-stop-button")
+        compose.onNodeWithContentDescription("답변 중지").performClick()
+        waitFor("stopped") { compose.onAllNodesWithTag("reply-error", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("reply-error", useUnmergedTree = true).assertTextContains("사용자가 중지함", substring = true)
+        compose.onNodeWithText("답하는 중").assertExists()
+        waitFor("send button back") { compose.onAllNodesWithContentDescription("보내기").fetchSemanticsNodes().isNotEmpty() }
     }
 }

@@ -297,7 +297,9 @@ fun ChatScreen(
                 onValueChange = { vm.input = it },
                 attachments = vm.attachments,
                 onAttachmentsChange = { vm.attachments = it },
-                onSend = { if (session != null) sendReply(vm.input, session.modelId) }
+                onSend = { if (session != null) sendReply(vm.input, session.modelId) },
+                replying = state.messages.any { it.isStreaming },
+                onStop = { vm.stopReply() }
             )
         }
 

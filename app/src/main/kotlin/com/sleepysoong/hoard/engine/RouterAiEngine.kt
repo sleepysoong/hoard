@@ -6,6 +6,8 @@ import com.sleepysoong.hoard.data.RouteAttempt
 import com.sleepysoong.hoard.data.RoutingInfo
 import com.sleepysoong.hoard.data.ThinkingStep
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.InternalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
@@ -40,6 +42,7 @@ import java.net.URL
  *  - [RouterException.Permanent]: 4xx, all candidates failed for a client reason → don't
  * Both carry the routing trace when the router sent one.
  */
+@OptIn(InternalCoroutinesApi::class) // Job.invokeOnCompletion(onCancelling = true)
 class RouterAiEngine(
     private val baseUrl: String,
     private val connectTimeoutMs: Int = 10_000,
@@ -55,6 +58,14 @@ class RouterAiEngine(
     private suspend fun stream(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) {
         val started = System.currentTimeMillis()
         val conn = openConnection(endpoint(baseUrl, "responses"))
+        // Blocking socket reads don't observe coroutine cancellation (and SSE keep-alives
+        // never surface as events), so a cancelled reply would keep the router — and the
+        // upstream model — generating until the read timeout. Close the socket from outside
+        // the moment this coroutine is cancelled; the blocked read then fails immediately.
+        val job = currentCoroutineContext()[Job]
+        val watcher = job?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+            if (cause != null) runCatching { conn.disconnect() }
+        }
         try {
             conn.doOutput = true
             conn.setRequestProperty("Content-Type", "application/json")
@@ -90,8 +101,15 @@ class RouterAiEngine(
                 throw RouterException.Transient("응답 스트림이 완료 전에 끊겼습니다", state.routing, null)
             }
         } catch (e: SocketTimeoutException) {
+            currentCoroutineContext().ensureActive()
             throw RouterException.Transient("응답이 멈췄습니다 (시간 초과)", null, e)
+        } catch (e: IOException) {
+            // A socket closed by the watcher surfaces as an IOException: report the
+            // cancellation, not a network error (which would schedule a retry).
+            currentCoroutineContext().ensureActive()
+            throw e
         } finally {
+            watcher?.dispose()
             conn.disconnect()
         }
     }

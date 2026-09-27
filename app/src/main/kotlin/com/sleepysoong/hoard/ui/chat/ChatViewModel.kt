@@ -125,6 +125,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         )
     }
 
+    /** Stop the reply being generated in the open session (keeps what arrived so far). */
+    fun stopReply() {
+        val session = uiState.value.session ?: return
+        ChatResponseWorker.cancel(getApplication(), session.id)
+    }
+
     fun deleteMessage(messageId: String) {
         val session = uiState.value.session ?: return
         repo.deleteMessage(session.id, messageId)
