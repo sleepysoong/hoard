@@ -4,20 +4,11 @@ import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.ThinkingStep
 import com.sleepysoong.hoard.data.estimateTokens
 
-data class MockStreamEvent(
-    val thinking: List<ThinkingStep> = emptyList(),
-    val deltaText: String = "",
-    val done: Boolean = false,
-    val elapsedMs: Long = 0,
-    val promptTokens: Int = 0,
-    val completionTokens: Int = 0
-)
-
 /**
- * Single seam for the future real backend: UI + Worker consume this mock stream.
- * Replace [streamReply] with a real network call; everything else stays.
+ * Offline engine (no router configured) and test double: fake thinking and
+ * word-by-word streaming. The real backend is [RouterAiEngine].
  */
-object MockAiEngine {
+object MockAiEngine : AiEngine {
     /** Multiplier for the fake streaming delays. Tests set 0 to run instantly. */
     @Volatile var pace: Float = 1f
 
@@ -26,13 +17,13 @@ object MockAiEngine {
 
     private suspend fun delay(ms: Long) = kotlinx.coroutines.delay((ms * pace).toLong())
 
-    suspend fun streamReply(
+    override suspend fun streamReply(
         request: ReplyRequest,
-        onEvent: suspend (MockStreamEvent) -> Unit
+        onEvent: suspend (StreamEvent) -> Unit
     ) {
         val question = request.question
         var eventIndex = 0
-        val emit: suspend (MockStreamEvent) -> Unit = { ev ->
+        val emit: suspend (StreamEvent) -> Unit = { ev ->
             testHook?.invoke(request, eventIndex++)
             onEvent(ev)
         }
@@ -42,7 +33,7 @@ object MockAiEngine {
         for (step in thinking) {
             delay(step.durationMs / 3)
             shown += step
-            emit(MockStreamEvent(thinking = shown.toList(), elapsedMs = System.currentTimeMillis() - started))
+            emit(StreamEvent(thinking = shown.toList(), elapsedMs = System.currentTimeMillis() - started))
         }
         val full = MockData.mockAnswer(question, request.modelId, request.hasAttachments)
         val promptTokens = request.promptTokens
@@ -56,7 +47,7 @@ object MockAiEngine {
             count++
             if (count % 4 == 0) {
                 emit(
-                    MockStreamEvent(
+                    StreamEvent(
                         thinking = shown.toList(),
                         deltaText = chunk.toString(),
                         elapsedMs = System.currentTimeMillis() - started,
@@ -67,7 +58,7 @@ object MockAiEngine {
             }
         }
         emit(
-            MockStreamEvent(
+            StreamEvent(
                 thinking = shown.toList(),
                 deltaText = full,
                 done = true,

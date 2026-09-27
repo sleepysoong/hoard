@@ -16,15 +16,17 @@ import com.sleepysoong.hoard.R
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
-import com.sleepysoong.hoard.engine.MockAiEngine
+import com.sleepysoong.hoard.data.SettingsStore
+import com.sleepysoong.hoard.engine.Engines
+import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 
 /**
- * Continues a mock reply in the background so leaving the app after send
- * still finishes the response. The foreground service type is dataSync.
+ * Produces a reply (sleepyrouter, or the offline mock engine) in the background
+ * so leaving the app after send still finishes the response. The foreground service type is dataSync.
  */
 class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
@@ -57,14 +59,15 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         } else {
             // Retry streams into the same bubble instead of appending a duplicate.
             // Fails when the bubble was deleted/regenerated during backoff.
-            repo.updateMessage(sessionId, messageId) { placeholder.copy(createdAt = it.createdAt) }
+            repo.updateMessage(sessionId, messageId) { placeholder.copy(createdAt = it.createdAt, routing = it.routing) }
         }
         // Nobody is waiting for this reply any more: finish quietly, never resurrect it.
         if (!hasTarget) return Result.success()
 
+        val engine = Engines.forRouter(SettingsStore.current(applicationContext).routerUrl)
         return try {
             promote("Hoard가 생각 중…")
-            MockAiEngine.streamReply(request) { ev ->
+            engine.streamReply(request) { ev ->
                 val written = repo.updateMessage(sessionId, messageId) {
                     it.copy(
                         text = ev.deltaText,
@@ -72,7 +75,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         elapsedMs = ev.elapsedMs,
                         promptTokens = ev.promptTokens,
                         completionTokens = ev.completionTokens,
-                        isStreaming = !ev.done
+                        isStreaming = !ev.done,
+                        routing = ev.routing ?: it.routing,
+                        // The model that actually answered, not just the one requested.
+                        modelId = ev.routing?.selectedModel ?: it.modelId,
+                        errorText = null
                     )
                 }
                 // Session or bubble deleted mid-stream: stop generating.
@@ -87,14 +94,23 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             // Cancelled or stopped by the system: never leave a spinning bubble,
             // and let the coroutine machinery see the cancellation.
             repo.updateMessage(sessionId, messageId) {
-                it.copy(text = it.text.ifBlank { "(목업) 답변이 중단됐습니다." }, isStreaming = false)
+                it.copy(isStreaming = false, errorText = it.errorText ?: "답변이 중단됐습니다.")
             }
             throw e
+        } catch (e: RouterException.Permanent) {
+            // The router rejected the request itself: retrying sends the same thing again.
+            repo.updateMessage(sessionId, messageId) {
+                it.copy(isStreaming = false, errorText = e.message, routing = e.routing ?: it.routing)
+            }
+            Result.failure()
         } catch (e: Exception) {
             val willRetry = runAttemptCount + 1 < MAX_ATTEMPTS
+            val routing = (e as? RouterException)?.routing
+            val reason = e.message ?: "연결 오류"
             repo.updateMessage(sessionId, messageId) {
                 it.copy(
-                    text = if (willRetry) "(목업) 연결이 끊겨 곧 다시 시도합니다…" else "(목업) 답변이 중단됐습니다.",
+                    errorText = if (willRetry) "$reason · 곧 다시 시도합니다…" else "$reason · 답변이 중단됐습니다.",
+                    routing = routing ?: it.routing,
                     isStreaming = false
                 )
             }

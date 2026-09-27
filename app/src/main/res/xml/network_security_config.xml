@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  sleepyrouter is a local gateway (127.0.0.1 / LAN / Tailscale) that speaks plain
+  HTTP by default, so cleartext must be allowed for the router URL the user enters.
+  Public HTTPS routers keep working as usual.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true">
+        <trust-anchors>
+            <certificates src="system" />
+        </trust-anchors>
+    </base-config>
+</network-security-config>

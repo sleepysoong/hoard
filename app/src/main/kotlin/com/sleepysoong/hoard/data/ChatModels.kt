@@ -28,6 +28,45 @@ data class ThinkingStep(
     val durationMs: Long
 )
 
+/** One candidate the router tried for a reply (from sleepyrouter's routing trace). */
+data class RouteAttempt(
+    val index: Int,
+    val model: String,
+    val provider: String,
+    val upstreamModel: String? = null,
+    /** succeeded | failed | skipped | streaming | (upstream status, e.g. incomplete) */
+    val outcome: String,
+    val errorClass: String? = null,
+    val statusCode: Int? = null,
+    val reason: String? = null,
+    val failedOver: Boolean? = null,
+    val durationMs: Long = 0
+) {
+    val isFailure: Boolean get() = outcome == "failed" || outcome == "skipped"
+}
+
+/** How the router answered: requested → tried → selected. */
+data class RoutingInfo(
+    val requestedModel: String,
+    val routeReason: String = "",
+    val candidates: List<String> = emptyList(),
+    val selectedModel: String? = null,
+    val selectedProvider: String? = null,
+    val attempts: List<RouteAttempt> = emptyList()
+) {
+    val failures: List<RouteAttempt> get() = attempts.filter { it.isFailure }
+
+    /**
+     * The router reports the selected candidate as "streaming" when the stream
+     * commits; once the stream actually finishes the client knows the outcome.
+     */
+    fun withSelectedOutcome(outcome: String): RoutingInfo {
+        val i = attempts.indexOfLast { it.model == selectedModel && it.outcome == "streaming" }
+        if (i < 0) return this
+        return copy(attempts = attempts.toMutableList().also { it[i] = it[i].copy(outcome = outcome) })
+    }
+}
+
 data class ChatMessage(
     val id: String,
     val role: MessageRole,
@@ -40,7 +79,11 @@ data class ChatMessage(
     val attachments: List<UiAttachment> = emptyList(),
     val createdAt: Long = System.currentTimeMillis(),
     val branchedFromId: String? = null,
-    val isStreaming: Boolean = false
+    val isStreaming: Boolean = false,
+    /** Router trace for assistant replies (null for mock/offline replies). */
+    val routing: RoutingInfo? = null,
+    /** Set when the reply failed; shown in the bubble instead of silently empty text. */
+    val errorText: String? = null
 ) {
     val totalTokens: Int get() = promptTokens + completionTokens
 }

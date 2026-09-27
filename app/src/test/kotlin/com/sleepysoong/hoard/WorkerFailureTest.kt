@@ -75,7 +75,7 @@ class WorkerFailureTest {
         assertEquals(WorkInfo.State.FAILED, h.allWork().single().state)
         val r = replies().single()
         assertFalse(r.isStreaming)
-        assertTrue("user sees the reply was interrupted: ${r.text}", r.text.contains("중단"))
+        assertTrue("user sees the reply was interrupted: ${r.errorText}", r.errorText.orEmpty().contains("중단"))
     }
 
     @Test

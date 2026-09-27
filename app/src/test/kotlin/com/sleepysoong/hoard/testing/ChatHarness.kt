@@ -38,6 +38,7 @@ class ChatHarness(pace: Float = 0f) {
         runBlocking { SettingsStore.reset(app) }
         MockAiEngine.pace = pace
         MockAiEngine.testHook = null
+        com.sleepysoong.hoard.engine.Engines.override = null
         WorkManagerTestInitHelper.initializeTestWorkManager(
             app,
             Configuration.Builder()
@@ -120,6 +121,11 @@ class ChatHarness(pace: Float = 0f) {
                 if (m.isStreaming) add("streaming")
                 if (m.thinking.isNotEmpty()) add("thinking=${m.thinking.size}")
                 if (m.totalTokens > 0) add("tok=${m.promptTokens}+${m.completionTokens}")
+                m.routing?.let { r ->
+                    add("route=" + r.attempts.joinToString(">") { a -> a.model + ":" + a.outcome + (a.statusCode?.let { "($it)" } ?: "") } +
+                        " selected=" + r.selectedModel)
+                }
+                m.errorText?.let { add("error=\"$it\"") }
             }.joinToString(" ")
             log.append("  %2d %-9s %s  %s\n".format(i, m.role, m.text.replace("\n", "⏎").take(110), flags))
         }
