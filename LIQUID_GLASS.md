@@ -195,7 +195,7 @@ Modifier.drawBackdrop(
         )
     },
     highlight = null,                       // 카드에는 끔(9장). 컨트롤 썸은 켬(11.4)
-    shadow = if (lifted) {{ Shadow(18.dp, DpOffset(0.dp, 6.dp), if (dark) Black else Color(0xFF1B2A4A), if (dark) .34f else .13f) }} else null,
+    shadow = if (lifted) {{ Shadow(18.dp, DpOffset(0.dp, 6.dp), if (dark) Black else Color(0xFF2E2016), if (dark) .34f else .13f) }} else null,
     innerShadow = if (enabled && tone != Thin) {{ InnerShadow(10.dp, DpOffset(0.dp, 1.5.dp), Black, spec.innerShadow) }} else null,
     onDrawSurface = { drawRect(tint.copy(alpha = if (dark) alpha * 0.86f else alpha)) }
 )
@@ -241,7 +241,7 @@ val dark = LocalHoardDarkTheme.current                          // 색이 테마
 GlassHost가 기록하는 건 단색 배경뿐이다. 흰 배경을 굴절시키면 흰색이라 **렌즈와 블러가 눈에
 보이지 않는다.** 흰 바탕의 유리는 이것들이 만든다:
 
-1. **헤어라인 림**(0.5dp, onSurface α .13)과 **드롭 섀도**(회청색 `0xFF1B2A4A`)
+1. **헤어라인 림**(0.5dp, onSurface α .13)과 **드롭 섀도**(따뜻한 코코아 톤 `0xFF2E2016`)
 2. **내부 그림자**(두께감, α .05–.10)
 3. **눌렀을 때의 렌즈**(움직이는 것에서만 굴절이 보인다)
 4. **선택 표시는 틴트 글래스**(primaryContainer 계열) — 흰 유리 위 흰 썸은 안 보인다
