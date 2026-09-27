@@ -82,6 +82,11 @@ android {
                 it.jvmArgs("-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-XX:TieredStopAtLevel=1")
                 // Flow tests dump conversation transcripts here (reviewable artifact).
                 it.systemProperty("hoard.artifacts", layout.buildDirectory.dir("test-artifacts").get().asFile.path)
+                // Robolectric unpacks a ~200 MB native runtime into java.io.tmpdir per JVM and
+                // never removes it. On machines where /tmp is tmpfs (RAM) that piled up to GBs
+                // and got the dev box OOM-killed; keep it on disk under build/, wiped by clean.
+                val tmp = layout.buildDirectory.dir("test-tmp").get().asFile.apply { mkdirs() }
+                it.systemProperty("java.io.tmpdir", tmp.path)
             }
         }
     }
@@ -109,6 +114,9 @@ dependencies {
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
     implementation(libs.jsoup)
+    // Only TermuxConstants' compile-time String constants are used; they are inlined into
+    // our bytecode, so none of termux-shared (appcompat, guava, markwon, native libs) ships.
+    compileOnly(libs.termux.shared) { isTransitive = false }
     implementation(libs.hrm.markdown.parser)
     implementation(libs.hrm.markdown.runtime)
     implementation(libs.hrm.markdown.renderer)

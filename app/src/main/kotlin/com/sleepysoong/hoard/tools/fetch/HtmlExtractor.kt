@@ -60,7 +60,7 @@ object HtmlExtractor {
         doc.select(REMOVE_ATTR).remove()
         // Page-level <header> is site chrome; one inside <article> usually holds the headline.
         doc.select("header").filter { it.parents().none { p -> p.tagName() == "article" || p.tagName() == "main" } }.forEach { it.remove() }
-        val bodyText = doc.body()?.text()?.length ?: 0
+        val bodyText = doc.body().text().length
         doc.select("[class], [id]").toList().forEach { e ->
             if (e.tagName() in setOf("html", "body", "main", "article")) return@forEach
             val tag = (e.className() + " " + e.id())
@@ -70,7 +70,7 @@ object HtmlExtractor {
     }
 
     private fun contentRoot(doc: Document): Element {
-        val body = doc.body() ?: return doc
+        val body = doc.body()
         doc.select("article").maxByOrNull { it.text().length }?.takeIf { it.text().length > 200 }?.let { return it }
         (doc.selectFirst("main") ?: doc.selectFirst("[role=main]"))?.takeIf { it.text().length > 200 }?.let { return it }
         // Readability-lite: paragraphs vote for their parent (full) and grandparent (half).

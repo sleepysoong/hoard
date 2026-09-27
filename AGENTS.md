@@ -34,6 +34,10 @@ The dev box is small (3 cores / 6 GB) and **freezes when a build or test run tak
 - **Never combine heavy tasks in one invocation** (e.g. full test suite + assemble) and never start a second Gradle run while one is going.
 - Don't raise the limits in `gradle.properties` / `testOptions` (Gradle heap 1280m, one Robolectric fork with 1024m, serial GC, `ActiveProcessorCount=2`). If something runs out of memory, split the run instead.
 
+- If a build dies with odd errors (`Illegal Capacity`, Kryo "No space left"), check `df -h /`: a full disk corrupts
+  Gradle's test-result store — free space, then `rm -rf app/build/test-results`. Robolectric's ~200 MB native runtime
+  now unpacks into `app/build/test-tmp` (not tmpfs `/tmp`, which is RAM on this box and OOM-killed sessions).
+
 ## Backend contract (sleepyrouter)
 
 Hoard talks to sleepyrouter's `POST /hoard/v1/responses` (repo: `../sleepyrouter`). The wire contract

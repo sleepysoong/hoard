@@ -53,6 +53,13 @@ Still no gradients: every colour is solid.
   - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without
     touching the tool schema. Tool loop in `RouterAiEngine`: up to 8 rounds, then `tool_choice: none`.
     Each call appears as a step under the reply's 추론 section.
+- `termux_exec` (Settings → Termux, off by default): one-shot shell commands in Termux via the official
+  `com.termux.RUN_COMMAND` intent to `RunCommandService` (`bash -lc <command>`, background, result back
+  through a PendingIntent → `TermuxResultReceiver`). Returns `{stdout, stderr, exitCode}` as-is (non-zero exit
+  is a normal result). Distinct errors for: Termux not installed, RUN_COMMAND permission missing,
+  `allow-external-apps` not set, timeout. Short commands only (Binder size limit); no PTY/streaming.
+  One-time Termux setup: `mkdir -p ~/.termux && echo allow-external-apps=true >> ~/.termux/termux.properties && termux-reload-settings`.
+  Code: `tools/TermuxExecTool.kt` (tool layer) ↔ `termux/` (Android side, `TermuxConstants` from termux-shared, compileOnly).
 - Model thinking blocks (expandable steps) + model picker (router groups/models, mock when offline)
 - Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data (not sent to the router yet)
 - Top floating bar: session name + live context usage

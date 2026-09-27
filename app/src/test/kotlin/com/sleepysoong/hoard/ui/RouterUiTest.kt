@@ -134,16 +134,17 @@ class RouterUiTest {
         val body = router.requests.first { it.path == "/hoard/v1/responses" }.body
         assertTrue("new session starts on the router's first group: $body", body.contains("\"model\":\"coding\""))
         compose.onNodeWithTag("routing-summary", useUnmergedTree = true).assertContentDescriptionContains("응답 모델 openrouter/c · 2개 실패", substring = true)
-        // The # pill names the answering model (not the requested group); the footer no longer repeats it.
+        // The # pill names the requested group; the footer no longer repeats the model.
         compose.onNodeWithText("#", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("coding", useUnmergedTree = true).assertExists()
         assertEquals(0, compose.onAllNodesWithText("openrouter/c · ").fetchSemanticsNodes().size)
         shot("reply-collapsed")
 
         compose.onNodeWithTag("routing-summary", useUnmergedTree = true).performClick()
         compose.mainClock.advanceTimeBy(800)
         compose.onNodeWithText("1. zen/a").assertExists()
-        compose.onNodeWithText("rate_limit_error: rate_limited: slow down").assertExists()
-        compose.onNodeWithText("missing_api_key: API key missing for provider gemini").assertExists()
+        compose.onNodeWithText("rate_limit_error: rate_limited: slow down", substring = true, useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("missing_api_key: API key missing for provider gemini", substring = true, useUnmergedTree = true).assertExists()
         assertEquals(3, compose.onAllNodesWithTag("routing-attempt", useUnmergedTree = true).fetchSemanticsNodes().size)
         compose.onAllNodesWithText("성공").fetchSemanticsNodes().let { assertEquals(1, it.size) }
         shot("reply-expanded")

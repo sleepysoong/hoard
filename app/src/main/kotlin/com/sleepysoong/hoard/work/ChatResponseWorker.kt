@@ -24,6 +24,7 @@ import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
 import com.sleepysoong.hoard.tools.WebTools
+import com.sleepysoong.hoard.termux.TermuxBridge
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -73,7 +74,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             cfg.routerUrl,
             AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
             token = cfg.routerToken,
-            tools = WebTools.registry(cfg.webToolsEnabled, cfg.braveApiKey)
+            tools = WebTools.registry(
+                cfg.webToolsEnabled, cfg.braveApiKey,
+                termux = if (cfg.termuxEnabled) TermuxBridge(applicationContext) else null
+            )
         )
         return try {
             promote("Hoard가 생각 중…")

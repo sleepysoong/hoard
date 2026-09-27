@@ -16,6 +16,10 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
+        // termux-shared (TermuxConstants) is only published on JitPack; nothing else may come from it.
+        maven("https://jitpack.io") {
+            content { includeModule("com.github.termux.termux-app", "termux-shared") }
+        }
     }
 }
 

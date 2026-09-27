@@ -20,6 +20,7 @@ object SettingsStore {
     private val ROUTER_TOKEN = stringPreferencesKey("router_token")
     private val WEB_TOOLS = booleanPreferencesKey("web_tools")
     private val BRAVE_KEY = stringPreferencesKey("brave_api_key")
+    private val TERMUX = booleanPreferencesKey("termux_exec")
 
     data class Settings(
         val theme: String = "system",
@@ -32,11 +33,13 @@ object SettingsStore {
         /** Offer web_search / web_fetch to the model (router mode only). */
         val webToolsEnabled: Boolean = true,
         /** The user's own Brave Search API key; blank = web_search unavailable (web_fetch still works). */
-        val braveApiKey: String = ""
+        val braveApiKey: String = "",
+        /** Offer termux_exec (shell commands in Termux). Off by default: it runs real commands. */
+        val termuxEnabled: Boolean = false
     ) {
         override fun toString() = "Settings(theme=$theme, defaultModel=$defaultModel, defaultContext=$defaultContext, " +
             "routerUrl=$routerUrl, routerToken=${if (routerToken.isBlank()) "none" else "set"}, " +
-            "webTools=$webToolsEnabled, braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"})"
+            "webTools=$webToolsEnabled, braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, termux=$termuxEnabled)"
     }
 
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
@@ -47,7 +50,8 @@ object SettingsStore {
             routerUrl = p[ROUTER_URL] ?: "",
             routerToken = p[ROUTER_TOKEN] ?: "",
             webToolsEnabled = p[WEB_TOOLS] ?: true,
-            braveApiKey = p[BRAVE_KEY] ?: ""
+            braveApiKey = p[BRAVE_KEY] ?: "",
+            termuxEnabled = p[TERMUX] ?: false
         )
     }
 
@@ -58,6 +62,7 @@ object SettingsStore {
     suspend fun setRouterToken(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_TOKEN] = v.trim() } }
     suspend fun setWebToolsEnabled(ctx: Context, v: Boolean) { ctx.prefs.edit { it[WEB_TOOLS] = v } }
     suspend fun setBraveApiKey(ctx: Context, v: String) { ctx.prefs.edit { it[BRAVE_KEY] = v.trim() } }
+    suspend fun setTermuxEnabled(ctx: Context, v: Boolean) { ctx.prefs.edit { it[TERMUX] = v } }
 
     suspend fun current(ctx: Context): Settings = flow(ctx).first()
 

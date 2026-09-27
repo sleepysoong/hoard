@@ -92,6 +92,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             WebToolsSection(settings.webToolsEnabled, settings.braveApiKey)
         }
 
+        IOSSectionHeader("Termux")
+        IOSGroupedSection {
+            TermuxSection(settings.termuxEnabled)
+        }
+
         val routerModels by HoardRepository.get().routerModels.collectAsState()
         IOSSectionHeader(if (routerModels.isEmpty()) "기본 모델 (목업)" else "기본 모델 (라우터)")
         IOSGroupedSection {
@@ -258,5 +263,62 @@ private fun WebToolsSection(enabled: Boolean, savedKey: String) {
             else -> "web_search + web_fetch 사용 · 키는 이 기기에만 저장" to scheme.tertiary
         }
         Text(text, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.testTag("web-tools-status"))
+    }
+}
+
+/**
+ * termux_exec opt-in. Turning it on asks for Termux's RUN_COMMAND permission;
+ * the status line says what is still missing (Termux, permission), and the
+ * one-time Termux setup (allow-external-apps) is shown to copy.
+ */
+@Composable
+private fun TermuxSection(enabled: Boolean) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+    val platform = androidx.compose.runtime.remember { com.sleepysoong.hoard.termux.AndroidTermuxPlatform(ctx) }
+    var refresh by androidx.compose.runtime.remember { mutableStateOf(0) }
+    val installed = androidx.compose.runtime.remember(refresh) { platform.isTermuxInstalled() }
+    val granted = androidx.compose.runtime.remember(refresh) { platform.hasRunCommandPermission() }
+    val requestPermission = androidx.activity.compose.rememberLauncherForActivityResult(
+        androidx.activity.result.contract.ActivityResultContracts.RequestPermission()
+    ) { refresh++ }
+
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("Termux 명령 실행", style = MaterialTheme.typography.bodyLarge)
+                Text("모델이 termux_exec로 단발성 셸 명령을 실행 (라우터 연결 시)", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+            }
+            GlassSwitch(
+                checked = enabled,
+                onCheckedChange = { v ->
+                    scope.launch { SettingsStore.setTermuxEnabled(ctx, v) }
+                    if (v && installed && !granted) requestPermission.launch(com.termux.shared.termux.TermuxConstants.PERMISSION_RUN_COMMAND)
+                },
+                modifier = Modifier.testTag("termux-switch")
+            )
+        }
+        val (text, color) = when {
+            !enabled -> "꺼짐 · 모델에 termux_exec를 주지 않음" to scheme.onSurfaceVariant
+            !installed -> "Termux가 설치돼 있지 않습니다" to scheme.error
+            !granted -> "RUN_COMMAND 권한이 필요합니다" to scheme.error
+            else -> "사용 가능 · 모델이 이 기기에서 명령을 실행할 수 있습니다" to scheme.tertiary
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.testTag("termux-status"))
+        if (enabled && installed && !granted) {
+            GlassPillButton(
+                label = "권한 허용",
+                tint = GlassPillTint.Accent,
+                onClick = { requestPermission.launch(com.termux.shared.termux.TermuxConstants.PERMISSION_RUN_COMMAND) }
+            )
+        }
+        if (enabled) {
+            Text(
+                "Termux에서 한 번 실행:\nmkdir -p ~/.termux\necho allow-external-apps=true >> ~/.termux/termux.properties\ntermux-reload-settings",
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                color = scheme.onSurfaceVariant
+            )
+        }
     }
 }

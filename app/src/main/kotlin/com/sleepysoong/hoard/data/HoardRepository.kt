@@ -1,3 +1,5 @@
+@file:OptIn(kotlinx.coroutines.FlowPreview::class) // debounce() for the store saver
+
 package com.sleepysoong.hoard.data
 
 import kotlinx.coroutines.flow.MutableStateFlow

@@ -19,10 +19,13 @@ kyantShapes = "1.2.1"
 kyantBackdrop = "2.0.1"
 hrmMarkdown = "1.5.3"
 jsoup = "1.23.2"
+termuxShared = "v0.118.3"
 hrmLatex = "1.5.4"
 hrmCodeHighlight = "1.1.2"
 
 [libraries]
+# Termux constants (RUN_COMMAND extras, result bundle keys). compileOnly: the String constants are inlined.
+termux-shared = { module = "com.github.termux.termux-app:termux-shared", version.ref = "termuxShared" }
 # web_fetch: HTML parsing / main-content extraction.
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 # Markdown (CommonMark+GFM tables) with integrated LaTeX, LLM streaming mode.

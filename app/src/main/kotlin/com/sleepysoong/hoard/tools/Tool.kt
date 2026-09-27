@@ -44,8 +44,20 @@ class ToolException(message: String) : Exception(message)
  */
 data class ToolOutcome(val output: String, val title: String, val body: String, val isError: Boolean)
 
-class ToolRegistry(val tools: List<Tool>) {
-    private val byName = tools.associateBy { it.name }
+class ToolRegistry(initial: List<Tool> = emptyList()) {
+    private val byName = LinkedHashMap<String, Tool>()
+
+    init { initial.forEach(::register) }
+
+    /** Adds a tool (e.g. `register(TermuxExecTool(termuxBridge))`). Names must be unique. */
+    fun register(tool: Tool): ToolRegistry = apply {
+        synchronized(byName) {
+            require(tool.name !in byName) { "tool ${tool.name} is already registered" }
+            byName[tool.name] = tool
+        }
+    }
+
+    val tools: List<Tool> get() = synchronized(byName) { byName.values.toList() }
 
     val isEmpty: Boolean get() = tools.isEmpty()
 
@@ -64,7 +76,7 @@ class ToolRegistry(val tools: List<Tool>) {
      * unknown tools and tool failures become an `{"error": …}` output the model reads.
      */
     suspend fun execute(name: String, argumentsJson: String): ToolOutcome {
-        val tool = byName[name] ?: return error(name, "", "unknown tool \"$name\"; available: ${byName.keys.joinToString()}")
+        val tool = synchronized(byName) { byName[name] } ?: return error(name, "", "unknown tool \"$name\"; available: ${byName.keys.joinToString()}")
         val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull()
             ?: return error(tool.title, "", "arguments must be a JSON object")
         val subject = runCatching { tool.subject(args) }.getOrDefault("")
@@ -82,7 +94,7 @@ class ToolRegistry(val tools: List<Tool>) {
 
     /** Card title/body for a call before it runs. */
     fun preview(name: String, argumentsJson: String): Pair<String, String> {
-        val tool = byName[name] ?: return name to ""
+        val tool = synchronized(byName) { byName[name] } ?: return name to ""
         val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull() ?: return tool.title to ""
         return tool.title to runCatching { tool.subject(args) }.getOrDefault("")
     }

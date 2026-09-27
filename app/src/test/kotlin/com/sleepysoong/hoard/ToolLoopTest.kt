@@ -158,6 +158,32 @@ class ToolLoopTest {
         assertEquals(rounds, searched.size)
     }
 
+    @Test fun termuxExecResultGoesBackToTheModel() {
+        val commands = mutableListOf<String>()
+        val termux = object : com.sleepysoong.hoard.termux.TermuxExecutor {
+            override suspend fun executeTermux(command: String, cwd: String?, timeoutMs: Long): com.sleepysoong.hoard.termux.TermuxResult {
+                commands += command
+                return com.sleepysoong.hoard.termux.TermuxResult("On branch main\nnothing to commit\n", "", 0)
+            }
+        }
+        // As the worker builds it: web tools off, Termux registered like any other tool.
+        start(tools = WebTools.registry(enabled = false, braveApiKey = "", termux = termux))
+        router.enqueue(
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(Triple("t1", "termux_exec", """{"command":"git status"}""")))),
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("작업 트리가 깨끗해요.")))
+        )
+        h.vm.send("git status 해줘", emptyList(), "coding")
+        h.awaitReplies()
+        assertEquals(listOf("git status"), commands)
+        assertEquals(listOf("termux_exec"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
+        val out = Json.parseToJsonElement(body(1)["input"]!!.jsonArray.last().jsonObject["output"]!!.jsonPrimitive.content).jsonObject
+        assertEquals("On branch main\nnothing to commit\n", out["stdout"]!!.jsonPrimitive.content)
+        assertEquals(0, out["exitCode"]!!.jsonPrimitive.content.toInt())
+        val r = h.messages().last()
+        assertEquals("작업 트리가 깨끗해요.", r.text)
+        assertEquals("Termux 실행", r.thinking.last().title)
+    }
+
     @Test fun disabledWebToolsSendNoTools() {
         start(tools = null)
         runBlocking { SettingsStore.setWebToolsEnabled(h.app, false) }

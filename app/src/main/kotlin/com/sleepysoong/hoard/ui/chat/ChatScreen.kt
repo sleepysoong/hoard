@@ -52,9 +52,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -107,7 +107,7 @@ fun ChatScreen(
     var barAnchor by remember { mutableStateOf<Rect?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
-    val clipboard = LocalClipboardManager.current
+    val clipboard = LocalClipboard.current
 
     // Background replies post a notification; ask once, on the first send.
     val context = LocalContext.current
@@ -313,7 +313,10 @@ fun ChatScreen(
                             GlassSheetAction(
                                 icon = Icons.Rounded.ContentCopy,
                                 label = "복사",
-                                onClick = { clipboard.setText(AnnotatedString(menuTarget.text)) }
+                                onClick = {
+                                    val text = menuTarget.text
+                                    scope.launch { clipboard.setClipEntry(android.content.ClipData.newPlainText("Hoard", text).toClipEntry()) }
+                                }
                             )
                         )
                         if (isUser) {
