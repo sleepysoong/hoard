@@ -149,6 +149,8 @@ class RouterAiEngine(
     private class StreamState(val request: ReplyRequest) {
         val text = StringBuilder()
         var reasoning = StringBuilder()
+        /** When the answer started; the reasoning step's duration stops there. */
+        var reasoningMs: Long? = null
         var routing: RoutingInfo? = null
         var promptTokens = 0
         var completionTokens = 0
@@ -168,6 +170,7 @@ class RouterAiEngine(
                     return null
                 }
                 "response.output_text.delta" -> {
+                    if (reasoningMs == null && reasoning.isNotEmpty()) reasoningMs = elapsed
                     text.append(obj.str("delta").orEmpty())
                     return event(elapsed)
                 }
@@ -181,6 +184,10 @@ class RouterAiEngine(
                     // Authoritative final text (covers providers that skip deltas).
                     val full = resp?.let(::outputText)
                     if (!full.isNullOrEmpty()) { text.setLength(0); text.append(full) }
+                    // A model that only reasoned and never answered: retryable, not an empty success.
+                    if (text.isEmpty() && resp?.let(::hasToolCall) != true) {
+                        throw RouterException.Transient(EMPTY_REPLY, routing?.withSelectedOutcome("failed"), null)
+                    }
                     routing = routing?.withSelectedOutcome("succeeded")
                     done = true
                     return event(elapsed, done = true)
@@ -207,7 +214,8 @@ class RouterAiEngine(
                 "error" -> {
                     // Gateway error after commit: carries the trace with the selected model failed.
                     obj.obj("sleepyrouter")?.let { routing = parseRouting(it["routing"]) ?: routing }
-                    throw RouterException.Transient(obj.str("message") ?: "라우터 오류", routing, null)
+                    val msg = obj.str("message")
+                    throw RouterException.Transient(if (msg == "upstream returned empty response") EMPTY_REPLY else msg ?: "라우터 오류", routing, null)
                 }
             }
             return null
@@ -221,7 +229,7 @@ class RouterAiEngine(
 
         private fun event(elapsed: Long, done: Boolean = false) = StreamEvent(
             thinking = buildList {
-                if (reasoning.isNotEmpty()) add(ThinkingStep("모델 추론", reasoning.toString(), elapsed))
+                if (reasoning.isNotEmpty()) add(ThinkingStep("모델 추론", reasoning.toString(), reasoningMs ?: elapsed))
             },
             deltaText = text.toString(),
             done = done,
@@ -307,6 +315,11 @@ class RouterAiEngine(
         }
 
         /** Concatenated output_text of a Responses object. */
+        const val EMPTY_REPLY = "모델이 빈 응답을 보냈습니다 (추론만 하고 답을 쓰지 않음)"
+
+        fun hasToolCall(resp: JsonObject): Boolean =
+            (resp["output"] as? JsonArray).orEmpty().any { (it as? JsonObject)?.str("type") == "function_call" }
+
         fun outputText(resp: JsonObject): String =
             (resp["output"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
                 .filter { it.str("type") == "message" }

@@ -10,6 +10,8 @@ import com.sleepysoong.hoard.testing.FakeRouter
 import com.sleepysoong.hoard.testing.FakeRouter.Companion.completed
 import com.sleepysoong.hoard.testing.FakeRouter.Companion.created
 import com.sleepysoong.hoard.testing.FakeRouter.Companion.delta
+import com.sleepysoong.hoard.testing.FakeRouter.Companion.postCommitError
+import com.sleepysoong.hoard.testing.FakeRouter.Companion.reasoningDelta
 import com.sleepysoong.hoard.testing.FakeRouter.Companion.routingFrame
 import com.sleepysoong.hoard.testing.FakeRouter.Companion.trace
 import kotlinx.coroutines.runBlocking
@@ -103,6 +105,56 @@ class RouterIntegrationTest {
         assertEquals("usage from response.completed", 11, r.promptTokens)
         assertEquals(22, r.completionTokens)
         assertEquals(WorkInfo.State.SUCCEEDED, h.allWork().single().state)
+    }
+
+    @Test
+    fun modelReasoningIsShownAsThinkingStep() {
+        start()
+        router.enqueue(FakeRouter.Reply.Sse(listOf(
+            routingFrame(), created(), reasoningDelta("인사다. ", 1), reasoningDelta("짧게 답하자.", 2),
+            delta("안녕하세요", 3), completed("안녕하세요")
+        )))
+        sendAndSettle("안녕")
+
+        val r = reply()
+        assertEquals("안녕하세요", r.text)
+        assertEquals(1, r.thinking.size)
+        assertEquals("모델 추론", r.thinking[0].title)
+        assertEquals("인사다. 짧게 답하자.", r.thinking[0].detail)
+        assertNull(r.errorText)
+    }
+
+    @Test
+    fun reasoningOnlyReplyIsRetriedInsteadOfEmptySuccess() {
+        start()
+        router.enqueue(
+            // Router already committed (reasoning streamed), then saw no answer.
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), reasoningDelta("!!!!", 1), postCommitError("upstream returned empty response"))),
+            // Older router: an empty completed. Also not a success.
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed(""))),
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), delta("이번엔 답", 1), completed("이번엔 답")))
+        )
+        h.vm.send("안녕", emptyList(), "coding")
+        repeat(5) { h.fireBackoff() }
+        h.awaitReplies()
+
+        val r = reply()
+        assertEquals("retried until a real answer", 3, router.requests.count { it.path.endsWith("/responses") })
+        assertEquals("이번엔 답", r.text)
+        assertNull(r.errorText)
+    }
+
+    @Test
+    fun reasoningOnlyEveryTimeExplainsWhy() {
+        start()
+        repeat(3) { router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), reasoningDelta("…", 1), postCommitError("upstream returned empty response")))) }
+        h.vm.send("안녕", emptyList(), "coding")
+        repeat(5) { h.fireBackoff() }
+        h.awaitReplies()
+
+        val r = reply()
+        assertEquals(3, router.requests.count { it.path.endsWith("/responses") })
+        assertTrue(r.errorText!!, r.errorText!!.contains("빈 응답"))
     }
 
     @Test

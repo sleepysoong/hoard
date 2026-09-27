@@ -112,6 +112,13 @@ class FakeRouter : AutoCloseable {
         fun completed(text: String, inTok: Int = 11, outTok: Int = 22, status: String = "completed", type: String = "response.completed", extra: String = "") =
             type to """{"type":"$type","sequence_number":99,"response":{"id":"resp_1","object":"response","model":"coding","status":"$status"$extra,"output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":${quote(text)},"annotations":[]}]}],"usage":{"input_tokens":$inTok,"output_tokens":$outTok,"total_tokens":${inTok + outTok}}}}"""
 
+        fun reasoningDelta(text: String, seq: Int) =
+            "response.reasoning_text.delta" to """{"type":"response.reasoning_text.delta","sequence_number":$seq,"item_id":"rs_1","output_index":0,"content_index":0,"delta":${quote(text)}}"""
+
+        /** Gateway error after commit (e.g. a reasoning-only reply), carrying the trace. */
+        fun postCommitError(message: String) =
+            "error" to """{"type":"error","sequence_number":98,"message":${quote(message)},"sleepyrouter":{"routing":${trace(selectedOutcome = "failed")}}}"""
+
         fun quote(s: String) = kotlinx.serialization.json.JsonPrimitive(s).toString()
 
         /** All-candidates-failed JSON error, as sleepyrouter sends it before any stream commit. */
