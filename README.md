@@ -5,14 +5,15 @@ AI chat app shell by **sleepysoong** — https://github.com/sleepysoong/hoard
 Liquid-glass design shell (white-first + dark mode). ChatGPT/Claude/Gemini-style
 chat with **mock data only**: sending a message streams fake thinking + reply text.
 
-## What is implemented (shell)
+## What is implemented
 
-- Chat with mock streaming replies, per-message elapsed seconds + token counts
-- Photo (`PickMultipleVisualMedia`) and file (`OpenMultipleDocuments`) attachments (mock)
+- Chat with streaming replies from sleepyrouter (offline mock when no router is set), per-message elapsed seconds + token counts
+- Routing trace per reply: answering model, tried models, why each failed
+- Photo (`PickMultipleVisualMedia`) and file (`OpenMultipleDocuments`) attachments, sent as real content
 - System prompt editing, per-session context limit, session rename/delete
 - Edit my message (save & regenerate), branch from a message, delete message, retry
-- Model thinking blocks (expandable steps) + model picker (mock)
-- Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data
+- Model thinking blocks (expandable steps) + model picker (router groups/models, mock when offline)
+- Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data (not sent to the router yet)
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
   foreground notification, so leaving the app after send still finishes the reply.
