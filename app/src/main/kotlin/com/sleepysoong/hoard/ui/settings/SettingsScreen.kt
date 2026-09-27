@@ -7,6 +7,7 @@ import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.engine.RouterStatus
 import com.sleepysoong.hoard.engine.RouterConnection
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.platform.testTag
 import androidx.compose.foundation.text.KeyboardOptions
@@ -82,7 +83,7 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
 
         IOSSectionHeader("라우터")
         IOSGroupedSection {
-            RouterSection(settings.routerUrl)
+            RouterSection(settings.routerUrl, settings.routerToken)
         }
 
         val routerModels by HoardRepository.get().routerModels.collectAsState()
@@ -147,12 +148,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
  * groups/models, failure keeps the previous catalog and shows why.
  */
 @Composable
-private fun RouterSection(savedUrl: String) {
+private fun RouterSection(savedUrl: String, savedToken: String) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     val status by RouterConnection.status.collectAsState()
     var url by rememberSaveable(savedUrl) { mutableStateOf(savedUrl) }
+    var token by rememberSaveable(savedToken) { mutableStateOf(savedToken) }
     val valid = url.isBlank() || url.trim().let { it.startsWith("http://") || it.startsWith("https://") }
 
     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -167,6 +169,17 @@ private fun RouterSection(savedUrl: String) {
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, imeAction = ImeAction.Done),
             modifier = Modifier.testTag("router-url")
         )
+        GlassTextField(
+            value = token,
+            onValueChange = { token = it },
+            label = { Text("토큰 (선택)") },
+            placeholder = { Text("auth_token_env를 켠 라우터만") },
+            singleLine = true,
+            // Never shown in the clear: it grants access to the provider keys behind the router.
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            modifier = Modifier.testTag("router-token")
+        )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GlassPillButton(
                 label = if (url.isBlank()) "연결 해제" else "연결",
@@ -175,7 +188,8 @@ private fun RouterSection(savedUrl: String) {
                 onClick = {
                     scope.launch {
                         SettingsStore.setRouterUrl(ctx, url)
-                        RouterConnection.refresh(url.trim())
+                        SettingsStore.setRouterToken(ctx, token)
+                        RouterConnection.refresh(url.trim(), token = token.trim())
                     }
                 }
             )

@@ -49,7 +49,9 @@ class RouterAiEngine(
     /** Max silence between SSE events (mirrors sleepyrouter's stream_idle). */
     private val readTimeoutMs: Int = 330_000,
     /** Reads attachment bytes (ContentResolver in the app). Null = describe attachments only. */
-    private val attachments: AttachmentEncoder? = null
+    private val attachments: AttachmentEncoder? = null,
+    /** Inbound token for a router with auth_token_env set (sent as a Bearer token). */
+    private val token: String = ""
 ) : AiEngine {
 
     override suspend fun streamReply(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) =
@@ -140,6 +142,7 @@ class RouterAiEngine(
             readTimeout = readTimeoutMs
             requestMethod = "POST"
             useCaches = false
+            if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
         }
 
     /** Stateful mapping of the Responses SSE stream to UI events. */
@@ -316,6 +319,9 @@ class RouterAiEngine(
             val err = obj?.obj("error")
             val msg = err?.str("message") ?: body.take(200).ifBlank { "HTTP $status" }
             val code = err?.str("code")
+            if (status == 401) {
+                return RouterException.Permanent("라우터 인증 실패 · 설정 → 라우터의 토큰을 확인하세요", routing, status)
+            }
             val text = when (code) {
                 "all_candidates_failed" -> "모든 모델이 실패했습니다"
                 "no_usable_candidates" -> "사용 가능한 모델이 없습니다 (API 키 확인)"

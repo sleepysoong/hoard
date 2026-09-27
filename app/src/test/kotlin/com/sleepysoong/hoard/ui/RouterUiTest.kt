@@ -178,4 +178,24 @@ class RouterUiTest {
         compose.onNodeWithText("답하는 중").assertExists()
         waitFor("send button back") { compose.onAllNodesWithContentDescription("보내기").fetchSemanticsNodes().isNotEmpty() }
     }
+
+    @Test fun tokenFieldIsMaskedAndUsedForTheCheck() {
+        router.requiredToken = "ui-secret-token"
+        compose.onNodeWithTag("tab-설정").performClick()
+        compose.onNode(hasSetTextAction() and hasText("라우터 주소")).performTextReplacement(router.url)
+        compose.onNodeWithText("연결").performClick()
+        waitFor("auth failure") { compose.onAllNodesWithText("인증", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        compose.onNodeWithTag("router-status").assertTextContains("연결 실패", substring = true)
+
+        compose.onNode(hasSetTextAction() and hasText("토큰 (선택)")).performTextReplacement("ui-secret-token")
+        compose.waitForIdle()
+        // Semantics always carry the raw EditableText; what is *drawn* must be masked.
+        val field = compose.onNode(hasSetTextAction() and hasText("토큰 (선택)")).fetchSemanticsNode()
+        assertTrue("token field is a password field (drawn as dots)",
+            field.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Password))
+        compose.onNodeWithText("연결").performClick()
+        waitFor("connected") { compose.onAllNodesWithText("연결됨", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        assertEquals("Bearer ui-secret-token", router.requests.last().authorization)
+        shot("settings-token")
+    }
 }

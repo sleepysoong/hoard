@@ -24,16 +24,17 @@ object RouterConnection {
     val status: StateFlow<RouterStatus> = _status.asStateFlow()
 
     /** Test hook: build the client for a URL (defaults to the real HTTP client). */
-    @Volatile var clientFactory: (String) -> RouterAiEngine = { RouterAiEngine(it, connectTimeoutMs = 5_000, readTimeoutMs = 10_000) }
+    @Volatile var clientFactory: (url: String, token: String) -> RouterAiEngine =
+        { url, token -> RouterAiEngine(url, connectTimeoutMs = 5_000, readTimeoutMs = 10_000, token = token) }
 
-    suspend fun refresh(url: String, repo: HoardRepository = HoardRepository.get()): RouterStatus {
+    suspend fun refresh(url: String, repo: HoardRepository = HoardRepository.get(), token: String = ""): RouterStatus {
         if (url.isBlank()) {
             repo.setRouterModels(emptyList())
             return RouterStatus.Offline.also { _status.value = it }
         }
         _status.value = RouterStatus.Checking
         val result = try {
-            val list = clientFactory(url).listModels()
+            val list = clientFactory(url, token).listModels()
             repo.setRouterModels(list.map(::toAiModel))
             RouterStatus.Connected(url, groups = list.count { it.isGroup }, models = list.count { !it.isGroup })
         } catch (e: Exception) {

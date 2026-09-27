@@ -100,8 +100,8 @@ class MainActivity : ComponentActivity() {
             val ctx = LocalContext.current
             val settings by SettingsStore.flow(ctx).collectAsState(SettingsStore.Settings())
             // Load the router's catalog once the saved URL is known (and after it changes).
-            androidx.compose.runtime.LaunchedEffect(settings.routerUrl) {
-                com.sleepysoong.hoard.engine.RouterConnection.refresh(settings.routerUrl)
+            androidx.compose.runtime.LaunchedEffect(settings.routerUrl, settings.routerToken) {
+                com.sleepysoong.hoard.engine.RouterConnection.refresh(settings.routerUrl, token = settings.routerToken)
             }
             val dark = when (settings.theme) {
                 "light" -> false

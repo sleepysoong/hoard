@@ -47,6 +47,7 @@ class RealSleepyrouterTest {
     private var port = 0
     private val log = StringBuilder()
     private val upstreamBodies = mutableListOf<String>()
+    private val upstreamAuth = mutableListOf<String?>()
 
     @Before fun start() {
         val bin = System.getenv("SLEEPYROUTER_BIN")
@@ -59,6 +60,7 @@ class RealSleepyrouterTest {
                 synchronized(log) {
                     log.append("upstream got model=$model stream=${body.contains("\"stream\":true")}\n")
                     upstreamBodies += body
+                    upstreamAuth += ex.requestHeaders.getFirst("Authorization")
                 }
                 when (model) {
                     "a" -> reply(ex, 429, "application/json", """{"error":{"type":"rate_limit_error","code":"rate_limited","message":"Rate limit reached for a","param":null}}""")
@@ -88,6 +90,7 @@ class RealSleepyrouterTest {
             [server]
             host = "127.0.0.1"
             port = $port
+            auth_token_env = "SR_TOKEN"
             [routing]
             default_group = "coding"
             [timeouts]
@@ -125,7 +128,7 @@ class RealSleepyrouterTest {
             broken = ["p1/a", "p2/b"]
         """.trimIndent())
         File(home, ".env").apply {
-            writeText("P1_KEY=k1-secret-value\nP2_KEY=k2-secret-value\n")
+            writeText("P1_KEY=k1-secret-value\nP2_KEY=k2-secret-value\nSR_TOKEN=$ROUTER_TOKEN\n")
             Files.setPosixFilePermissions(toPath(), PosixFilePermissions.fromString("rw-------"))
         }
         router = ProcessBuilder(bin, "serve").apply {
@@ -165,7 +168,7 @@ class RealSleepyrouterTest {
 
     @Test fun chatThroughRealRouterShowsFailoverTrace() {
         val h = ChatHarness()
-        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port") }
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port"); SettingsStore.setRouterToken(h.app, ROUTER_TOKEN) }
         h.vm.send("real router, please", emptyList(), "coding")
         h.awaitReplies(timeoutMs = 30_000)
         h.snapshot("after reply")
@@ -198,7 +201,7 @@ class RealSleepyrouterTest {
 
     @Test fun allCandidatesFailShowsReasonsFromRealRouter() {
         val h = ChatHarness()
-        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port") }
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port"); SettingsStore.setRouterToken(h.app, ROUTER_TOKEN) }
         h.vm.send("nobody can answer", emptyList(), "broken")
         repeat(5) { h.fireBackoff() }
         h.awaitReplies(timeoutMs = 30_000)
@@ -213,7 +216,7 @@ class RealSleepyrouterTest {
     }
 
     @Test fun modelListFromRealRouter() {
-        val models = runBlocking { RouterAiEngine("http://127.0.0.1:$port").listModels() }
+        val models = runBlocking { RouterAiEngine("http://127.0.0.1:$port", token = ROUTER_TOKEN).listModels() }
         log.append("models=$models\n")
         assertEquals(listOf("coding", "broken"), models.filter { it.isGroup }.map { it.id })
         assertTrue(models.any { it.id == "p2/c" && !it.isGroup })
@@ -221,7 +224,7 @@ class RealSleepyrouterTest {
 
     @Test fun imageAttachmentReachesTheUpstreamModelIntact() {
         val h = ChatHarness()
-        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port") }
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port"); SettingsStore.setRouterToken(h.app, ROUTER_TOKEN) }
         val f = File.createTempFile("photo", ".png").apply { deleteOnExit() }
         val bmp = android.graphics.Bitmap.createBitmap(8, 8, android.graphics.Bitmap.Config.ARGB_8888).apply { eraseColor(0xFFFF0000.toInt()) }
         f.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
@@ -242,10 +245,33 @@ class RealSleepyrouterTest {
         val conn = URL("http://127.0.0.1:$port/hoard/v1/responses").openConnection() as java.net.HttpURLConnection
         conn.requestMethod = "POST"; conn.doOutput = true
         conn.setRequestProperty("Content-Type", "application/json")
+        conn.setRequestProperty("Authorization", "Bearer $ROUTER_TOKEN")
         conn.outputStream.use { it.write("""{"model":"p2/c","stream":true,"input":[{"role":"user","content":"untyped hello"}]}""".toByteArray()) }
         assertEquals(200, conn.responseCode)
         conn.inputStream.use { it.readBytes() } // drain the SSE stream
         val sent = synchronized(log) { upstreamBodies.last() }
         assertTrue("conversation forwarded: $sent", sent.contains("untyped hello"))
+    }
+
+    /** Real auth: a wrong token is refused by sleepyrouter, the right one works, and it never goes upstream. */
+    @Test fun routerTokenIsEnforcedAndNeverForwarded() {
+        val h = ChatHarness()
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port"); SettingsStore.setRouterToken(h.app, "wrong-token") }
+        h.vm.send("잘못된 토큰으로", emptyList(), "coding")
+        h.awaitReplies(timeoutMs = 30_000)
+        assertTrue(h.messages().last().errorText!!, h.messages().last().errorText!!.contains("라우터 인증 실패"))
+        assertTrue("refused before any upstream call", synchronized(log) { upstreamBodies.isEmpty() })
+
+        runBlocking { SettingsStore.setRouterToken(h.app, ROUTER_TOKEN) }
+        h.vm.send("올바른 토큰으로", emptyList(), "coding")
+        h.awaitReplies(timeoutMs = 30_000)
+        assertEquals("real answer", h.messages().last().text)
+        synchronized(log) {
+            assertTrue("upstream gets provider keys only: $upstreamAuth", upstreamAuth.none { it.orEmpty().contains(ROUTER_TOKEN) })
+        }
+    }
+
+    companion object {
+        const val ROUTER_TOKEN = "sr-real-token-0123456789"
     }
 }

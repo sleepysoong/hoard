@@ -325,4 +325,36 @@ class RouterIntegrationTest {
         assertTrue(reply().errorText!!, reply().errorText!!.contains("API 키 확인"))
         assertEquals(WorkInfo.State.FAILED, h.allWork().single().state)
     }
+
+    /** Router with inbound auth: the token goes on every call; a wrong one fails clearly, once. */
+    @Test
+    fun tokenIsSentAndAuthFailureIsNotRetried() {
+        start()
+        router.requiredToken = "sr-token-1"
+        runBlocking { SettingsStore.setRouterToken(h.app, "wrong") }
+        h.vm.send("잘못된 토큰", emptyList(), "coding")
+        repeat(3) { h.fireBackoff() }
+        h.awaitReplies()
+        assertEquals("401 is not retried", 1, router.requests.count { it.path.endsWith("/responses") })
+        assertTrue(reply().errorText!!, reply().errorText!!.contains("라우터 인증 실패"))
+
+        runBlocking { SettingsStore.setRouterToken(h.app, "sr-token-1") }
+        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("인증 통과"))))
+        sendAndSettle("올바른 토큰")
+        assertEquals("인증 통과", reply().text)
+        assertEquals("Bearer sr-token-1", router.requests.last().authorization)
+
+        val status = runBlocking { com.sleepysoong.hoard.engine.RouterConnection.refresh(router.url, h.repo, token = "sr-token-1") }
+        assertTrue("model list also authenticated: $status", status is com.sleepysoong.hoard.engine.RouterStatus.Connected)
+        val bad = runBlocking { com.sleepysoong.hoard.engine.RouterConnection.refresh(router.url, h.repo, token = "") }
+        assertTrue("missing token reported: $bad", bad is com.sleepysoong.hoard.engine.RouterStatus.Failed && bad.reason.contains("인증"))
+    }
+
+    @Test
+    fun noTokenMeansNoAuthorizationHeader() {
+        start()
+        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
+        sendAndSettle("토큰 없음")
+        assertNull(router.requests.last().authorization)
+    }
 }

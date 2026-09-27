@@ -67,9 +67,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // Nobody is waiting for this reply any more: finish quietly, never resurrect it.
         if (!hasTarget) return Result.success()
 
+        val cfg = SettingsStore.current(applicationContext)
         val engine = Engines.forRouter(
-            SettingsStore.current(applicationContext).routerUrl,
-            AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver))
+            cfg.routerUrl,
+            AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
+            token = cfg.routerToken
         )
         return try {
             promote("Hoard가 생각 중…")

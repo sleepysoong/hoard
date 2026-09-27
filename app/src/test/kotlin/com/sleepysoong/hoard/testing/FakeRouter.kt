@@ -18,12 +18,14 @@ class FakeRouter : AutoCloseable {
         data class Json(val status: Int, val body: String) : Reply
     }
 
-    data class Recorded(val method: String, val path: String, val body: String)
+    data class Recorded(val method: String, val path: String, val body: String, val authorization: String? = null)
 
     private val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
     private val script = Collections.synchronizedList(mutableListOf<Reply>())
     val requests: MutableList<Recorded> = Collections.synchronizedList(mutableListOf())
     val url: String get() = "http://127.0.0.1:${server.address.port}"
+    /** When set, every request must carry `Authorization: Bearer <requiredToken>` (like auth_token_env). */
+    @Volatile var requiredToken: String? = null
     /** Reply for GET /v1/models. */
     var modelsBody = """{"object":"list","data":[{"id":"coding","object":"model"},{"id":"zen/a","object":"model"}]}"""
 
@@ -37,7 +39,13 @@ class FakeRouter : AutoCloseable {
 
     private fun handle(ex: HttpExchange) {
         val body = ex.requestBody.readBytes().decodeToString()
-        requests += Recorded(ex.requestMethod, ex.requestURI.path, body)
+        val auth = ex.requestHeaders.getFirst("Authorization")
+        requests += Recorded(ex.requestMethod, ex.requestURI.path, body, auth)
+        requiredToken?.let { want ->
+            if (auth != "Bearer $want") {
+                return send(ex, Reply.Json(401, """{"error":{"message":"missing or invalid sleepyrouter token","type":"upstream_error","param":null,"code":"invalid_api_key"}}"""))
+            }
+        }
         if (ex.requestMethod == "GET" && ex.requestURI.path == "/v1/models") {
             return send(ex, Reply.Json(200, modelsBody))
         }

@@ -34,6 +34,8 @@ which one answered).
 1. Run sleepyrouter (default `127.0.0.1:4567`; bind to a LAN/Tailscale address to reach it from the phone).
 2. In the app: **설정 → 라우터**, enter e.g. `http://192.168.0.10:4567`, tap **연결**.
    The status shows the router's group/model counts, and the model picker switches to the router's catalog.
+   If the router has inbound auth (`[server] auth_token_env`, needed when it listens beyond 127.0.0.1),
+   enter the token in **토큰 (선택)** too; it is sent as `Authorization: Bearer …` and stored masked.
 3. Chat. Each reply bubble shows `via <answering model> · N개 실패`; tap it for every attempt
    (outcome, HTTP status, error class, duration, reason). Failed replies show the reason instead of an empty bubble.
 
