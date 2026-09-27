@@ -38,10 +38,10 @@ import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
 import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
-import com.sleepysoong.hoard.ui.glass.LargeTitle
+import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 
-/** iOS-style tools: large title, segmented tabs, grouped switch rows. */
+/** Tools: floating glass top bar, liquid segmented tabs, grouped glass cards. */
 @Composable
 fun ToolsScreen(modifier: Modifier = Modifier) {
     val repo = remember { HoardRepository.get() }
@@ -50,13 +50,8 @@ fun ToolsScreen(modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
 
     Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        LargeTitle("도구", modifier = Modifier.padding(start = 4.dp))
-        Text(
-            "목업 데이터",
-            style = MaterialTheme.typography.labelSmall,
-            color = scheme.onSurfaceVariant,
-            modifier = Modifier.padding(start = 4.dp)
-        )
+        // Same floating top bar as 세션 (shared component, title + subtitle slots only).
+        GlassFloatingBar(title = "도구", subtitle = "목업 데이터")
         IOSSegmentedControl(
             options = tabs,
             selectedIndex = tab,

@@ -8,6 +8,10 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -103,5 +107,50 @@ class TabCapsuleMotionTest {
         assertTrue("stretches in flight: max=${widths.max()}", widths.max() > restW + 0.05f)
         compose.mainClock.advanceTimeBy(1_500)
         assertEquals("round again at rest", restW, capsule(), 0.005f)
+    }
+}
+
+/** 세션 · 도구 · 설정 share one floating top bar: same component, same place, same size. */
+@RunWith(AndroidJUnit4::class)
+@org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+@Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
+class TopBarConsistencyTest {
+    @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
+        override fun before() = HoardRepository.resetForTests()
+    }
+    @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
+
+    private fun bar(tab: String): androidx.compose.ui.geometry.Rect {
+        if (tab != "세션") compose.onNodeWithTag("tab-$tab").performClick()
+        compose.waitForIdle()
+        compose.mainClock.advanceTimeBy(1_000)
+        val bmp = compose.onRoot().captureToImage().asAndroidBitmap()
+        java.io.File(System.getProperty("hoard.artifacts") ?: "build/test-artifacts", "topbar").apply { mkdirs() }
+            .let { java.io.File(it, "$tab.png") }.outputStream().use { bmp.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+        val nodes = compose.onAllNodes(androidx.compose.ui.test.hasTestTag("floating-bar")).fetchSemanticsNodes()
+        assertEquals("$tab: exactly one floating bar", 1, nodes.size)
+        return nodes.single().boundsInRoot
+    }
+
+    @Test fun sameBarOnEveryTab() {
+        val sessions = bar("세션")
+        val tools = bar("도구")
+        compose.onAllNodes(androidx.compose.ui.test.hasText("목업 데이터")).fetchSemanticsNodes().let { assertEquals(1, it.size) }
+        val settings = bar("설정")
+        for ((name, r) in listOf("도구" to tools, "설정" to settings)) {
+            assertEquals("$name bar top", sessions.top, r.top, 1f)
+            assertEquals("$name bar height", sessions.height, r.height, 1f)
+            assertEquals("$name bar width", sessions.width, r.width, 1f)
+        }
+    }
+
+    @Test fun settingsBarStaysWhileContentScrolls() {
+        compose.onNodeWithTag("tab-설정").performClick()
+        compose.waitForIdle()
+        val before = compose.onNode(androidx.compose.ui.test.hasTestTag("floating-bar")).fetchSemanticsNode().boundsInRoot
+        compose.onNodeWithText("정보").performScrollTo()
+        compose.waitForIdle()
+        val after = compose.onNode(androidx.compose.ui.test.hasTestTag("floating-bar")).fetchSemanticsNode().boundsInRoot
+        assertEquals("bar is fixed", before.top, after.top, 0.5f)
     }
 }

@@ -38,11 +38,11 @@ import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
 import com.sleepysoong.hoard.ui.glass.IOSSectionHeader
 import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
-import com.sleepysoong.hoard.ui.glass.LargeTitle
+import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.launch
 
-/** iOS Settings-style: large title, grouped sections, segmented + checkmark rows. */
+/** Settings: floating glass top bar, grouped glass sections, liquid controls. */
 @Composable
 fun SettingsScreen(modifier: Modifier = Modifier) {
     val ctx = LocalContext.current
@@ -51,11 +51,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val scheme = MaterialTheme.colorScheme
     val themeIndex = listOf("system", "light", "dark").indexOf(settings.theme).coerceAtLeast(0)
 
+    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Same floating top bar as 세션; stays put while the settings scroll beneath it.
+    GlassFloatingBar(title = "설정")
     Column(
-        modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(bottom = GlassTokens.shadowBleed),
+        Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState()).padding(bottom = GlassTokens.shadowBleed),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
-        LargeTitle("설정", modifier = Modifier.padding(start = 4.dp, bottom = 6.dp))
 
         IOSSectionHeader("화면 스타일")
         IOSGroupedSection {
@@ -118,5 +120,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 Text("리퀴드 글래스 껍데기 · 목업 데이터 전용 · 그라데이션 없음", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
             }
         }
+    }
     }
 }

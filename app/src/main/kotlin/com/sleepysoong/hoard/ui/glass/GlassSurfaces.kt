@@ -130,7 +130,7 @@ fun GlassFloatingBar(
     modifier: Modifier = Modifier,
     tone: GlassTone = GlassTone.Thick
 ) {
-    GlassSurface(modifier = modifier, shape = RoundedCornerShape(20.dp), tone = tone) {
+    GlassSurface(modifier = modifier.testTag("floating-bar"), shape = RoundedCornerShape(20.dp), tone = tone) {
         Row(
             Modifier
                 .fillMaxWidth()
