@@ -198,4 +198,22 @@ class RouterUiTest {
         assertEquals("Bearer ui-secret-token", router.requests.last().authorization)
         shot("settings-token")
     }
+
+    @Test fun webToolsSettingsSaveMaskedBraveKeyAndSwitch() {
+        compose.onNodeWithTag("tab-설정").performClick()
+        compose.onNodeWithTag("web-tools-status").performScrollTo()
+        compose.onNodeWithTag("web-tools-status").assertTextContains("web_fetch만", substring = true)
+        compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).performTextReplacement("BSA-test-key")
+        compose.waitForIdle()
+        val field = compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).fetchSemanticsNode()
+        assertTrue("Brave key is a password field", field.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Password))
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        waitFor("key saved") { runBlocking { SettingsStore.current(app).braveApiKey } == "BSA-test-key" }
+        compose.onNodeWithTag("web-tools-status").assertTextContains("web_search + web_fetch", substring = true)
+        shot("settings-web-tools")
+        compose.onNodeWithTag("web-tools-switch").performClick()
+        waitFor("switch saved") { !runBlocking { SettingsStore.current(app).webToolsEnabled } }
+        compose.onNodeWithTag("web-tools-status").assertTextContains("꺼짐", substring = true)
+        assertTrue("settings never print the key", !runBlocking { SettingsStore.current(app) }.toString().contains("BSA-test-key"))
+    }
 }

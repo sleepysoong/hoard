@@ -42,6 +42,17 @@ Still no gradients: every colour is solid.
   headings, **bold**/*italic*/~~strike~~, lists, task lists, GFM tables, quotes, code blocks with
   highlighting, and LaTeX (`$…$` inline, `$$…$$` block). What I type is shown verbatim.
   Remote images in replies are not fetched (alt text shown instead).
+- Web tools (`tools/`), run on the device and offered to the model through sleepyrouter's
+  function calling (Settings → 웹 도구; on by default in router mode):
+  - `web_search` — discover pages via the Brave Search API with **the user's own key**
+    (none is bundled). Output is normalized (`search_1…` ids, title/url/snippet, `correctedQuery`,
+    `hasMore`), never Brave's raw JSON; 429 is retried with backoff honouring `X-RateLimit-Reset`.
+    The description tells the model that snippets are not page contents.
+  - `web_fetch` — read a page: public http(s) only (loopback/LAN/metadata/CGNAT/ULA refused, checked
+    on every redirect), `finalUrl` on redirects, size/length caps, main content → Markdown (jsoup).
+  - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without
+    touching the tool schema. Tool loop in `RouterAiEngine`: up to 8 rounds, then `tool_choice: none`.
+    Each call appears as a step under the reply's 추론 section.
 - Model thinking blocks (expandable steps) + model picker (router groups/models, mock when offline)
 - Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data (not sent to the router yet)
 - Top floating bar: session name + live context usage

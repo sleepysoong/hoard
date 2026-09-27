@@ -41,6 +41,7 @@ class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null) {
         MockAiEngine.pace = pace
         MockAiEngine.testHook = null
         com.sleepysoong.hoard.engine.Engines.override = null
+        com.sleepysoong.hoard.tools.WebTools.override = null
         com.sleepysoong.hoard.engine.RouterConnection.resetForTests()
         WorkManagerTestInitHelper.initializeTestWorkManager(
             app,

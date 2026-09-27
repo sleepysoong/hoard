@@ -80,6 +80,24 @@ class RealSleepyrouterTest {
                     }
                 }
             }
+            // Chat Completions upstream (like NVIDIA NIM): first asks for web_search, then answers.
+            createContext("/v1/chat/completions") { ex ->
+                val body = ex.requestBody.readBytes().decodeToString()
+                synchronized(log) { log.append("chat upstream got ${body.take(300)}\n"); upstreamBodies += body }
+                ex.responseHeaders.add("Content-Type", "text/event-stream")
+                ex.sendResponseHeaders(200, 0)
+                fun chunk(delta: String, finish: String? = null) =
+                    """{"id":"c1","object":"chat.completion.chunk","created":1,"model":"t","choices":[{"index":0,"delta":$delta,"finish_reason":${finish?.let { "\"$it\"" } ?: "null"}}]}"""
+                val frames = if (!body.contains("\"role\":\"tool\"")) listOf(
+                    chunk("""{"role":"assistant","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"web_search","arguments":""}}]}"""),
+                    chunk("""{"tool_calls":[{"index":0,"function":{"arguments":"{\"query\":\"seoul weather\"}"}}]}"""),
+                    chunk("{}", "tool_calls")
+                ) else listOf(chunk("""{"role":"assistant","content":"sunny in "}"""), chunk("""{"content":"Seoul"}"""), chunk("{}", "stop"))
+                ex.responseBody.use { out ->
+                    for (f in frames) { out.write("data: $f\n\n".toByteArray()); out.flush() }
+                    out.write("data: [DONE]\n\n".toByteArray())
+                }
+            }
             start()
         }
         val up = "http://127.0.0.1:${upstream.address.port}/v1"
@@ -111,6 +129,13 @@ class RealSleepyrouterTest {
             [providers.p3]
             base_url = "$up"
             api_key_env = "P3_KEY_UNSET"
+            [providers.p4]
+            base_url = "$up"
+            api_key_env = "P2_KEY"
+            wire_api = "chat_completions"
+            [models."p4/t"]
+            provider = "p4"
+            upstream_model = "t"
             [models."p1/a"]
             provider = "p1"
             upstream_model = "a"
@@ -213,6 +238,39 @@ class RealSleepyrouterTest {
         assertNull(route.selectedModel)
         assertEquals(listOf("p1/a", "p2/b"), route.attempts.map { it.model })
         assertEquals(listOf(429, 503), route.attempts.map { it.statusCode })
+    }
+
+    /** Tool loop over the real router's Chat Completions bridge: tool_calls ↔ function_call(_output). */
+    @Test fun webSearchToolLoopThroughRealRouterChatBridge() {
+        val h = ChatHarness()
+        val queries = mutableListOf<String>()
+        com.sleepysoong.hoard.tools.WebTools.override = com.sleepysoong.hoard.tools.ToolRegistry(listOf(
+            com.sleepysoong.hoard.tools.WebSearchTool(object : com.sleepysoong.hoard.tools.search.SearchProvider {
+                override val id = "fake"
+                override suspend fun search(request: com.sleepysoong.hoard.tools.search.SearchRequest): com.sleepysoong.hoard.tools.search.SearchResponse {
+                    queries += request.query
+                    return com.sleepysoong.hoard.tools.search.SearchResponse(request.query, null,
+                        listOf(com.sleepysoong.hoard.tools.search.SearchHit("Seoul weather", "https://weather.example/seoul", "sunny, 24C")))
+                }
+            })
+        ))
+        try {
+            runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port"); SettingsStore.setRouterToken(h.app, ROUTER_TOKEN) }
+            h.vm.send("서울 날씨?", emptyList(), "p4/t")
+            h.awaitReplies(timeoutMs = 30_000)
+            val r = h.messages().last()
+            log.append("reply=${r.text} error=${r.errorText} thinking=${r.thinking}\n")
+            assertNull(r.errorText)
+            assertEquals("sunny in Seoul", r.text)
+            assertEquals(listOf("seoul weather"), queries)
+            assertTrue(r.thinking.any { it.title.startsWith("웹 검색") })
+            val second = synchronized(log) { upstreamBodies.last() }
+            assertTrue("tool result reached the upstream as a tool message: $second",
+                second.contains("\"role\":\"tool\"") && second.contains("call_1") && second.contains("search_1"))
+            assertTrue("tool definitions forwarded: $second", second.contains("\"web_search\""))
+        } finally {
+            com.sleepysoong.hoard.tools.WebTools.override = null
+        }
     }
 
     @Test fun modelListFromRealRouter() {

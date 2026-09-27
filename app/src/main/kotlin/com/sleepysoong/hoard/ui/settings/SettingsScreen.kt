@@ -1,6 +1,7 @@
 package com.sleepysoong.hoard.ui.settings
 
 import com.sleepysoong.hoard.ui.glass.GlassTextField
+import com.sleepysoong.hoard.ui.glass.GlassSwitch
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.engine.RouterStatus
@@ -84,6 +85,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         IOSSectionHeader("라우터")
         IOSGroupedSection {
             RouterSection(settings.routerUrl, settings.routerToken)
+        }
+
+        IOSSectionHeader("웹 도구")
+        IOSGroupedSection {
+            WebToolsSection(settings.webToolsEnabled, settings.braveApiKey)
         }
 
         val routerModels by HoardRepository.get().routerModels.collectAsState()
@@ -204,5 +210,53 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
             }
             Text(text, style = MaterialTheme.typography.labelMedium, color = color, maxLines = 2, modifier = Modifier.testTag("router-status"))
         }
+    }
+}
+
+/**
+ * web_search (Brave, the user's own key) + web_fetch, offered to the model in
+ * router mode. The key is typed by the user and stored on this device only —
+ * nothing is bundled with the app.
+ */
+@Composable
+private fun WebToolsSection(enabled: Boolean, savedKey: String) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+    var key by rememberSaveable(savedKey) { mutableStateOf(savedKey) }
+
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("웹 검색 · 페이지 읽기", style = MaterialTheme.typography.bodyLarge)
+                Text("모델이 web_search / web_fetch를 호출 (라우터 연결 시)", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+            }
+            GlassSwitch(
+                checked = enabled,
+                onCheckedChange = { v -> scope.launch { SettingsStore.setWebToolsEnabled(ctx, v) } },
+                modifier = Modifier.testTag("web-tools-switch")
+            )
+        }
+        GlassTextField(
+            value = key,
+            onValueChange = { v ->
+                key = v
+                scope.launch { SettingsStore.setBraveApiKey(ctx, v) }
+            },
+            label = { Text("Brave Search API 키") },
+            placeholder = { Text("api-dashboard.search.brave.com에서 발급") },
+            singleLine = true,
+            enabled = enabled,
+            // Billed to the user: never shown in the clear.
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+            modifier = Modifier.testTag("brave-key")
+        )
+        val (text, color) = when {
+            !enabled -> "꺼짐 · 모델에 도구를 주지 않음" to scheme.onSurfaceVariant
+            key.isBlank() -> "web_fetch만 사용 · web_search는 키가 필요합니다" to scheme.onSurfaceVariant
+            else -> "web_search + web_fetch 사용 · 키는 이 기기에만 저장" to scheme.tertiary
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.testTag("web-tools-status"))
     }
 }

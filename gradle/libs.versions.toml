@@ -18,10 +18,13 @@ androidxTestExtJunit = "1.2.1"
 kyantShapes = "1.2.1"
 kyantBackdrop = "2.0.1"
 hrmMarkdown = "1.5.3"
+jsoup = "1.23.2"
 hrmLatex = "1.5.4"
 hrmCodeHighlight = "1.1.2"
 
 [libraries]
+# web_fetch: HTML parsing / main-content extraction.
+jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
 # Markdown (CommonMark+GFM tables) with integrated LaTeX, LLM streaming mode.
 hrm-markdown-parser = { module = "io.github.huarangmeng:markdown-parser", version.ref = "hrmMarkdown" }
 hrm-markdown-runtime = { module = "io.github.huarangmeng:markdown-runtime", version.ref = "hrmMarkdown" }

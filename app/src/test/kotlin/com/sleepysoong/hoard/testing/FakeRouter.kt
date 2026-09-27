@@ -112,6 +112,12 @@ class FakeRouter : AutoCloseable {
         fun completed(text: String, inTok: Int = 11, outTok: Int = 22, status: String = "completed", type: String = "response.completed", extra: String = "") =
             type to """{"type":"$type","sequence_number":99,"response":{"id":"resp_1","object":"response","model":"coding","status":"$status"$extra,"output":[{"type":"message","id":"msg_1","role":"assistant","status":"completed","content":[{"type":"output_text","text":${quote(text)},"annotations":[]}]}],"usage":{"input_tokens":$inTok,"output_tokens":$outTok,"total_tokens":${inTok + outTok}}}}"""
 
+        /** A round that ends in function calls (no text), as sleepyrouter's chat bridge sends it. */
+        fun toolCallCompleted(vararg calls: Triple<String, String, String>, outTok: Int = 5) =
+            "response.completed" to """{"type":"response.completed","sequence_number":99,"response":{"id":"resp_t","object":"response","model":"coding","status":"completed","output":[""" +
+                calls.joinToString(",") { (id, name, args) -> """{"type":"function_call","id":"fc_$id","call_id":"$id","name":"$name","arguments":${quote(args)},"status":"completed"}""" } +
+                """],"usage":{"input_tokens":30,"output_tokens":$outTok,"total_tokens":${30 + outTok}}}}"""
+
         fun reasoningDelta(text: String, seq: Int) =
             "response.reasoning_text.delta" to """{"type":"response.reasoning_text.delta","sequence_number":$seq,"item_id":"rs_1","output_index":0,"content_index":0,"delta":${quote(text)}}"""
 

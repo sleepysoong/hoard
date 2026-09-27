@@ -5,6 +5,7 @@ import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.RouteAttempt
 import com.sleepysoong.hoard.data.RoutingInfo
 import com.sleepysoong.hoard.data.ThinkingStep
+import com.sleepysoong.hoard.tools.ToolRegistry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.InternalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -51,14 +52,66 @@ class RouterAiEngine(
     /** Reads attachment bytes (ContentResolver in the app). Null = describe attachments only. */
     private val attachments: AttachmentEncoder? = null,
     /** Inbound token for a router with auth_token_env set (sent as a Bearer token). */
-    private val token: String = ""
+    private val token: String = "",
+    /** Function tools run on the device (web_search, web_fetch). Null/empty = plain chat. */
+    private val tools: ToolRegistry? = null,
+    private val maxToolRounds: Int = MAX_TOOL_ROUNDS
 ) : AiEngine {
 
     override suspend fun streamReply(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) =
         withContext(Dispatchers.IO) { stream(request, onEvent) }
 
+    /**
+     * The tool loop. Each round is one `/hoard/v1/responses` stream. When the model
+     * answers with function calls, they run here, their outputs are appended as
+     * `function_call` + `function_call_output` input items and the conversation is
+     * sent again — until the model answers in text. The last allowed round sends
+     * `tool_choice: "none"` so the loop always ends with an answer.
+     * Reasoning, tool steps and any text from earlier rounds stay in the reply.
+     */
     private suspend fun stream(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) {
         val started = System.currentTimeMillis()
+        val active = tools?.takeUnless { it.isEmpty }
+        val prior = Prior()
+        val toolItems = mutableListOf<JsonObject>()
+        var round = 0
+        while (true) {
+            val finalRound = active == null || round >= maxToolRounds
+            val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems, forbidTools = active != null && finalRound)
+            val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
+            if (state.toolCalls.isEmpty()) return
+            prior.absorb(state)
+            for (call in state.toolCalls) {
+                val t0 = System.currentTimeMillis()
+                onEvent(prior.event(request, started, running = "도구 실행 중 · ${call.name}"))
+                val outcome = active!!.execute(call.name, call.arguments)
+                prior.thinking += ThinkingStep(outcome.label, outcome.summary, System.currentTimeMillis() - t0)
+                toolItems += buildJsonObject {
+                    put("type", "function_call")
+                    put("call_id", call.callId)
+                    put("name", call.name)
+                    put("arguments", call.arguments)
+                }
+                toolItems += buildJsonObject {
+                    put("type", "function_call_output")
+                    put("call_id", call.callId)
+                    put("output", outcome.output)
+                }
+                onEvent(prior.event(request, started))
+            }
+            round++
+        }
+    }
+
+    /** One streamed request. Returns the finished round (text answer or tool calls). */
+    private suspend fun streamRound(
+        request: ReplyRequest,
+        body: String,
+        prior: Prior,
+        started: Long,
+        acceptTools: Boolean,
+        onEvent: suspend (StreamEvent) -> Unit
+    ): StreamState {
         val conn = openConnection(endpoint(baseUrl, "responses"))
         // Blocking socket reads don't observe coroutine cancellation (and SSE keep-alives
         // never surface as events), so a cancelled reply would keep the router — and the
@@ -74,7 +127,6 @@ class RouterAiEngine(
             conn.setRequestProperty("Accept", "text/event-stream")
             // Connecting happens lazily on the first write, so unreachable routers
             // (refused, DNS, no route) surface here, not at responseCode.
-            val body = encodeRequest(request, attachments)
             // Stream the body: without a streaming mode HttpURLConnection buffers the whole
             // request (base64 attachments included) in memory, on top of the String and its
             // byte[] copy — ~5× the payload at once.
@@ -89,12 +141,12 @@ class RouterAiEngine(
             }
             val contentType = conn.contentType.orEmpty()
             if (status !in 200..299 || !contentType.startsWith("text/event-stream")) {
-                val body = (if (status in 200..299) conn.inputStream else conn.errorStream)
+                val errBody = (if (status in 200..299) conn.inputStream else conn.errorStream)
                     ?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw errorFromJsonBody(status, body)
+                throw errorFromJsonBody(status, errBody)
             }
 
-            val state = StreamState(request)
+            val state = StreamState(request, prior, acceptTools)
             conn.inputStream.bufferedReader().use { reader ->
                 readSse(reader) { name, data ->
                     currentCoroutineContext().ensureActive()
@@ -106,6 +158,7 @@ class RouterAiEngine(
             if (!state.done) {
                 throw RouterException.Transient("응답 스트림이 완료 전에 끊겼습니다", state.routing, null)
             }
+            return state
         } catch (e: SocketTimeoutException) {
             currentCoroutineContext().ensureActive()
             throw RouterException.Transient("응답이 멈췄습니다 (시간 초과)", null, e)
@@ -146,7 +199,7 @@ class RouterAiEngine(
         }
 
     /** Stateful mapping of the Responses SSE stream to UI events. */
-    private class StreamState(val request: ReplyRequest) {
+    private class StreamState(val request: ReplyRequest, val prior: Prior, val acceptTools: Boolean) {
         val text = StringBuilder()
         var reasoning = StringBuilder()
         /** When the answer started; the reasoning step's duration stops there. */
@@ -156,6 +209,8 @@ class RouterAiEngine(
         var completionTokens = 0
         var done = false
         var responseModel: String? = null
+        /** Function calls of a finished round (only when [acceptTools]). */
+        var toolCalls: List<ToolCall> = emptyList()
 
         fun consume(name: String?, data: String, elapsed: Long): StreamEvent? {
             val obj = runCatching { json.parseToJsonElement(data).jsonObject }.getOrNull() ?: return null
@@ -184,13 +239,14 @@ class RouterAiEngine(
                     // Authoritative final text (covers providers that skip deltas).
                     val full = resp?.let(::outputText)
                     if (!full.isNullOrEmpty()) { text.setLength(0); text.append(full) }
+                    if (acceptTools) toolCalls = resp?.let(::functionCalls).orEmpty()
                     // A model that only reasoned and never answered: retryable, not an empty success.
-                    if (text.isEmpty() && resp?.let(::hasToolCall) != true) {
+                    if (text.isEmpty() && toolCalls.isEmpty() && prior.text.isEmpty()) {
                         throw RouterException.Transient(EMPTY_REPLY, routing?.withSelectedOutcome("failed"), null)
                     }
                     routing = routing?.withSelectedOutcome("succeeded")
                     done = true
-                    return event(elapsed, done = true)
+                    return event(elapsed, done = toolCalls.isEmpty())
                 }
                 "response.incomplete" -> {
                     val resp = obj.obj("response")
@@ -227,18 +283,69 @@ class RouterAiEngine(
             completionTokens = u.int("output_tokens") ?: completionTokens
         }
 
-        private fun event(elapsed: Long, done: Boolean = false) = StreamEvent(
-            thinking = buildList {
-                if (reasoning.isNotEmpty()) add(ThinkingStep("모델 추론", reasoning.toString(), reasoningMs ?: elapsed))
-            },
-            deltaText = text.toString(),
-            done = done,
-            elapsedMs = elapsed,
-            promptTokens = if (promptTokens > 0) promptTokens else request.promptTokens,
-            completionTokens = if (completionTokens > 0) completionTokens else com.sleepysoong.hoard.data.estimateTokens(text.toString()),
-            routing = routing
-        )
+        val reasoningStep: ThinkingStep? get() =
+            if (reasoning.isEmpty()) null else ThinkingStep("모델 추론", reasoning.toString(), (reasoningMs ?: lastElapsed) - prior.roundStartMs)
+
+        private var lastElapsed = 0L
+
+        val ownCompletionTokens: Int get() =
+            if (completionTokens > 0) completionTokens else com.sleepysoong.hoard.data.estimateTokens(text.toString())
+
+        private fun event(elapsed: Long, done: Boolean = false): StreamEvent {
+            lastElapsed = elapsed
+            return StreamEvent(
+                thinking = prior.thinking + listOfNotNull(reasoningStep),
+                deltaText = prior.joinText(text.toString()),
+                done = done,
+                elapsedMs = elapsed,
+                promptTokens = if (promptTokens > 0) promptTokens else prior.promptTokens.takeIf { it > 0 } ?: request.promptTokens,
+                completionTokens = prior.completionTokens + ownCompletionTokens,
+                routing = routing ?: prior.routing
+            )
+        }
     }
+
+    /** What earlier tool rounds of this reply produced. */
+    private class Prior {
+        val thinking = mutableListOf<ThinkingStep>()
+        var text = ""
+        var promptTokens = 0
+        var completionTokens = 0
+        var routing: RoutingInfo? = null
+        /** Elapsed ms when the current round started (reasoning durations are per round). */
+        var roundStartMs = 0L
+
+        fun joinText(current: String) = when {
+            text.isEmpty() -> current
+            current.isEmpty() -> text
+            else -> text + "\n\n" + current
+        }
+
+        fun absorb(s: StreamState) {
+            s.reasoningStep?.let { thinking += it }
+            text = joinText(s.text.toString())
+            if (s.promptTokens > 0) promptTokens = s.promptTokens
+            completionTokens += s.ownCompletionTokens
+            routing = s.routing ?: routing
+        }
+
+        fun event(request: ReplyRequest, started: Long, running: String? = null): StreamEvent {
+            val elapsed = System.currentTimeMillis() - started
+            roundStartMs = elapsed
+            return StreamEvent(
+                thinking = thinking + listOfNotNull(running?.let { ThinkingStep(it, "…", 0) }),
+                deltaText = text,
+                done = false,
+                elapsedMs = elapsed,
+                promptTokens = promptTokens.takeIf { it > 0 } ?: request.promptTokens,
+                completionTokens = completionTokens,
+                routing = routing
+            )
+        }
+    }
+
+    /** A model's function call from a finished round. */
+    data class ToolCall(val callId: String, val name: String, val arguments: String)
 
     companion object {
         internal val json = Json { ignoreUnknownKeys = true; isLenient = true }
@@ -279,16 +386,38 @@ class RouterAiEngine(
             return if (hoard) "$b/hoard/v1/$path" else "$b/v1/$path"
         }
 
-        /** OpenAI Responses request body built from the Hoard conversation. */
-        fun encodeRequest(r: ReplyRequest, attachments: AttachmentEncoder? = null): String = buildJsonObject {
+        /** Tool rounds per reply before the model is made to answer (`tool_choice: none`). */
+        const val MAX_TOOL_ROUNDS = 8
+
+        /**
+         * OpenAI Responses request body built from the Hoard conversation.
+         * With [toolSchemas]: the `tools` array, a short usage note in `instructions`,
+         * and [toolItems] (earlier rounds' function_call / function_call_output) after
+         * the history. [forbidTools] = final round: `tool_choice: "none"`.
+         */
+        fun encodeRequest(
+            r: ReplyRequest,
+            attachments: AttachmentEncoder? = null,
+            toolSchemas: List<JsonObject>? = null,
+            toolItems: List<JsonObject> = emptyList(),
+            forbidTools: Boolean = false,
+            today: java.time.LocalDate = java.time.LocalDate.now()
+        ): String = buildJsonObject {
             put("model", r.modelId)
             put("stream", true)
-            if (r.systemPrompt.isNotBlank()) put("instructions", r.systemPrompt)
+            val note = if (toolSchemas.isNullOrEmpty()) "" else toolNote(toolSchemas, today)
+            val instructions = listOf(r.systemPrompt.trim(), note).filter { it.isNotEmpty() }.joinToString("\n\n")
+            if (instructions.isNotEmpty()) put("instructions", instructions)
+            if (!toolSchemas.isNullOrEmpty()) {
+                put("tools", JsonArray(toolSchemas))
+                if (forbidTools) put("tool_choice", "none")
+            }
             // Only the newest user message ships file bytes; earlier turns (already
             // answered) mention their attachments by name to keep requests small.
             val lastUser = r.history.indexOfLast { it.role == MessageRole.User }
             put("input", buildJsonArray {
                 r.history.forEachIndexed { i, m -> add(encodeMessage(m, if (i == lastUser) attachments else null)) }
+                toolItems.forEach { add(it) }
             })
         }.toString()
 
@@ -317,8 +446,25 @@ class RouterAiEngine(
         /** Concatenated output_text of a Responses object. */
         const val EMPTY_REPLY = "모델이 빈 응답을 보냈습니다 (추론만 하고 답을 쓰지 않음)"
 
-        fun hasToolCall(resp: JsonObject): Boolean =
-            (resp["output"] as? JsonArray).orEmpty().any { (it as? JsonObject)?.str("type") == "function_call" }
+        fun hasToolCall(resp: JsonObject): Boolean = functionCalls(resp).isNotEmpty()
+
+        /** `function_call` items of a completed Responses object. */
+        fun functionCalls(resp: JsonObject): List<ToolCall> =
+            (resp["output"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+                .filter { it.str("type") == "function_call" }
+                .mapNotNull { o ->
+                    val name = o.str("name") ?: return@mapNotNull null
+                    val callId = o.str("call_id") ?: o.str("id") ?: return@mapNotNull null
+                    ToolCall(callId, name, o.str("arguments").orEmpty().ifBlank { "{}" })
+                }
+
+        private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate): String {
+            val names = schemas.mapNotNull { it.str("name") }
+            val lines = mutableListOf("Today's date: $today.")
+            if ("web_search" in names) lines += "Use web_search for current or unfamiliar facts. Its results are snippets only, not page contents."
+            if ("web_fetch" in names) lines += "Use web_fetch to read a page before relying on what it says. Cite the URLs you used."
+            return lines.joinToString(" ")
+        }
 
         fun outputText(resp: JsonObject): String =
             (resp["output"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }

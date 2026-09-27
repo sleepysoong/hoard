@@ -28,6 +28,11 @@ interface AiEngine {
 object Engines {
     @Volatile var override: AiEngine? = null
 
-    fun forRouter(routerUrl: String, attachments: AttachmentEncoder? = null, token: String = ""): AiEngine =
-        override ?: if (routerUrl.isBlank()) MockAiEngine else RouterAiEngine(routerUrl, attachments = attachments, token = token)
+    fun forRouter(
+        routerUrl: String,
+        attachments: AttachmentEncoder? = null,
+        token: String = "",
+        tools: com.sleepysoong.hoard.tools.ToolRegistry? = null
+    ): AiEngine =
+        override ?: if (routerUrl.isBlank()) MockAiEngine else RouterAiEngine(routerUrl, attachments = attachments, token = token, tools = tools)
 }

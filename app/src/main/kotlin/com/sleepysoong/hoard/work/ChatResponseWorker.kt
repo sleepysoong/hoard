@@ -23,6 +23,7 @@ import com.sleepysoong.hoard.engine.AttachmentEncoder
 import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
+import com.sleepysoong.hoard.tools.WebTools
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -71,7 +72,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val engine = Engines.forRouter(
             cfg.routerUrl,
             AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
-            token = cfg.routerToken
+            token = cfg.routerToken,
+            tools = WebTools.registry(cfg.webToolsEnabled, cfg.braveApiKey)
         )
         return try {
             promote("Hoard가 생각 중…")

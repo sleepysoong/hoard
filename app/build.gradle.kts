@@ -108,6 +108,7 @@ configurations.configureEach {
 dependencies {
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
+    implementation(libs.jsoup)
     implementation(libs.hrm.markdown.parser)
     implementation(libs.hrm.markdown.runtime)
     implementation(libs.hrm.markdown.renderer)

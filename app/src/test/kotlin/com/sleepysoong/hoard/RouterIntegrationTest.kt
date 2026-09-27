@@ -174,7 +174,8 @@ class RouterIntegrationTest {
         val body = Json.parseToJsonElement(req.body).jsonObject
         assertEquals("the model picked for the send (a router group)", "coding", body["model"]!!.jsonPrimitive.content)
         assertEquals("true", body["stream"]!!.jsonPrimitive.content)
-        assertEquals("너는 간결하다.", body["instructions"]!!.jsonPrimitive.content)
+        // The system prompt comes first; the web-tool note (tools on by default) follows it.
+        assertTrue(body["instructions"]!!.jsonPrimitive.content.startsWith("너는 간결하다.\n\n"))
         val input = body["input"]!!.jsonArray.map { it.jsonObject }
         assertEquals("welcome bubble excluded", listOf("user", "assistant", "user"), input.map { it["role"]!!.jsonPrimitive.content })
         assertTrue("every item is a typed message (untyped items make typed decoders drop all input)",
