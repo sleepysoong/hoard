@@ -2,6 +2,7 @@ package com.sleepysoong.hoard.ui
 
 import android.graphics.Bitmap
 import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.assertContentDescriptionContains
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.captureToImage
 import androidx.compose.ui.test.hasSetTextAction
@@ -132,13 +133,15 @@ class RouterUiTest {
 
         val body = router.requests.first { it.path == "/hoard/v1/responses" }.body
         assertTrue("new session starts on the router's first group: $body", body.contains("\"model\":\"coding\""))
-        compose.onNodeWithTag("routing-summary", useUnmergedTree = true).assertTextContains("via openrouter/c · 2개 실패", substring = true)
-        compose.onNodeWithText("openrouter/c · ").assertExists() // footer: answering model, not the requested group
+        compose.onNodeWithTag("routing-summary", useUnmergedTree = true).assertContentDescriptionContains("응답 모델 openrouter/c · 2개 실패", substring = true)
+        // The # pill names the answering model (not the requested group); the footer no longer repeats it.
+        compose.onNodeWithText("#", useUnmergedTree = true).assertExists()
+        assertEquals(0, compose.onAllNodesWithText("openrouter/c · ").fetchSemanticsNodes().size)
         shot("reply-collapsed")
 
         compose.onNodeWithTag("routing-summary", useUnmergedTree = true).performClick()
         compose.mainClock.advanceTimeBy(800)
-        compose.onNodeWithText("1. zen/a").assertExists()
+        compose.onNodeWithText("zen/a").assertExists()
         compose.onNodeWithText("rate_limit_error: rate_limited: slow down").assertExists()
         compose.onNodeWithText("missing_api_key: API key missing for provider gemini").assertExists()
         assertEquals(3, compose.onAllNodesWithTag("routing-attempt", useUnmergedTree = true).fetchSemanticsNodes().size)
@@ -156,7 +159,7 @@ class RouterUiTest {
         compose.onNodeWithContentDescription("보내기").performClick()
         waitFor("error") { compose.onAllNodesWithTag("reply-error", useUnmergedTree = true).fetchSemanticsNodes().isNotEmpty() }
         compose.onNodeWithTag("reply-error", useUnmergedTree = true).assertTextContains("모든 모델이 실패했습니다", substring = true)
-        compose.onNodeWithTag("routing-summary", useUnmergedTree = true).assertTextContains("응답한 모델 없음 · 2개 실패", substring = true)
+        compose.onNodeWithTag("routing-summary", useUnmergedTree = true).assertContentDescriptionContains("응답한 모델 없음 · 2개 실패", substring = true)
         shot("reply-all-failed")
     }
 

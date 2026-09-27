@@ -33,7 +33,7 @@ class HoardStore(private val file: File) {
     )
 
     @Serializable data class SAttachment(val id: String, val name: String, val mime: String, val sizeBytes: Long, val uri: String? = null)
-    @Serializable data class SThinking(val title: String, val detail: String, val durationMs: Long)
+    @Serializable data class SThinking(val title: String, val detail: String, val durationMs: Long, val kind: String = "Reasoning", val failed: Boolean = false)
     @Serializable data class SAttempt(
         val index: Int, val model: String, val provider: String, val upstreamModel: String? = null, val outcome: String,
         val errorClass: String? = null, val statusCode: Int? = null, val reason: String? = null,
@@ -86,7 +86,7 @@ class HoardStore(private val file: File) {
 
         fun ChatMessage.toS() = SMessage(
             id = id, role = role.name, text = text, modelId = modelId,
-            thinking = thinking.map { SThinking(it.title, it.detail, it.durationMs) },
+            thinking = thinking.map { SThinking(it.title, it.detail, it.durationMs, it.kind.name, it.failed) },
             elapsedMs = elapsedMs, promptTokens = promptTokens, completionTokens = completionTokens,
             attachments = attachments.map { SAttachment(it.id, it.name, it.mime, it.sizeBytes, it.uri?.toString()) },
             createdAt = createdAt, branchedFromId = branchedFromId, isStreaming = isStreaming,
@@ -102,7 +102,9 @@ class HoardStore(private val file: File) {
             id = id,
             role = runCatching { MessageRole.valueOf(role) }.getOrDefault(MessageRole.Assistant),
             text = text, modelId = modelId,
-            thinking = thinking.map { ThinkingStep(it.title, it.detail, it.durationMs) },
+            thinking = thinking.map {
+                ThinkingStep(it.title, it.detail, it.durationMs, runCatching { StepKind.valueOf(it.kind) }.getOrDefault(StepKind.Reasoning), it.failed)
+            },
             elapsedMs = elapsedMs, promptTokens = promptTokens, completionTokens = completionTokens,
             attachments = attachments.map { UiAttachment(it.id, it.name, it.mime, it.sizeBytes, it.uri?.let(Uri::parse)) },
             createdAt = createdAt, branchedFromId = branchedFromId,

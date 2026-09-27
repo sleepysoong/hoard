@@ -84,7 +84,6 @@ fun MessageBubble(
     val isUser = message.role == MessageRole.User
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
-    var thinkingOpen by remember { mutableStateOf(false) }
     var bubbleBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
     // Entrance: pops out of its tail corner with a soft overshoot, once per bubble.
     // (animateFloatAsState(targetValue = 1f) would start *at* 1 and never play.)
@@ -175,59 +174,7 @@ fun MessageBubble(
                     }
                 }
 
-                if (!isUser && message.thinking.isNotEmpty()) {
-                    Row(
-                        Modifier
-                            .clip(RoundedCornerShape(8.dp))
-                            .clickable { thinkingOpen = !thinkingOpen }
-                            .padding(vertical = 2.dp, horizontal = 2.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(2.dp)
-                    ) {
-                        Text(
-                            "추론 ${message.thinking.size}단계",
-                            style = MaterialTheme.typography.labelMedium,
-                            color = if (isUser) scheme.onPrimary else scheme.primary
-                        )
-                        Icon(
-                            if (thinkingOpen) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                            contentDescription = null,
-                            modifier = Modifier.size(15.dp),
-                            tint = textColor.copy(alpha = 0.7f)
-                        )
-                    }
-                    AnimatedVisibility(
-                        thinkingOpen,
-                        enter = expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Top) +
-                            fadeIn(GlassMotion.fade()) + scaleIn(GlassMotion.bouncy(), initialScale = 0.96f, transformOrigin = TransformOrigin(0f, 0f)),
-                        exit = shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Top) + fadeOut(GlassMotion.fade())
-                    ) {
-                        // Translucent inset so the trace stays readable over glass.
-                        Column(
-                            Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(13.dp))
-                                .background(scheme.onSurface.copy(alpha = 0.06f))
-                                .padding(10.dp),
-                            verticalArrangement = Arrangement.spacedBy(7.dp)
-                        ) {
-                            message.thinking.forEach { step ->
-                                Column {
-                                    Text(
-                                        step.title,
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = textColor
-                                    )
-                                    Text(
-                                        "${step.detail} · ${formatElapsed(step.durationMs)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = textColor.copy(alpha = 0.65f)
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
+                if (!isUser && message.thinking.isNotEmpty()) WorkPanel(message.thinking, textColor)
 
                 if (message.text.isEmpty() && message.isStreaming) {
                     IOSTypingDots(Modifier.padding(vertical = 6.dp))
@@ -257,13 +204,7 @@ fun MessageBubble(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    if (!isUser && modelName != null) {
-                        Text(
-                            "$modelName · ",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = scheme.onSurfaceVariant
-                        )
-                    }
+                    // The answering model is on the # pill inside the bubble, not repeated here.
                     Text(
                         SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.createdAt)),
                         style = MaterialTheme.typography.labelSmall,
@@ -278,94 +219,6 @@ fun MessageBubble(
                     }
                 }
             }
-        }
-    }
-}
-
-/**
- * Router trace inside a Hoard bubble: a one-line summary (answering model, how
- * many candidates failed) that expands into every attempt with its reason.
- */
-@Composable
-private fun RoutingPanel(routing: RoutingInfo, textColor: Color) {
-    val scheme = MaterialTheme.colorScheme
-    var open by remember { mutableStateOf(false) }
-    val failures = routing.failures.size
-    val summary = buildString {
-        append(routing.selectedModel?.let { "via $it" } ?: "응답한 모델 없음")
-        if (failures > 0) append(" · ${failures}개 실패")
-        if (routing.requestedModel.isNotBlank() && routing.requestedModel != routing.selectedModel) {
-            append(" · 요청 ${routing.requestedModel}")
-        }
-    }
-    Column(Modifier.testTag("routing-panel")) {
-        Row(
-            Modifier
-                .clip(RoundedCornerShape(8.dp))
-                .clickable(onClickLabel = "라우팅 상세") { open = !open }
-                .padding(vertical = 2.dp, horizontal = 2.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(2.dp)
-        ) {
-            Text(
-                summary,
-                style = MaterialTheme.typography.labelMedium,
-                color = if (routing.selectedModel == null) scheme.error else scheme.primary,
-                modifier = Modifier.testTag("routing-summary")
-            )
-            Icon(
-                if (open) Icons.Rounded.ExpandLess else Icons.Rounded.ExpandMore,
-                contentDescription = null,
-                modifier = Modifier.size(15.dp),
-                tint = textColor.copy(alpha = 0.7f)
-            )
-        }
-        AnimatedVisibility(
-            open,
-            enter = expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Top) + fadeIn(GlassMotion.fade()),
-            exit = shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Top) + fadeOut(GlassMotion.fade())
-        ) {
-            Column(
-                Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(13.dp))
-                    .background(scheme.onSurface.copy(alpha = 0.06f))
-                    .padding(10.dp),
-                verticalArrangement = Arrangement.spacedBy(7.dp)
-            ) {
-                routing.attempts.forEach { a -> AttemptRow(a, textColor) }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AttemptRow(a: RouteAttempt, textColor: Color) {
-    val scheme = MaterialTheme.colorScheme
-    val (label, color) = when (a.outcome) {
-        "succeeded" -> "성공" to scheme.primary
-        "streaming" -> "응답 중" to scheme.primary
-        "failed" -> "실패" to scheme.error
-        "skipped" -> "건너뜀" to scheme.onSurfaceVariant
-        "incomplete" -> "잘림" to scheme.error
-        else -> a.outcome to scheme.onSurfaceVariant
-    }
-    Column(Modifier.testTag("routing-attempt")) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text("${a.index}. ${a.model}", style = MaterialTheme.typography.labelMedium, color = textColor, modifier = Modifier.weight(1f, fill = false))
-            Text(label, style = MaterialTheme.typography.labelMedium, color = color)
-        }
-        val detail = listOfNotNull(
-            a.statusCode?.let { "HTTP $it" },
-            // Skipped candidates were never sent: their class is meaningless ("unknown").
-            a.errorClass?.takeIf { a.outcome == "failed" || a.outcome == "incomplete" },
-            a.durationMs.takeIf { it > 0 }?.let { formatElapsed(it) }
-        ).joinToString(" · ")
-        if (detail.isNotEmpty()) {
-            Text(detail, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.65f))
-        }
-        a.reason?.takeIf { it.isNotBlank() }?.let {
-            Text(it, style = MaterialTheme.typography.labelSmall, color = textColor.copy(alpha = 0.65f), maxLines = 3)
         }
     }
 }

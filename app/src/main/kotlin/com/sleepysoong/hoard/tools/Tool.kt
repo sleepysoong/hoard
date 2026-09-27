@@ -74,6 +74,13 @@ class ToolRegistry(val tools: List<Tool>) {
         }
     }
 
+    /** The step label for a call before it runs (e.g. "웹 검색 · 서울 날씨"). */
+    fun label(name: String, argumentsJson: String): String {
+        val tool = byName[name] ?: return name
+        val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull() ?: return tool.name
+        return runCatching { tool.label(args) }.getOrDefault(tool.name)
+    }
+
     private fun error(label: String, message: String) = ToolOutcome(
         output = buildJsonObject { put("error", message) }.toString(),
         label = label, summary = "실패: $message", isError = true

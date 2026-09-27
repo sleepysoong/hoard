@@ -93,7 +93,7 @@ class ChatMotionTest {
         }
         compose.waitForIdle()
         compose.mainClock.autoAdvance = false
-        compose.onNodeWithText("추론 3단계", substring = true).performClick()
+        compose.onNodeWithText("작업 3단계", substring = true).performClick()
         val heights = (1..30).map {
             compose.mainClock.advanceTimeByFrame()
             compose.onAllNodesWithText("요청 파악", substring = true).fetchSemanticsNodes().firstOrNull()?.boundsInRoot?.bottom ?: 0f

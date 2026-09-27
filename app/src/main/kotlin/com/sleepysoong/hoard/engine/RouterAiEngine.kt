@@ -4,6 +4,7 @@ import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.RouteAttempt
 import com.sleepysoong.hoard.data.RoutingInfo
+import com.sleepysoong.hoard.data.StepKind
 import com.sleepysoong.hoard.data.ThinkingStep
 import com.sleepysoong.hoard.tools.ToolRegistry
 import kotlinx.coroutines.Dispatchers
@@ -83,9 +84,9 @@ class RouterAiEngine(
             prior.absorb(state)
             for (call in state.toolCalls) {
                 val t0 = System.currentTimeMillis()
-                onEvent(prior.event(request, started, running = "도구 실행 중 · ${call.name}"))
+                onEvent(prior.event(request, started, running = runCatching { active!!.label(call.name, call.arguments) }.getOrDefault(call.name)))
                 val outcome = active!!.execute(call.name, call.arguments)
-                prior.thinking += ThinkingStep(outcome.label, outcome.summary, System.currentTimeMillis() - t0)
+                prior.thinking += ThinkingStep(outcome.label, outcome.summary, System.currentTimeMillis() - t0, StepKind.Tool, failed = outcome.isError)
                 toolItems += buildJsonObject {
                     put("type", "function_call")
                     put("call_id", call.callId)
@@ -333,7 +334,7 @@ class RouterAiEngine(
             val elapsed = System.currentTimeMillis() - started
             roundStartMs = elapsed
             return StreamEvent(
-                thinking = thinking + listOfNotNull(running?.let { ThinkingStep(it, "…", 0) }),
+                thinking = thinking + listOfNotNull(running?.let { ThinkingStep(it, "실행 중…", 0, StepKind.Tool, running = true) }),
                 deltaText = text,
                 done = false,
                 elapsedMs = elapsed,

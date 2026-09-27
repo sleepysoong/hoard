@@ -25,8 +25,16 @@ data class UiAttachment(
 data class ThinkingStep(
     val title: String,
     val detail: String,
-    val durationMs: Long
+    val durationMs: Long,
+    /** Model reasoning vs. a tool call (shown in separate groups under "작업"). */
+    val kind: StepKind = StepKind.Reasoning,
+    /** A tool call that failed (its error went back to the model). */
+    val failed: Boolean = false,
+    /** Still running (tool executing right now). */
+    val running: Boolean = false
 )
+
+enum class StepKind { Reasoning, Tool }
 
 /** One candidate the router tried for a reply (from sleepyrouter's routing trace). */
 data class RouteAttempt(
