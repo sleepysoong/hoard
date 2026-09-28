@@ -77,7 +77,9 @@ android {
             isIncludeAndroidResources = true
             all {
                 // Low-spec: one Robolectric JVM, small heap, serial GC, capped CPU use.
-                it.maxHeapSize = "1024m"
+                it.maxHeapSize = "768m"
+                // Fresh JVM every 40 classes: Robolectric sandboxes pile up native memory otherwise.
+                it.setForkEvery(40)
                 it.maxParallelForks = 1
                 it.jvmArgs("-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-XX:TieredStopAtLevel=1")
                 // Flow tests dump conversation transcripts here (reviewable artifact).

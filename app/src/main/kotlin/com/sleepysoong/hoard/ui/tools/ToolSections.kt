@@ -133,3 +133,38 @@ internal fun TermuxSection(enabled: Boolean) {
         }
     }
 }
+
+/**
+ * read_file / write_file / edit_file / glob / grep. They only see Hoard's private
+ * workspace folder, so this is on by default; the row shows where and how many files.
+ */
+@Composable
+internal fun FileToolsSection(enabled: Boolean) {
+    val ctx = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val scheme = MaterialTheme.colorScheme
+    val ws = androidx.compose.runtime.remember { com.sleepysoong.hoard.tools.files.FileTools.workspace(ctx) }
+    val count by androidx.compose.runtime.produceState(0, enabled) {
+        value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ws.root.walkTopDown().count { it.isFile } }
+    }
+
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("파일 읽기 · 쓰기 · 검색", style = MaterialTheme.typography.bodyLarge)
+                Text("read_file, write_file, edit_file, glob, grep (라우터 연결 시)", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+            }
+            GlassSwitch(
+                checked = enabled,
+                onCheckedChange = { v -> scope.launch { SettingsStore.setFileToolsEnabled(ctx, v) } },
+                modifier = Modifier.testTag("file-tools-switch")
+            )
+        }
+        Text(
+            if (enabled) "사용 가능 · 앱 전용 작업 폴더만 접근 (파일 ${count}개)" else "꺼짐 · 모델에 파일 도구를 주지 않음",
+            style = MaterialTheme.typography.labelMedium,
+            color = if (enabled) scheme.tertiary else scheme.onSurfaceVariant,
+            modifier = Modifier.testTag("file-tools-status")
+        )
+    }
+}

@@ -17,7 +17,9 @@ object WebTools {
         enabled: Boolean,
         braveApiKey: String,
         searchProvider: SearchProvider? = null,
-        termux: TermuxExecutor? = null
+        termux: TermuxExecutor? = null,
+        /** File tools (read_file, write_file, edit_file, glob, grep) over this sandbox; null = off. */
+        files: com.sleepysoong.hoard.tools.files.Workspace? = null
     ): ToolRegistry {
         override?.let { return it }
         val registry = ToolRegistry()
@@ -27,6 +29,7 @@ object WebTools {
             registry.register(WebFetchTool())
         }
         if (termux != null) registry.register(TermuxExecTool(termux))
+        if (files != null) com.sleepysoong.hoard.tools.files.FileTools.all(files).forEach(registry::register)
         return registry
     }
 }

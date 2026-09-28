@@ -184,9 +184,30 @@ class ToolLoopTest {
         assertEquals("Termux 실행", r.thinking.last().title)
     }
 
-    @Test fun disabledWebToolsSendNoTools() {
+    @Test fun fileToolsWriteThenReadThroughTheLoop() {
+        val dir = java.nio.file.Files.createTempDirectory("ws").toFile()
+        start(tools = WebTools.registry(enabled = false, braveApiKey = "", files = com.sleepysoong.hoard.tools.files.Workspace(dir)))
+        router.enqueue(
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(
+                Triple("w1", "write_file", """{"path":"memo/today.md","content":"우유 사기\n"}"""),
+                Triple("r1", "read_file", """{"path":"memo/today.md"}""")
+            ))),
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("메모에 저장했어요.")))
+        )
+        h.vm.send("오늘 할 일 메모해 줘", emptyList(), "coding")
+        h.awaitReplies()
+        assertEquals("우유 사기\n", java.io.File(dir, "memo/today.md").readText())
+        assertEquals(listOf("read_file", "write_file", "edit_file", "glob", "grep"),
+            body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
+        val out = Json.parseToJsonElement(body(1)["input"]!!.jsonArray.last().jsonObject["output"]!!.jsonPrimitive.content).jsonObject
+        assertEquals("1\t우유 사기\n", out["content"]!!.jsonPrimitive.content)
+        assertEquals(listOf("파일 쓰기", "파일 읽기"), h.messages().last().thinking.map { it.title })
+        dir.deleteRecursively()
+    }
+
+    @Test fun allToolsOffSendNoTools() {
         start(tools = null)
-        runBlocking { SettingsStore.setWebToolsEnabled(h.app, false) }
+        runBlocking { SettingsStore.setWebToolsEnabled(h.app, false); SettingsStore.setFileToolsEnabled(h.app, false) }
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("도구 없이 답"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()
@@ -194,11 +215,11 @@ class ToolLoopTest {
         assertEquals("도구 없이 답", h.messages().last().text)
     }
 
-    @Test fun withoutBraveKeyOnlyWebFetchIsOffered() {
-        start(tools = null) // real WebTools.registry from settings: enabled, no key
+    @Test fun defaultsOfferWebFetchAndFileToolsButNoSearchWithoutKey() {
+        start(tools = null) // real WebTools.registry from settings: web + file tools on, no Brave key, Termux off
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()
-        assertEquals(listOf("web_fetch"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
+        assertEquals(listOf("web_fetch", "read_file", "write_file", "edit_file", "glob", "grep"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
     }
 }

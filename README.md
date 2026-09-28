@@ -54,6 +54,11 @@ Still no gradients: every colour is solid.
   - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without
     touching the tool schema. Tool loop in `RouterAiEngine`: up to 8 rounds, then `tool_choice: none`.
     Each call appears as a step under the reply's 추론 section.
+- File tools (도구 → 파일, on by default): `read_file(path, offset?, limit?)`, `write_file(path, content)`,
+  `edit_file(path, old_string, new_string, replace_all?)`, `glob(pattern, path?)`,
+  `grep(pattern, path?, glob?, case_sensitive?, max_results?)` — confined to the app's private workspace folder
+  (`filesDir/workspace`; `..`, absolute paths elsewhere and symlinks out are refused). UTF-8 text only,
+  atomic writes, grep has a 3 s regex time budget. Code: `tools/files/`.
 - `termux_exec` (Settings → Termux, off by default): one-shot shell commands in Termux via the official
   `com.termux.RUN_COMMAND` intent to `RunCommandService` (`bash -lc <command>`, background, result back
   through a PendingIntent → `TermuxResultReceiver`). Returns `{stdout, stderr, exitCode}` as-is (non-zero exit

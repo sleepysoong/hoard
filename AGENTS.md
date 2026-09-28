@@ -38,6 +38,11 @@ The dev box is small (3 cores / 6 GB) and **freezes when a build or test run tak
   Gradle's test-result store — free space, then `rm -rf app/build/test-results`. Robolectric's ~200 MB native runtime
   now unpacks into `app/build/test-tmp` (not tmpfs `/tmp`, which is RAM on this box and OOM-killed sessions).
 
+- This box is an Incus container: 6 GB hard limit, **no swap possible**. Other agents (e.g. codex running
+  `make test -race` in sleepyrouter) may build at the same time. `gradlew-lowspec.sh` waits for 1.5 GB free and
+  marks Gradle `oom_score_adj=1000` so an OOM kills the build, not the session. For the whole suite, run it in
+  chunks (a few test classes per Gradle run) instead of one big run.
+
 ## Backend contract (sleepyrouter)
 
 Hoard talks to sleepyrouter's `POST /hoard/v1/responses` (repo: `../sleepyrouter`). The wire contract

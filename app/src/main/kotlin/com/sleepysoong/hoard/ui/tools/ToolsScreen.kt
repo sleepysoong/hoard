@@ -50,6 +50,10 @@ fun ToolsScreen(modifier: Modifier = Modifier) {
             IOSGroupedSection {
                 WebToolsSection(settings.webToolsEnabled, settings.braveApiKey)
             }
+            IOSSectionHeader("파일")
+            IOSGroupedSection {
+                FileToolsSection(settings.fileToolsEnabled)
+            }
             IOSSectionHeader("Termux")
             IOSGroupedSection {
                 TermuxSection(settings.termuxEnabled)
