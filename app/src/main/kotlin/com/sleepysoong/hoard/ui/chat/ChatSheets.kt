@@ -80,7 +80,8 @@ fun SessionSettingsSheet(
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             GlassTextField(
                 value = name, onValueChange = { name = it },
-                label = { Text("세션 이름") }, singleLine = true
+                label = { Text("세션 이름") }, singleLine = true,
+                isError = name.isBlank(), supportingText = if (name.isBlank()) { { Text("이름을 입력하세요") } } else null
             )
             GlassTextField(
                 value = prompt, onValueChange = { prompt = it },
@@ -107,7 +108,7 @@ fun EditMessageDialog(
         onConfirm = { onConfirm(text) },
         bodyPadding = PaddingValues(16.dp)
     ) {
-        GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3)
+        GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3, isError = text.isBlank(), supportingText = if (text.isBlank()) { { Text("내용을 입력하세요") } } else null)
     }
 }
 
@@ -126,7 +127,7 @@ fun BranchDialog(
         onConfirm = { onConfirm(name.trim()) },
         bodyPadding = PaddingValues(16.dp)
     ) {
-        GlassTextField(value = name, onValueChange = { name = it }, label = { Text("브랜치 이름") }, singleLine = true)
+        GlassTextField(value = name, onValueChange = { name = it }, label = { Text("브랜치 이름") }, singleLine = true, isError = name.isBlank(), supportingText = if (name.isBlank()) { { Text("이름을 입력하세요") } } else null)
     }
 }
 
@@ -145,7 +146,7 @@ fun RenameSessionDialog(
         onConfirm = { onConfirm(text.trim()) },
         bodyPadding = PaddingValues(16.dp)
     ) {
-        GlassTextField(value = text, onValueChange = { text = it }, label = { Text("이름") }, singleLine = true)
+        GlassTextField(value = text, onValueChange = { text = it }, label = { Text("이름") }, singleLine = true, isError = text.isBlank(), supportingText = if (text.isBlank()) { { Text("이름을 입력하세요") } } else null)
     }
 }
 

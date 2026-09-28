@@ -97,7 +97,7 @@ fun GlassCapsuleButton(
         Text(
             label,
             style = MaterialTheme.typography.labelLarge,
-            maxLines = 1
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }

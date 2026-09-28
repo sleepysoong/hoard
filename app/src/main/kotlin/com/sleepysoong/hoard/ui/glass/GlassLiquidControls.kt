@@ -345,7 +345,7 @@ fun IOSSegmentedControl(
                     onClick { currentOnSelect(i); true }
                 }
                 Box(Modifier.weight(1f).fillMaxHeight().then(a11y), contentAlignment = Alignment.Center) {
-                    Text(label, style = labelStyle, color = color(i), maxLines = 1)
+                    Text(label, style = labelStyle, color = color(i), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 }
             }
         }
@@ -467,11 +467,12 @@ fun GlassPillButton(
         modifier
             // Press scale first so the whole glass pill sinks, not just its label.
             .liquidClickable(enabled = enabled, pressedScale = 0.9f, onClick = onClick)
-            .height(36.dp)
+            // Grows with the font scale instead of clipping the label.
+            .heightIn(min = 36.dp)
             .glassMaterial(Capsule, glass, tone = GlassTone.Thin, enabled = enabled, lifted = false)
-            .padding(horizontal = 16.dp),
+            .padding(horizontal = 16.dp, vertical = 6.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(label, style = MaterialTheme.typography.labelLarge, color = if (enabled) text else scheme.onSurfaceVariant, maxLines = 1)
+        Text(label, style = MaterialTheme.typography.labelLarge, color = if (enabled) text else scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
     }
 }

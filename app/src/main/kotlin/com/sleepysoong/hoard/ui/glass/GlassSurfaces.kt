@@ -145,7 +145,7 @@ fun GlassFloatingBar(
                 Text(
                     title,
                     style = MaterialTheme.typography.headlineSmall,
-                    maxLines = 1,
+                    maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     textAlign = TextAlign.Center,
                     modifier = if (onTitleClick != null) {
                         Modifier.clickable(
@@ -160,7 +160,7 @@ fun GlassFloatingBar(
                         subtitle,
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
+                        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         textAlign = TextAlign.Center,
                         modifier = if (onTitleClick != null) {
                             Modifier.clickable(
@@ -328,7 +328,7 @@ fun RowScope.GlassTabItem(
             title,
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
             color = tint,
-            maxLines = 1
+            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }

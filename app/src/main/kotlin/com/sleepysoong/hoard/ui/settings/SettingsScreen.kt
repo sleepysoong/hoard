@@ -113,8 +113,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Column(Modifier.weight(1f)) {
-                        Text(m.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1)
-                        Text(m.description, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1)
+                        Text(m.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                        Text(m.description, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                     }
                     if (selected) {
                         Icon(Icons.Rounded.Check, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(22.dp))
@@ -195,7 +195,13 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
         )
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             GlassPillButton(
-                label = if (url.isBlank()) "연결 해제" else "연결",
+                // Submitting / done / failed are all visible: the label while checking,
+                // the status line right next to it for the outcome.
+                label = when {
+                    status is RouterStatus.Checking -> "연결 중…"
+                    url.isBlank() -> "연결 해제"
+                    else -> "연결"
+                },
                 tint = GlassPillTint.Accent,
                 enabled = valid && status !is RouterStatus.Checking,
                 onClick = {

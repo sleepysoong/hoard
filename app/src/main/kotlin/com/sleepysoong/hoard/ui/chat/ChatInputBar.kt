@@ -72,7 +72,7 @@ import com.sleepysoong.hoard.ui.glass.glassMaterial
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import java.util.UUID
 
-private val ControlSize = 44.dp
+private val ControlSize = 48.dp // Material minimum touch target
 
 /**
  * iMessage-grade composer.

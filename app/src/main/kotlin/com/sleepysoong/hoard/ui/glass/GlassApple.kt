@@ -98,7 +98,7 @@ fun CollapsingLargeTitle(
     Text(
         title,
         modifier = modifier,
-        maxLines = 1,
+        maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
         style = MaterialTheme.typography.displaySmall.copy(
             fontSize = size,
             lineHeight = size * 1.2f

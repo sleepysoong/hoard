@@ -1,5 +1,6 @@
 package com.sleepysoong.hoard.ui.chat
 
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.expandVertically
@@ -73,9 +74,9 @@ private fun GlassPill(
     Box(
         modifier
             .liquidClickable(pressedScale = 0.9f, onClick = onClick)
-            .height(30.dp)
+            .heightIn(min = 30.dp)
             .glassMaterial(Capsule, accent.copy(alpha = 0.22f), tone = GlassTone.Thin, lifted = false)
-            .padding(horizontal = 11.dp),
+            .padding(horizontal = 11.dp, vertical = 4.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) { content() }

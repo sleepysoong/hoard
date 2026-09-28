@@ -1,5 +1,9 @@
 package com.sleepysoong.hoard.ui.glass
 
+import androidx.compose.foundation.interaction.HoverInteraction
+import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.graphics.BlendMode
+import androidx.compose.ui.graphics.Color
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.CubicBezierEasing
 import androidx.compose.animation.core.FiniteAnimationSpec
@@ -73,10 +77,13 @@ object GlassMotion {
     fun <T> fade(): FiniteAnimationSpec<T> = TweenSpec(160, easing = CubicBezierEasing(0.2f, 0f, 0f, 1f))
 }
 
+private const val HOVER_SCALE = 1.02f
+
 /**
  * iOS press physics for anything tappable: sinks to [pressedScale] while the
  * finger is down (fast, no bounce), then springs back past 1.0 and settles on
- * release. Reads the same [interactionSource] the clickable uses.
+ * release; with a mouse/stylus it swells and brightens slightly on hover.
+ * Reads the same [interactionSource] the clickable uses.
  */
 @Composable
 fun Modifier.liquidPress(
@@ -85,18 +92,42 @@ fun Modifier.liquidPress(
     pressedScale: Float = GlassMotion.PRESS_SCALE
 ): Modifier {
     val scale = remember { Animatable(1f, visibilityThreshold = GlassMotion.SCALE_THRESHOLD) }
+    // Mouse / stylus / trackpad hover (tablets, ChromeOS, DeX): swell slightly, brighten.
+    val hover = remember { Animatable(0f) }
     LaunchedEffect(interactionSource, enabled) {
+        var pressed = false
+        var hovered = false
         interactionSource.interactions.collect { i ->
             if (!enabled) return@collect
             when (i) {
-                is PressInteraction.Press -> launch { scale.animateTo(pressedScale, GlassMotion.exit()) }
-                is PressInteraction.Release, is PressInteraction.Cancel ->
-                    launch { scale.animateTo(1f, GlassMotion.release()) }
+                is PressInteraction.Press -> { pressed = true; launch { scale.animateTo(pressedScale, GlassMotion.exit()) } }
+                is PressInteraction.Release, is PressInteraction.Cancel -> {
+                    pressed = false
+                    launch { scale.animateTo(if (hovered) HOVER_SCALE else 1f, GlassMotion.release()) }
+                }
+                is HoverInteraction.Enter -> {
+                    hovered = true
+                    launch { hover.animateTo(1f, GlassMotion.fade()) }
+                    if (!pressed) launch { scale.animateTo(HOVER_SCALE, GlassMotion.release()) }
+                }
+                is HoverInteraction.Exit -> {
+                    hovered = false
+                    launch { hover.animateTo(0f, GlassMotion.fade()) }
+                    if (!pressed) launch { scale.animateTo(1f, GlassMotion.release()) }
+                }
             }
         }
+    }
+    // Disabled controls never react (no press sink, no hover); their own
+    // styling (dimmed tint/label) marks them as unavailable.
+    LaunchedEffect(enabled) {
+        if (!enabled) { scale.snapTo(1f); hover.snapTo(0f) }
     }
     return graphicsLayer {
         scaleX = scale.value
         scaleY = scale.value
+    }.drawWithContent {
+        drawContent()
+        if (hover.value > 0f) drawRect(Color.White.copy(alpha = 0.10f * hover.value), blendMode = BlendMode.Plus)
     }
 }

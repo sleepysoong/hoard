@@ -374,7 +374,7 @@ fun GlassPopupRow(
     ) {
         if (icon != null) Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(21.dp))
         Column(Modifier.weight(1f)) {
-            Text(label, style = MaterialTheme.typography.bodyLarge, color = tint, maxLines = 1)
+            Text(label, style = MaterialTheme.typography.bodyLarge, color = tint, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
             if (subtitle != null) {
                 Text(
                     subtitle,

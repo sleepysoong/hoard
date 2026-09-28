@@ -1,5 +1,6 @@
 package com.sleepysoong.hoard.ui.glass
 
+import androidx.compose.material3.minimumInteractiveComponentSize
 import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -240,6 +241,9 @@ fun Modifier.liquidClickable(
     val interaction = remember { MutableInteractionSource() }
     val haptics = LocalHapticFeedback.current
     return this
+        // Material's 48dp minimum touch target: small pills/chips keep their look
+        // but get a full-size hit area (no-op for anything already 48dp+).
+        .minimumInteractiveComponentSize()
         .liquidPress(interaction, enabled, pressedScale)
         .clickable(
             interactionSource = interaction,
