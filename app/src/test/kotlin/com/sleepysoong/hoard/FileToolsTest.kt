@@ -2,6 +2,7 @@ package com.sleepysoong.hoard
 
 import com.sleepysoong.hoard.tools.ToolRegistry
 import com.sleepysoong.hoard.tools.files.FileTools
+import com.sleepysoong.hoard.tools.files.StorageRoot
 import com.sleepysoong.hoard.tools.files.Workspace
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -130,13 +131,13 @@ class FileToolsTest {
         Files.createSymbolicLink(File(root, "link").toPath(), outside.toPath())
         Files.createSymbolicLink(File(root, "secret-link.txt").toPath(), secret.toPath())
         for (p in listOf("../secret.txt", "notes/../../secret.txt", secret.absolutePath, "/etc/passwd", "secret-link.txt", "link/x.txt")) {
-            assertTrue("read $p", err("read_file", "path" to p).contains("outside the workspace"))
-            assertTrue("write $p", err("write_file", "path" to p, "content" to "pwned").contains("outside the workspace"))
+            assertTrue("read $p", err("read_file", "path" to p).contains("outside the accessible locations"))
+            assertTrue("write $p", err("write_file", "path" to p, "content" to "pwned").contains("outside the accessible locations"))
         }
         assertEquals("private", secret.readText())
         assertTrue(outside.listFiles()!!.isEmpty())
-        assertTrue(err("glob", "pattern" to "*", "path" to "..").contains("outside the workspace"))
-        assertTrue(err("grep", "pattern" to "private", "path" to "../").contains("outside the workspace"))
+        assertTrue(err("glob", "pattern" to "*", "path" to "..").contains("outside the accessible locations"))
+        assertTrue(err("grep", "pattern" to "private", "path" to "../").contains("outside the accessible locations"))
         // Symlinked folders inside are not walked either.
         File(outside, "leak.txt").writeText("private")
         assertEquals("0", ok("grep", "pattern" to "private").s("count"))
@@ -144,6 +145,53 @@ class FileToolsTest {
         // Absolute paths *inside* the workspace are fine.
         ok("write_file", "path" to File(root, "in.txt").absolutePath, "content" to "ok")
         assertEquals("in.txt", ok("read_file", "path" to "in.txt").s("path"))
+    }
+
+    /** "기기 전체 저장소": another root reached by absolute path, gated by its permission check. */
+    @Test fun sharedStorageRootByAbsolutePath() {
+        val storage = tmp.newFolder("storage")
+        File(storage, "Download").mkdirs()
+        File(storage, "Download/report.txt").writeText("분기 보고서\n")
+        var granted = true
+        reg = ToolRegistry(FileTools.all(Workspace(root, listOf(StorageRoot("shared storage", storage, available = { granted }, unavailableReason = "grant All files access")))))
+        val d = storage.canonicalPath
+
+        assertTrue("description tells the model where it can go", reg.schemas().first()["description"]!!.jsonPrimitive.content.contains(d))
+        assertEquals("1\t분기 보고서\n", ok("read_file", "path" to "$d/Download/report.txt").s("content"))
+        assertEquals("$d/Download/report.txt", ok("read_file", "path" to "$d/Download/report.txt").s("path"))
+        ok("write_file", "path" to "$d/Documents/new.md", "content" to "새 문서")
+        assertEquals("새 문서", File(storage, "Documents/new.md").readText())
+        ok("edit_file", "path" to "$d/Documents/new.md", "old_string" to "새", "new_string" to "헌")
+        val files = ok("glob", "pattern" to "**/*", "path" to d)["files"]!!.jsonArray.map { it.jsonPrimitive.content }.toSet()
+        assertEquals(setOf("$d/Download/report.txt", "$d/Documents/new.md"), files)
+        assertEquals("$d/Download/report.txt", ok("grep", "pattern" to "보고서", "path" to d)["matches"]!!.jsonArray.single().jsonObject.s("file"))
+        // Relative paths still mean the app workspace.
+        ok("write_file", "path" to "a.txt", "content" to "x")
+        assertTrue(File(root, "a.txt").exists())
+        // The storage root itself is not a file.
+        assertTrue(err("write_file", "path" to d, "content" to "x").contains("is a directory"))
+        // Still nothing outside both.
+        val secret = tmp.newFile("secret.txt")
+        assertTrue(err("read_file", "path" to secret.absolutePath).contains("outside the accessible locations"))
+        java.nio.file.Files.createSymbolicLink(File(storage, "escape").toPath(), tmp.root.toPath())
+        assertTrue(err("read_file", "path" to "$d/escape/secret.txt").contains("outside the accessible locations"))
+
+        // Permission revoked: a clear error, not a crash or silent success.
+        granted = false
+        val e = err("read_file", "path" to "$d/Download/report.txt")
+        assertTrue(e, e.contains("not accessible") && e.contains("All files access"))
+        assertTrue(err("write_file", "path" to "$d/Download/x.txt", "content" to "x").contains("not accessible"))
+        assertFalse(File(storage, "Download/x.txt").exists())
+    }
+
+    @Test fun hugeFolderWalksStopAtTheLimit() {
+        val big = tmp.newFolder("big")
+        repeat(50) { File(big, "f$it.txt").writeText("hit") }
+        reg = ToolRegistry(FileTools.all(Workspace(root, listOf(StorageRoot("s", big)), maxWalkEntries = 10)))
+        val g = ok("glob", "pattern" to "*.txt", "path" to big.canonicalPath)
+        assertEquals("true", g.s("truncated")); assertTrue(g.containsKey("note"))
+        assertTrue(g["files"]!!.jsonArray.size <= 10)
+        assertEquals("true", ok("grep", "pattern" to "hit", "path" to big.canonicalPath).s("truncated"))
     }
 
     @Test fun cardsShowTitleAndBody() = runBlocking {

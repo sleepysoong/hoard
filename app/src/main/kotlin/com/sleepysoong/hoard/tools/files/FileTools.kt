@@ -24,11 +24,9 @@ import java.nio.file.Files
 import java.nio.file.StandardCopyOption
 
 /*
- * File tools over a sandboxed [Workspace]: read_file, write_file, edit_file, glob, grep.
- * Text files (UTF-8) only; all paths are relative to the workspace root.
+ * File tools over a [Workspace] (the app folder, optionally shared storage too):
+ * read_file, write_file, edit_file, glob, grep. Text files (UTF-8) only.
  */
-
-private const val WORKSPACE_NOTE = "Paths are relative to the Hoard workspace (a private folder on this device); nothing outside it is reachable."
 
 /** Largest file read/edited/searched (bytes). */
 internal const val MAX_FILE_BYTES = 5L * 1024 * 1024
@@ -89,7 +87,7 @@ class ReadFileTool(private val ws: Workspace) : Tool {
     override val name = "read_file"
     override val title = "파일 읽기"
     override val description = "Read a UTF-8 text file. Returns lines prefixed with their line numbers (\"<n>\\t<line>\"). " +
-        "Use offset (1-based first line) and limit (number of lines, default $DEFAULT_LIMIT) to page through long files. $WORKSPACE_NOTE"
+        "Use offset (1-based first line) and limit (number of lines, default $DEFAULT_LIMIT) to page through long files. " + ws.note
     override val parameters = schema(listOf("path")) {
         prop("path", "string", "File path relative to the workspace root.")
         prop("offset", "integer", "1-based line number to start from (default 1).")
@@ -144,7 +142,7 @@ class WriteFileTool(private val ws: Workspace) : Tool {
     override val name = "write_file"
     override val title = "파일 쓰기"
     override val description = "Create or overwrite a UTF-8 text file with the given content (parent folders are created). " +
-        "Overwrites without asking: read_file first if the file may already exist. $WORKSPACE_NOTE"
+        "Overwrites without asking: read_file first if the file may already exist. " + ws.note
     override val parameters = schema(listOf("path", "content")) {
         prop("path", "string", "File path relative to the workspace root.")
         prop("content", "string", "Full new content of the file.")
@@ -160,7 +158,7 @@ class WriteFileTool(private val ws: Workspace) : Tool {
         val path = args.string("path")?.takeIf { it.isNotBlank() } ?: throw ToolException("path is required")
         val content = args.string("content") ?: throw ToolException("content is required")
         val file = ws.resolve(path)
-        if (file == ws.root || file.isDirectory) throw ToolException("is a directory: ${ws.relative(file)}")
+        if (ws.isRoot(file) || file.isDirectory) throw ToolException("is a directory: ${ws.relative(file)}")
         val bytes = content.toByteArray(Charsets.UTF_8).size
         if (bytes > MAX_FILE_BYTES) throw ToolException("content too large ($bytes bytes, max $MAX_FILE_BYTES)")
         val created = !file.exists()
@@ -179,7 +177,7 @@ class EditFileTool(private val ws: Workspace) : Tool {
     override val name = "edit_file"
     override val title = "파일 수정"
     override val description = "Replace an exact string in a text file. old_string must match exactly (including whitespace) " +
-        "and, unless replace_all is true, occur exactly once — add surrounding context to make it unique. $WORKSPACE_NOTE"
+        "and, unless replace_all is true, occur exactly once — add surrounding context to make it unique. " + ws.note
     override val parameters = schema(listOf("path", "old_string", "new_string")) {
         prop("path", "string", "File path relative to the workspace root.")
         prop("old_string", "string", "Exact text to replace.")
@@ -223,7 +221,7 @@ class GlobTool(private val ws: Workspace) : Tool {
     override val name = "glob"
     override val title = "파일 찾기"
     override val description = "Find files by glob pattern (e.g. \"**/*.md\", \"notes/*.txt\", \"*.{kt,kts}\"), matched against paths " +
-        "relative to the search folder. Returns matching file paths, newest first. $WORKSPACE_NOTE"
+        "relative to the search folder. Returns matching file paths, newest first. " + ws.note
     override val parameters = schema(listOf("pattern")) {
         prop("pattern", "string", "Glob pattern: * matches within a folder, ** across folders, {a,b} alternatives.")
         prop("path", "string", "Folder to search in, relative to the workspace root (default: the root).")
@@ -239,7 +237,7 @@ class GlobTool(private val ws: Workspace) : Tool {
         if (!dir.isDirectory) throw FileToolException("not a folder: ${ws.relative(dir)}")
         val matchers = globMatchers(pattern)
         val hits = mutableListOf<File>()
-        walkFiles(dir) { f ->
+        val complete = walkFiles(dir, ws) { f ->
             val rel = f.relativeTo(dir).path.replace(File.separatorChar, '/')
             if (matchers.any { it.matches(java.nio.file.Paths.get(rel)) }) hits += f
         }
@@ -249,7 +247,8 @@ class GlobTool(private val ws: Workspace) : Tool {
             put("path", ws.relative(dir))
             put("files", buildJsonArray { shown.forEach { add(JsonPrimitive(ws.relative(it))) } })
             put("count", hits.size)
-            put("truncated", hits.size > shown.size)
+            put("truncated", hits.size > shown.size || !complete)
+            if (!complete) put("note", "folder too large to scan fully; narrow path")
         }
     }
 
@@ -269,15 +268,24 @@ class GlobTool(private val ws: Workspace) : Tool {
     }
 }
 
-/** Every regular file under [dir] (not following symlinked folders, skipping our temp files). */
-internal suspend fun walkFiles(dir: File, onFile: suspend (File) -> Unit) {
+/**
+ * Every regular file under [dir] (not following symlinked folders, skipping our temp
+ * files and unreadable folders such as Android/data). Returns false when the walk
+ * stopped early at the workspace's entry/time limits (a whole phone storage is big).
+ */
+internal suspend fun walkFiles(dir: File, ws: Workspace, onFile: suspend (File) -> Unit): Boolean {
     val stack = ArrayDeque<File>().apply { add(dir) }
+    val deadline = System.currentTimeMillis() + ws.maxWalkMillis
     var visited = 0
     while (stack.isNotEmpty()) {
         val d = stack.removeLast()
         val children = d.listFiles()?.sortedBy { it.name } ?: continue
         for (f in children) {
-            if (++visited % 256 == 0) currentCoroutineContext().ensureActive()
+            if (++visited % 256 == 0) {
+                currentCoroutineContext().ensureActive()
+                if (System.currentTimeMillis() > deadline) return false
+            }
+            if (visited > ws.maxWalkEntries) return false
             if (Files.isSymbolicLink(f.toPath())) continue
             when {
                 f.isDirectory -> stack.add(f)
@@ -285,6 +293,7 @@ internal suspend fun walkFiles(dir: File, onFile: suspend (File) -> Unit) {
             }
         }
     }
+    return true
 }
 
 // ---------------------------------------------------------------- grep
@@ -294,7 +303,7 @@ class GrepTool(private val ws: Workspace) : Tool {
     override val title = "내용 검색"
     override val description = "Search file contents with a regular expression (Java regex syntax). Returns matching lines as " +
         "{file, line, text}. Optional path (file or folder), glob filter on file paths (e.g. \"**/*.md\"), " +
-        "case_sensitive (default true) and max_results (default $DEFAULT_MAX). Binary and very large files are skipped. $WORKSPACE_NOTE"
+        "case_sensitive (default true) and max_results (default $DEFAULT_MAX). Binary and very large files are skipped. " + ws.note
     override val parameters = schema(listOf("pattern")) {
         prop("pattern", "string", "Regular expression to search for.")
         prop("path", "string", "File or folder to search, relative to the workspace root (default: the root).")
@@ -343,8 +352,9 @@ class GrepTool(private val ws: Workspace) : Tool {
                 }
             }
         }
+        var complete = true
         try {
-            if (target.isDirectory) walkFiles(target) { search(it) } else search(target)
+            if (target.isDirectory) complete = walkFiles(target, ws) { search(it) } else search(target)
         } catch (_: DeadlineCharSequence.Expired) {
             throw ToolException("search took too long (over ${TIME_BUDGET_MS / 1000}s); use a simpler pattern or narrow path/glob")
         }
@@ -352,7 +362,8 @@ class GrepTool(private val ws: Workspace) : Tool {
             put("matches", kotlinx.serialization.json.JsonArray(matches))
             put("count", matches.size)
             put("filesSearched", searched)
-            put("truncated", matches.size >= max)
+            put("truncated", matches.size >= max || !complete)
+            if (!complete) put("note", "folder too large to search fully; narrow path or glob")
         }
     }
 
@@ -380,6 +391,23 @@ internal class DeadlineCharSequence(private val s: CharSequence, private val dea
 object FileTools {
     fun all(ws: Workspace): List<Tool> = listOf(ReadFileTool(ws), WriteFileTool(ws), EditFileTool(ws), GlobTool(ws), GrepTool(ws))
 
-    /** The app's workspace folder (private app storage). */
-    fun workspace(context: android.content.Context) = Workspace(File(context.filesDir, "workspace"))
+    /**
+     * The app's workspace folder (private app storage), plus the phone's shared storage
+     * when [fullStorage] is on. Shared storage needs Android's "All files access"
+     * (MANAGE_EXTERNAL_STORAGE), checked on every access.
+     */
+    fun workspace(context: android.content.Context, fullStorage: Boolean = false) = Workspace(
+        File(context.filesDir, "workspace"),
+        extraRoots = if (fullStorage) listOf(sharedStorage()) else emptyList()
+    )
+
+    fun sharedStorage() = StorageRoot(
+        label = "shared storage",
+        dir = android.os.Environment.getExternalStorageDirectory(),
+        available = { hasAllFilesAccess() },
+        unavailableReason = "Hoard has no \"All files access\" permission. Ask the user to grant it in Hoard 도구 → 파일 → 기기 전체 저장소."
+    )
+
+    /** "All files access" granted? Unknown (the check threw) counts as no. */
+    fun hasAllFilesAccess(): Boolean = runCatching { android.os.Environment.isExternalStorageManager() }.getOrDefault(false)
 }

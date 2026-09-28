@@ -10,6 +10,11 @@
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
     <!-- termux_exec: run one-shot commands through Termux's RunCommandService. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
+    <!-- File tools, "기기 전체 저장소" mode only (off by default): shared storage like a file manager.
+         Granted by the user in system settings ("All files access"). -->
+    <uses-permission
+        android:name="android.permission.MANAGE_EXTERNAL_STORAGE"
+        tools:ignore="ScopedStorage" />
 
     <queries>
         <package android:name="com.termux" />

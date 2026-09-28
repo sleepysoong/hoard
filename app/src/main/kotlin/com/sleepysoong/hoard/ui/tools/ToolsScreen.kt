@@ -52,7 +52,7 @@ fun ToolsScreen(modifier: Modifier = Modifier) {
             }
             IOSSectionHeader("파일")
             IOSGroupedSection {
-                FileToolsSection(settings.fileToolsEnabled)
+                FileToolsSection(settings.fileToolsEnabled, settings.fileToolsFullStorage)
             }
             IOSSectionHeader("Termux")
             IOSGroupedSection {

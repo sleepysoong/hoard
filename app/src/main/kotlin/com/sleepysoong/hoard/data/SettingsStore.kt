@@ -22,6 +22,7 @@ object SettingsStore {
     private val BRAVE_KEY = stringPreferencesKey("brave_api_key")
     private val TERMUX = booleanPreferencesKey("termux_exec")
     private val FILES = booleanPreferencesKey("file_tools")
+    private val FILES_FULL = booleanPreferencesKey("file_tools_full_storage")
 
     data class Settings(
         val theme: String = "system",
@@ -39,11 +40,13 @@ object SettingsStore {
         /** Offer termux_exec (shell commands in Termux). Off by default: it runs real commands. */
         val termuxEnabled: Boolean = false,
         /** Offer read_file / write_file / edit_file / glob / grep over the app's workspace folder. */
-        val fileToolsEnabled: Boolean = true
+        val fileToolsEnabled: Boolean = true,
+        /** File tools may also use the phone's shared storage (needs "All files access"). */
+        val fileToolsFullStorage: Boolean = false
     ) {
         override fun toString() = "Settings(theme=$theme, defaultModel=$defaultModel, defaultContext=$defaultContext, " +
             "routerUrl=$routerUrl, routerToken=${if (routerToken.isBlank()) "none" else "set"}, " +
-            "webTools=$webToolsEnabled, braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, termux=$termuxEnabled, files=$fileToolsEnabled)"
+            "webTools=$webToolsEnabled, braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, termux=$termuxEnabled, files=$fileToolsEnabled, fullStorage=$fileToolsFullStorage)"
     }
 
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
@@ -56,7 +59,8 @@ object SettingsStore {
             webToolsEnabled = p[WEB_TOOLS] ?: true,
             braveApiKey = p[BRAVE_KEY] ?: "",
             termuxEnabled = p[TERMUX] ?: false,
-            fileToolsEnabled = p[FILES] ?: true
+            fileToolsEnabled = p[FILES] ?: true,
+            fileToolsFullStorage = p[FILES_FULL] ?: false
         )
     }
 
@@ -69,6 +73,7 @@ object SettingsStore {
     suspend fun setBraveApiKey(ctx: Context, v: String) { ctx.prefs.edit { it[BRAVE_KEY] = v.trim() } }
     suspend fun setTermuxEnabled(ctx: Context, v: Boolean) { ctx.prefs.edit { it[TERMUX] = v } }
     suspend fun setFileToolsEnabled(ctx: Context, v: Boolean) { ctx.prefs.edit { it[FILES] = v } }
+    suspend fun setFileToolsFullStorage(ctx: Context, v: Boolean) { ctx.prefs.edit { it[FILES_FULL] = v } }
 
     suspend fun current(ctx: Context): Settings = flow(ctx).first()
 

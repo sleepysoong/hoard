@@ -76,7 +76,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             tools = WebTools.registry(
                 cfg.webToolsEnabled, cfg.braveApiKey,
                 termux = if (cfg.termuxEnabled) TermuxBridge(applicationContext) else null,
-                files = if (cfg.fileToolsEnabled) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext) else null
+                files = if (cfg.fileToolsEnabled) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext, cfg.fileToolsFullStorage) else null
             )
         )
         return try {

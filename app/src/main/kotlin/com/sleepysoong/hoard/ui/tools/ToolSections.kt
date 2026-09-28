@@ -135,17 +135,32 @@ internal fun TermuxSection(enabled: Boolean) {
 }
 
 /**
- * read_file / write_file / edit_file / glob / grep. They only see Hoard's private
- * workspace folder, so this is on by default; the row shows where and how many files.
+ * read_file / write_file / edit_file / glob / grep. By default they only see Hoard's
+ * private workspace folder. "기기 전체 저장소" adds the phone's shared storage
+ * (Download, Documents, DCIM…) like a file manager; Android asks for "All files access".
  */
 @Composable
-internal fun FileToolsSection(enabled: Boolean) {
+internal fun FileToolsSection(enabled: Boolean, fullStorage: Boolean) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
     val scheme = MaterialTheme.colorScheme
     val ws = androidx.compose.runtime.remember { com.sleepysoong.hoard.tools.files.FileTools.workspace(ctx) }
     val count by androidx.compose.runtime.produceState(0, enabled) {
         value = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { ws.root.walkTopDown().count { it.isFile } }
+    }
+    // Re-checked when coming back from the system permission screen.
+    var granted by androidx.compose.runtime.remember { mutableStateOf(com.sleepysoong.hoard.tools.files.FileTools.hasAllFilesAccess()) }
+    androidx.lifecycle.compose.LifecycleResumeEffect(Unit) {
+        granted = com.sleepysoong.hoard.tools.files.FileTools.hasAllFilesAccess()
+        onPauseOrDispose { }
+    }
+    fun requestAccess() {
+        val intent = android.content.Intent(
+            android.provider.Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+            android.net.Uri.parse("package:${ctx.packageName}")
+        )
+        runCatching { ctx.startActivity(intent) }
+            .onFailure { runCatching { ctx.startActivity(android.content.Intent(android.provider.Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION)) } }
     }
 
     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -160,11 +175,37 @@ internal fun FileToolsSection(enabled: Boolean) {
                 modifier = Modifier.testTag("file-tools-switch")
             )
         }
-        Text(
-            if (enabled) "사용 가능 · 앱 전용 작업 폴더만 접근 (파일 ${count}개)" else "꺼짐 · 모델에 파일 도구를 주지 않음",
-            style = MaterialTheme.typography.labelMedium,
-            color = if (enabled) scheme.tertiary else scheme.onSurfaceVariant,
-            modifier = Modifier.testTag("file-tools-status")
-        )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+            Column(Modifier.weight(1f)) {
+                Text("기기 전체 저장소", style = MaterialTheme.typography.bodyLarge, color = if (enabled) scheme.onSurface else scheme.onSurfaceVariant)
+                Text("다운로드·문서·사진 등 공유 저장소까지 (파일 탐색기처럼)", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
+            }
+            GlassSwitch(
+                checked = fullStorage,
+                enabled = enabled,
+                onCheckedChange = { v ->
+                    scope.launch { SettingsStore.setFileToolsFullStorage(ctx, v) }
+                    if (v && !granted) requestAccess()
+                },
+                modifier = Modifier.testTag("file-full-storage-switch")
+            )
+        }
+        val (text, color) = when {
+            !enabled -> "꺼짐 · 모델에 파일 도구를 주지 않음" to scheme.onSurfaceVariant
+            fullStorage && !granted -> "\"모든 파일 접근\" 권한이 필요합니다 · 지금은 앱 작업 폴더만" to scheme.error
+            fullStorage -> "사용 가능 · 앱 작업 폴더 + 기기 저장소 ${android.os.Environment.getExternalStorageDirectory().path}" to scheme.tertiary
+            else -> "사용 가능 · 앱 작업 폴더만 접근 (파일 ${count}개)" to scheme.tertiary
+        }
+        Text(text, style = MaterialTheme.typography.labelMedium, color = color, modifier = Modifier.testTag("file-tools-status"))
+        if (enabled && fullStorage && !granted) {
+            GlassPillButton(label = "권한 허용", tint = GlassPillTint.Accent, onClick = ::requestAccess, modifier = Modifier.testTag("file-access-grant"))
+        }
+        if (enabled && fullStorage) {
+            Text(
+                "모델이 사진·문서를 읽고 덮어쓸 수 있습니다. 모르는 웹페이지를 읽게 할 때는 주의하세요.",
+                style = MaterialTheme.typography.labelSmall,
+                color = scheme.onSurfaceVariant
+            )
+        }
     }
 }
