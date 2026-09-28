@@ -87,10 +87,13 @@ class WebToolsTest {
         assertEquals("web", q["result_filter"])
         assertEquals("true", q["operators"])
 
-        // Defaults: count 5, no freshness/country/lang.
+        // Defaults: 10 results, fixed quality params, and no country/search_lang (never taken from the locale).
+        java.util.Locale.setDefault(java.util.Locale.KOREA)
         tool.execute(Json.parseToJsonElement("""{"query":"x"}""").jsonObject)
         val d = seen.last().first
-        assertEquals("5", d["count"]); assertNull(d["freshness"]); assertNull(d["country"]); assertNull(d["search_lang"])
+        assertEquals("10", d["count"]); assertNull(d["freshness"]); assertNull(d["country"]); assertNull(d["search_lang"])
+        assertEquals("false", d["extra_snippets"]); assertEquals("false", d["text_decorations"])
+        assertEquals("true", d["operators"]); assertEquals("web", d["result_filter"])
         // Max 10.
         tool.execute(Json.parseToJsonElement("""{"query":"x","count":50}""").jsonObject)
         assertEquals("10", seen.last().first["count"])
@@ -166,14 +169,35 @@ class WebToolsTest {
         Json.parseToJsonElement(reg.execute("web_search", "{}").output).jsonObject.let { assertTrue(it.containsKey("error")) }
     }
 
+    @Test fun tenResultsAreReturnedAndDescriptionTeachesQueryRefinement() = runBlocking {
+        val hits = (1..12).joinToString(",") { """{"title":"T$it","url":"https://e$it.example/p","description":"d"}""" }
+        val base = server { ex -> ex.send(200, """{"query":{"original":"q"},"web":{"results":[$hits]}}""") }
+        val tool = WebSearchTool(BraveSearchProvider("k", endpoint = "$base/s"))
+        val out = tool.execute(Json.parseToJsonElement("""{"query":"q"}""").jsonObject)
+        assertEquals((1..10).map { "search_$it" }, out["results"]!!.jsonArray.map { it.jsonObject.str("id") })
+        val d = tool.description
+        listOf("10", "web_fetch", "parallel", "site:", "\"exact phrase\"", "-excluded", "AND", "OR", "NOT", "filetype:", "English").forEach {
+            assertTrue("description mentions $it", d.contains(it))
+        }
+        val props = tool.parameters["properties"]!!.jsonObject
+        assertTrue(props["country"]!!.jsonObject["description"]!!.jsonPrimitive.content.contains("Omit otherwise"))
+        assertTrue(props["language"]!!.jsonObject["description"]!!.jsonPrimitive.content.contains("Omit otherwise"))
+    }
+
     @Test fun toolDescriptionsSeparateDiscoverFromRead() {
         val search = WebSearchTool(BraveSearchProvider("k"))
         assertTrue(search.description.contains("Search results contain only summaries/snippets"))
-        assertTrue(search.description.contains("Use web_fetch"))
+        assertTrue(search.description.contains("call web_fetch"))
         val schema = search.parameters
         assertEquals(listOf("query"), schema["required"]!!.jsonArray.map { it.jsonPrimitive.content })
         assertFalse("extra_snippets is internal only", schema.toString().contains("extra"))
         assertEquals(listOf("url"), WebFetchTool().parameters["required"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertTrue("search/fetch are read-only: run in parallel", search.parallelSafe && WebFetchTool().parallelSafe)
+    }
+
+    @Test fun onlyConsecutiveReadOnlyCallsShareABatch() {
+        val b = com.sleepysoong.hoard.engine.RouterAiEngine.batches(listOf("fetch1", "fetch2", "write", "read", "grep", "edit", "fetch3")) { it !in setOf("write", "edit") }
+        assertEquals(listOf(listOf("fetch1", "fetch2"), listOf("write"), listOf("read", "grep"), listOf("edit"), listOf("fetch3")), b)
     }
 
     @Test fun normalizerDedupesAndCleans() {

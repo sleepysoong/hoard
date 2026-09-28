@@ -1,5 +1,8 @@
 package com.sleepysoong.hoard.engine
 
+import kotlinx.coroutines.sync.withPermit
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.async
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.RouteAttempt
@@ -56,7 +59,8 @@ class RouterAiEngine(
     private val token: String = "",
     /** Function tools run on the device (web_search, web_fetch). Null/empty = plain chat. */
     private val tools: ToolRegistry? = null,
-    private val maxToolRounds: Int = MAX_TOOL_ROUNDS
+    private val maxToolRounds: Int = MAX_TOOL_ROUNDS,
+    private val maxParallelTools: Int = MAX_PARALLEL_TOOLS
 ) : AiEngine {
 
     override suspend fun streamReply(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) =
@@ -82,11 +86,29 @@ class RouterAiEngine(
             val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
             if (state.toolCalls.isEmpty()) return
             prior.absorb(state)
-            for (call in state.toolCalls) {
-                val t0 = System.currentTimeMillis()
-                onEvent(prior.event(request, started, running = active!!.preview(call.name, call.arguments)))
-                val outcome = active.execute(call.name, call.arguments)
-                prior.thinking += ThinkingStep(outcome.title, outcome.body, System.currentTimeMillis() - t0, StepKind.Tool, failed = outcome.isError)
+            // Read-only calls of a round run concurrently (e.g. several web_fetch of the
+            // chosen search results), bounded by maxParallelTools. A call with side effects
+            // (write_file, edit_file, termux_exec) runs alone, so "write then read" in one
+            // turn still happens in that order. Outputs go back in call order.
+            val calls = state.toolCalls
+            onEvent(prior.event(request, started, running = calls.map { active!!.preview(it.name, it.arguments) }))
+            val gate = kotlinx.coroutines.sync.Semaphore(maxParallelTools)
+            val outcomes = mutableListOf<Pair<com.sleepysoong.hoard.tools.ToolOutcome, Long>>()
+            for (batch in batches(calls) { active!!.isParallelSafe(it.name) }) {
+                outcomes += kotlinx.coroutines.coroutineScope {
+                    batch.map { call ->
+                        async {
+                            gate.withPermit {
+                                val t0 = System.currentTimeMillis()
+                                active!!.execute(call.name, call.arguments) to System.currentTimeMillis() - t0
+                            }
+                        }
+                    }.awaitAll()
+                }
+            }
+            for ((call, result) in calls.zip(outcomes)) {
+                val (outcome, ms) = result
+                prior.thinking += ThinkingStep(outcome.title, outcome.body, ms, StepKind.Tool, failed = outcome.isError)
                 toolItems += buildJsonObject {
                     put("type", "function_call")
                     put("call_id", call.callId)
@@ -98,8 +120,8 @@ class RouterAiEngine(
                     put("call_id", call.callId)
                     put("output", outcome.output)
                 }
-                onEvent(prior.event(request, started))
             }
+            onEvent(prior.event(request, started))
             round++
         }
     }
@@ -330,11 +352,11 @@ class RouterAiEngine(
             routing = s.routing ?: routing
         }
 
-        fun event(request: ReplyRequest, started: Long, running: Pair<String, String>? = null): StreamEvent {
+        fun event(request: ReplyRequest, started: Long, running: List<Pair<String, String>> = emptyList()): StreamEvent {
             val elapsed = System.currentTimeMillis() - started
             roundStartMs = elapsed
             return StreamEvent(
-                thinking = thinking + listOfNotNull(running?.let { (title, subject) -> ThinkingStep(title, subject, 0, StepKind.Tool, running = true) }),
+                thinking = thinking + running.map { (title, subject) -> ThinkingStep(title, subject, 0, StepKind.Tool, running = true) },
                 deltaText = text,
                 done = false,
                 elapsedMs = elapsed,
@@ -389,6 +411,20 @@ class RouterAiEngine(
 
         /** Tool rounds per reply before the model is made to answer (`tool_choice: none`). */
         const val MAX_TOOL_ROUNDS = 8
+
+        /** Tool calls of one round executed at the same time (the rest queue). */
+        const val MAX_PARALLEL_TOOLS = 5
+
+        /** Consecutive parallel-safe calls form one batch; any other call is a batch of its own. */
+        internal fun <T> batches(calls: List<T>, parallelSafe: (T) -> Boolean): List<List<T>> {
+            val out = mutableListOf<MutableList<T>>()
+            for (c in calls) {
+                val safe = parallelSafe(c)
+                val last = out.lastOrNull()
+                if (safe && last != null && parallelSafe(last.first())) last += c else out += mutableListOf(c)
+            }
+            return out
+        }
 
         /**
          * OpenAI Responses request body built from the Hoard conversation.
@@ -462,8 +498,11 @@ class RouterAiEngine(
         private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate): String {
             val names = schemas.mapNotNull { it.str("name") }
             val lines = mutableListOf("Today's date: $today.")
-            if ("web_search" in names) lines += "Use web_search for current or unfamiliar facts. Its results are snippets only, not page contents."
-            if ("web_fetch" in names) lines += "Use web_fetch to read a page before relying on what it says. Cite the URLs you used."
+            if ("web_search" in names) lines += "Use web_search for current or unfamiliar facts. It returns up to 10 results with snippets only, not page contents. " +
+                "If results are weak, search again with a refined query: more specific keywords, English technical terms, " +
+                "site:domain, \"exact phrase\", -excluded words, AND/OR/NOT, filetype:pdf."
+            if ("web_fetch" in names) lines += "Read before answering: pick the most relevant result URLs (usually 2-4) and call web_fetch " +
+                "for all of them in the same turn so they run in parallel; answer from the fetched contents and cite the URLs you used."
             return lines.joinToString(" ")
         }
 

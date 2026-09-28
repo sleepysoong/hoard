@@ -19,11 +19,14 @@ import kotlinx.serialization.json.putJsonObject
  * reading a page is `web_fetch`'s job (Search = discover, Fetch = read).
  */
 class WebSearchTool(private val provider: SearchProvider) : Tool {
+    override val parallelSafe = true
     override val name = NAME
     override val description =
-        "Search the public web and return relevant pages (title, url, short snippet). " +
+        "Search the public web and return up to 10 relevant pages (title, url, short snippet). " +
             "Search results contain only summaries/snippets, NOT the page contents: do not claim to have read a page " +
-            "from its snippet. Use web_fetch with a result's url when the actual contents of a page are needed. " +
+            "from its snippet. Pick the most relevant urls and call web_fetch on them (several in the same turn run in parallel) " +
+            "when the actual contents are needed. If results are few or off-topic, search again with a better query: " +
+            "more specific keywords, English technical terms, site:example.com, \"exact phrase\", -excluded, AND / OR / NOT, filetype:pdf. " +
             "Cite sources by url."
 
     override val parameters: JsonObject = buildJsonObject {
@@ -31,13 +34,13 @@ class WebSearchTool(private val provider: SearchProvider) : Tool {
         putJsonObject("properties") {
             putJsonObject("query") {
                 put("type", "string")
-                put("description", "Search query. Search operators such as site:, \"exact phrase\" and -exclude are supported.")
+                put("description", "Search query. Operators: site:example.com, \"exact phrase\", -exclude, AND, OR, NOT, filetype:pdf.")
             }
             putJsonObject("count") {
                 put("type", "integer")
                 put("minimum", 1)
                 put("maximum", SearchRequest.MAX_COUNT)
-                put("description", "Number of results (default ${SearchRequest.DEFAULT_COUNT}, max ${SearchRequest.MAX_COUNT}).")
+                put("description", "Number of results (default and max ${SearchRequest.MAX_COUNT}).")
             }
             putJsonObject("freshness") {
                 put("type", "string")
@@ -46,11 +49,11 @@ class WebSearchTool(private val provider: SearchProvider) : Tool {
             }
             putJsonObject("country") {
                 put("type", "string")
-                put("description", "2-letter country code to target, e.g. KR, US.")
+                put("description", "Only for clearly local queries (e.g. a Seoul restaurant): 2-letter country code like KR. Omit otherwise.")
             }
             putJsonObject("language") {
                 put("type", "string")
-                put("description", "2-letter content language, e.g. ko, en.")
+                put("description", "Only when results must be in one language: 2-letter code like ko, en. Omit otherwise (don't guess from the user's language).")
             }
         }
         put("required", buildJsonArray { add(JsonPrimitive("query")) })

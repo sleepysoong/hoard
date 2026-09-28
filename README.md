@@ -45,8 +45,14 @@ Still no gradients: every colour is solid.
   Remote images in replies are not fetched (alt text shown instead).
 - Web tools (`tools/`), run on the device and offered to the model through sleepyrouter's
   function calling (Settings → 웹 도구; on by default in router mode):
+  - Flow: `web_search` → 10 results → the model picks the relevant URLs → several `web_fetch` in one turn
+    (run in parallel, max 5) → answer from the fetched text. Read-only tools of a round run concurrently;
+    side-effect tools (write/edit, termux) run alone in call order.
   - `web_search` — discover pages via the Brave Search API with **the user's own key**
-    (none is bundled). Output is normalized (`search_1…` ids, title/url/snippet, `correctedQuery`,
+    (none is bundled). Fixed params `count=10, extra_snippets=false, text_decorations=false, operators=true,
+    result_filter=web`; `country` / `search_lang` only when the model sets them for a clearly local / single-language
+    query (never from the device locale). The description teaches query refinement (specific / English terms,
+    `site:`, `"exact"`, `-exclude`, AND/OR/NOT, `filetype:`). Output is normalized (`search_1…` ids, title/url/snippet, `correctedQuery`,
     `hasMore`), never Brave's raw JSON; 429 is retried with backoff honouring `X-RateLimit-Reset`.
     The description tells the model that snippets are not page contents.
   - `web_fetch` — read a page: public http(s) only (loopback/LAN/metadata/CGNAT/ULA refused, checked

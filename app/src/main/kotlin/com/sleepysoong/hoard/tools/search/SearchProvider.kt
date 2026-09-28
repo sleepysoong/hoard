@@ -2,8 +2,9 @@ package com.sleepysoong.hoard.tools.search
 
 /**
  * Provider-neutral web search. [com.sleepysoong.hoard.tools.WebSearchTool] talks
- * only to this, so Brave can be swapped for Tavily, SearXNG, … without touching
- * the tool schema the model sees.
+ * only to this, so Brave can be swapped (e.g. a `SerperSearchProvider` for
+ * google.serper.dev, Tavily, SearXNG) without touching the tool schema the model
+ * sees: map [SearchRequest] to the provider's query and its results to [SearchHit].
  */
 interface SearchProvider {
     /** Provider name for logs/UI ("brave"). */
@@ -30,9 +31,12 @@ data class SearchRequest(
     val query: String,
     val count: Int = DEFAULT_COUNT,
     val freshness: Freshness? = null,
-    /** ISO 3166-1 alpha-2, e.g. "KR". */
+    /**
+     * ISO 3166-1 alpha-2, e.g. "KR". Only when the query is clearly regional —
+     * never filled in from the device locale (that narrows results for everything else).
+     */
     val country: String? = null,
-    /** ISO 639-1, e.g. "ko". */
+    /** ISO 639-1, e.g. "ko". Only when results in one language are clearly wanted. */
     val language: String? = null,
     /**
      * Internal only (not in the tool schema): extra excerpts per result. Off by default —
@@ -41,7 +45,8 @@ data class SearchRequest(
     val extraSnippets: Boolean = false
 ) {
     companion object {
-        const val DEFAULT_COUNT = 5
+        /** 10 candidates: the model picks the relevant ones and web_fetches them. */
+        const val DEFAULT_COUNT = 10
         const val MAX_COUNT = 10
     }
 }

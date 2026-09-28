@@ -22,6 +22,12 @@ interface Tool {
     /** JSON Schema of the arguments object. */
     val parameters: JsonObject
 
+    /**
+     * Read-only (no side effects): may run at the same time as other such calls of the
+     * same round. Tools that change anything (files, shell) run alone, in call order.
+     */
+    val parallelSafe: Boolean get() = false
+
     /** Runs the call. Throw [ToolException] for a failure the model should see. */
     suspend fun execute(args: JsonObject): JsonObject
 
@@ -91,6 +97,8 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
             error(tool.title, subject, "${e::class.simpleName}: ${e.message}")
         }
     }
+
+    fun isParallelSafe(name: String): Boolean = synchronized(byName) { byName[name] }?.parallelSafe ?: true
 
     /** Card title/body for a call before it runs. */
     fun preview(name: String, argumentsJson: String): Pair<String, String> {

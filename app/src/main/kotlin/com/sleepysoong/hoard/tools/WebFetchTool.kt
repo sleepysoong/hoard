@@ -24,6 +24,7 @@ class WebFetchTool(
     private val fetcher: PageFetcher = PageFetcher(),
     private val maxChars: Int = DEFAULT_MAX_CHARS
 ) : Tool {
+    override val parallelSafe = true
     override val name = NAME
     override val description =
         "Download a web page and return its main readable content as Markdown (navigation, ads, scripts removed). " +

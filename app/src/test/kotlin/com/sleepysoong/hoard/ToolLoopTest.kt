@@ -123,6 +123,64 @@ class ToolLoopTest {
             input[0]["content"]!!.jsonArray[0].jsonObject["text"]!!.jsonPrimitive.content)
     }
 
+    /** Several web_fetch calls in one round run at the same time; outputs go back in call order. */
+    @Test fun callsOfOneRoundRunInParallelAndKeepTheirOrder() {
+        val running = java.util.concurrent.atomic.AtomicInteger()
+        val peak = java.util.concurrent.atomic.AtomicInteger()
+        val slowFetch = object : com.sleepysoong.hoard.tools.Tool {
+            override val name = "web_fetch"
+            override val description = "fake"
+            override val parallelSafe = true
+            override val parameters = kotlinx.serialization.json.buildJsonObject { put("type", kotlinx.serialization.json.JsonPrimitive("object")) }
+            override suspend fun execute(args: JsonObject): JsonObject {
+                val now = running.incrementAndGet(); peak.accumulateAndGet(now, ::maxOf)
+                kotlinx.coroutines.delay(300)
+                running.decrementAndGet()
+                return kotlinx.serialization.json.buildJsonObject { put("content", kotlinx.serialization.json.JsonPrimitive("body of " + args["url"]!!.jsonPrimitive.content)) }
+            }
+        }
+        start(tools = ToolRegistry(listOf(slowFetch)))
+        val urls = (1..3).map { "https://s$it.example/" }
+        router.enqueue(
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(*urls.mapIndexed { i, u -> Triple("f$i", "web_fetch", """{"url":"$u"}""") }.toTypedArray()))),
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("세 페이지를 읽었어요.")))
+        )
+        val t0 = System.currentTimeMillis()
+        h.vm.send("세 곳 읽어줘", emptyList(), "coding")
+        h.awaitReplies()
+        assertEquals("all three fetched at once", 3, peak.get())
+        assertTrue("parallel, not 3 x 300ms", System.currentTimeMillis() - t0 < 5_000)
+        val outputs = body(1)["input"]!!.jsonArray.map { it.jsonObject }.filter { it["type"]!!.jsonPrimitive.content == "function_call_output" }
+        assertEquals(listOf("f0", "f1", "f2"), outputs.map { it["call_id"]!!.jsonPrimitive.content })
+        assertEquals(urls.map { "body of $it" }, outputs.map { Json.parseToJsonElement(it["output"]!!.jsonPrimitive.content).jsonObject["content"]!!.jsonPrimitive.content })
+        assertTrue(body(0)["instructions"]!!.jsonPrimitive.content.contains("in parallel"))
+        assertEquals("세 페이지를 읽었어요.", h.messages().last().text)
+        assertEquals(3, h.messages().last().thinking.count { it.kind == com.sleepysoong.hoard.data.StepKind.Tool })
+    }
+
+    /** Side-effect tools are never run concurrently: write then read in one turn stays ordered. */
+    @Test fun writeThenReadInOneTurnStaysOrdered() {
+        val dir = java.nio.file.Files.createTempDirectory("ws2").toFile()
+        start(tools = WebTools.registry(enabled = false, braveApiKey = "", files = com.sleepysoong.hoard.tools.files.Workspace(dir)))
+        router.enqueue(
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(
+                Triple("a", "read_file", """{"path":"x.txt"}"""),
+                Triple("b", "write_file", """{"path":"x.txt","content":"v1"}"""),
+                Triple("c", "read_file", """{"path":"x.txt"}"""),
+                Triple("d", "grep", """{"pattern":"v1"}""")
+            ))),
+            FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok")))
+        )
+        h.vm.send("x", emptyList(), "coding")
+        h.awaitReplies()
+        val out = body(1)["input"]!!.jsonArray.map { it.jsonObject }.filter { it["type"]!!.jsonPrimitive.content == "function_call_output" }
+            .associate { it["call_id"]!!.jsonPrimitive.content to it["output"]!!.jsonPrimitive.content }
+        assertTrue("read before the write: not found", out["a"]!!.contains("not found"))
+        assertTrue("read after the write sees it", out["c"]!!.contains("1\\tv1"))
+        assertTrue(out["d"]!!.contains("\"count\":1"))
+        dir.deleteRecursively()
+    }
+
     @Test fun toolFailureIsReportedToTheModelNotTheUser() {
         start()
         router.enqueue(

@@ -84,6 +84,7 @@ internal fun writeAtomically(file: File, text: String) {
 // ---------------------------------------------------------------- read_file
 
 class ReadFileTool(private val ws: Workspace) : Tool {
+    override val parallelSafe = true
     override val name = "read_file"
     override val title = "파일 읽기"
     override val description = "Read a UTF-8 text file. Returns lines prefixed with their line numbers (\"<n>\\t<line>\"). " +
@@ -218,6 +219,7 @@ class EditFileTool(private val ws: Workspace) : Tool {
 // ---------------------------------------------------------------- glob
 
 class GlobTool(private val ws: Workspace) : Tool {
+    override val parallelSafe = true
     override val name = "glob"
     override val title = "파일 찾기"
     override val description = "Find files by glob pattern (e.g. \"**/*.md\", \"notes/*.txt\", \"*.{kt,kts}\"), matched against paths " +
@@ -299,6 +301,7 @@ internal suspend fun walkFiles(dir: File, ws: Workspace, onFile: suspend (File) 
 // ---------------------------------------------------------------- grep
 
 class GrepTool(private val ws: Workspace) : Tool {
+    override val parallelSafe = true
     override val name = "grep"
     override val title = "내용 검색"
     override val description = "Search file contents with a regular expression (Java regex syntax). Returns matching lines as " +
