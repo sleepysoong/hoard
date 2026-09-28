@@ -21,12 +21,13 @@ interface AiEngine {
 }
 
 /**
- * Engine selection. With a router URL set in Settings, replies come from
- * sleepyrouter; without one the app stays usable offline with the mock engine.
- * Tests can pin an engine via [override].
+ * Engine selection: replies come from sleepyrouter. Without a router URL there is
+ * nothing to answer with — [NoRouterEngine] says so (no fake replies).
+ * Tests can pin an engine via [override], or only the no-router case via [offline].
  */
 object Engines {
     @Volatile var override: AiEngine? = null
+    @Volatile var offline: AiEngine? = null
 
     fun forRouter(
         routerUrl: String,
@@ -34,5 +35,12 @@ object Engines {
         token: String = "",
         tools: com.sleepysoong.hoard.tools.ToolRegistry? = null
     ): AiEngine =
-        override ?: if (routerUrl.isBlank()) MockAiEngine else RouterAiEngine(routerUrl, attachments = attachments, token = token, tools = tools)
+        override ?: if (routerUrl.isBlank()) (offline ?: NoRouterEngine) else RouterAiEngine(routerUrl, attachments = attachments, token = token, tools = tools)
+}
+
+/** No router configured: fail with what to do, never invent an answer. */
+object NoRouterEngine : AiEngine {
+    override suspend fun streamReply(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) {
+        throw RouterException.Permanent("라우터가 연결되지 않았습니다 · 설정 → 라우터에서 sleepyrouter 주소를 입력하세요", null, null)
+    }
 }

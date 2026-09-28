@@ -23,7 +23,6 @@ import java.util.Collections
  *  - history is missing, out of order, or includes turns after the reply being regenerated
  *  - the session context limit is not applied (or drops the question itself)
  *  - attachments on the answered message are lost on regenerate
- *  - disabled plugins / MCP servers / skills are still offered as tools
  *  - the top-bar context usage ignores user messages or double-counts history
  */
 @RunWith(AndroidJUnit4::class)
@@ -38,7 +37,7 @@ class EngineRequestTest {
         if (::h.isInitialized) {
             requests.forEachIndexed { i, r ->
                 h.note("request #$i model=${r.modelId} limit=${r.contextLimit} dropped=${r.droppedCount} " +
-                    "promptTokens=${r.promptTokens} tools=${r.tools} attach=${r.hasAttachments}\n" +
+                    "promptTokens=${r.promptTokens} attach=${r.hasAttachments}\n" +
                     "    system: ${r.systemPrompt}\n" +
                     r.history.joinToString("\n") { "    ${it.role}: ${it.text.take(60)}" })
             }
@@ -143,23 +142,6 @@ class EngineRequestTest {
         h.snapshot("after regenerate with attachment")
         assertTrue("regenerate still sees the photo", requests.single().hasAttachments)
         assertTrue(h.messages().last().text.contains("첨부"))
-    }
-
-    @Test
-    fun onlyEnabledToolsAreOffered() {
-        start()
-        val plugins = h.repo.plugins.value
-        val enabled = plugins.first { it.enabled }
-        h.repo.setPluginEnabled(enabled.id, false)
-        val mcpOff = h.repo.mcpServers.value.first { !it.enabled }
-        h.repo.setMcpEnabled(mcpOff.id, true)
-        turn("도구 목록 확인")
-
-        val tools = requests.single().tools
-        assertFalse(enabled.name in tools)
-        assertTrue(mcpOff.name in tools)
-        h.repo.skills.value.filter { it.enabled }.forEach { assertTrue(it.name in tools) }
-        h.repo.skills.value.filterNot { it.enabled }.forEach { assertFalse(it.name in tools) }
     }
 
     @Test

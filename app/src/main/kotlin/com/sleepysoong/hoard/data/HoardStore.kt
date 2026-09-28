@@ -20,11 +20,7 @@ class HoardStore(private val file: File) {
     data class Snapshot(
         val version: Int = VERSION,
         val sessions: List<SSession> = emptyList(),
-        val messages: Map<String, List<SMessage>> = emptyMap(),
-        val mcpEnabled: Map<String, Boolean> = emptyMap(),
-        val mcpServers: List<SMcp> = emptyList(),
-        val pluginEnabled: Map<String, Boolean> = emptyMap(),
-        val skillEnabled: Map<String, Boolean> = emptyMap()
+        val messages: Map<String, List<SMessage>> = emptyMap()
     )
 
     @Serializable data class SSession(
@@ -51,7 +47,6 @@ class HoardStore(private val file: File) {
         val branchedFromId: String? = null, val isStreaming: Boolean = false,
         val routing: SRouting? = null, val errorText: String? = null
     )
-    @Serializable data class SMcp(val id: String, val name: String, val url: String, val enabled: Boolean, val toolCount: Int, val status: String)
 
     /** Null when there is no saved state yet (first launch) or it was unreadable. */
     fun load(): Snapshot? {

@@ -14,28 +14,18 @@ import java.util.UUID
 
 /**
  * Conversation store: in-memory StateFlows, persisted to [HoardStore] so sessions,
- * messages (with routing traces) and tool toggles survive process death.
+ * messages (with routing traces) survive process death.
  * Writes are batched (debounced) off the main thread; [flush] forces one.
  */
 class HoardRepository(private val store: HoardStore? = null) {
-    private val _sessions = MutableStateFlow<List<ChatSession>>(listOf(MockData.welcomeSession()))
+    /** No seeded sessions: a fresh install starts with an empty list. */
+    private val _sessions = MutableStateFlow<List<ChatSession>>(emptyList())
     val sessions: StateFlow<List<ChatSession>> = _sessions.asStateFlow()
 
-    private val _messages = MutableStateFlow<Map<String, List<ChatMessage>>>(
-        mapOf("session-welcome" to MockData.welcomeMessages())
-    )
+    private val _messages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     val messages: StateFlow<Map<String, List<ChatMessage>>> = _messages.asStateFlow()
 
-    private val _mcpServers = MutableStateFlow(MockData.mockMcpServers())
-    val mcpServers: StateFlow<List<McpServer>> = _mcpServers.asStateFlow()
-
-    private val _plugins = MutableStateFlow(MockData.plugins)
-    val plugins: StateFlow<List<PluginItem>> = _plugins.asStateFlow()
-
-    private val _skills = MutableStateFlow(MockData.skills)
-    val skills: StateFlow<List<SkillItem>> = _skills.asStateFlow()
-
-    /** Router groups/models (empty = no router: fall back to the mock catalog). */
+    /** Router groups/models (empty = no router connected: nothing to pick). */
     private val _routerModels = MutableStateFlow<List<AiModel>>(emptyList())
     val routerModels: StateFlow<List<AiModel>> = _routerModels.asStateFlow()
 
@@ -46,7 +36,7 @@ class HoardRepository(private val store: HoardStore? = null) {
 
     /**
      * Sessions created offline (or before the router's catalog changed) may carry a
-     * model the router doesn't know, e.g. the mock "hoard-1-pro". The router would
+     * model the router doesn't know, e.g. from an earlier router. The router would
      * silently fall back to its default group while the top bar keeps showing the
      * stale ID — move those sessions to the router's first entry (its first group).
      */
@@ -57,7 +47,7 @@ class HoardRepository(private val store: HoardStore? = null) {
     }
 
     /** Models offered in the picker / Settings. */
-    fun modelCatalog(): List<AiModel> = _routerModels.value.ifEmpty { MockData.models }
+    fun modelCatalog(): List<AiModel> = _routerModels.value
 
     fun messagesOf(sessionId: String): List<ChatMessage> = _messages.value[sessionId].orEmpty()
 
@@ -65,19 +55,25 @@ class HoardRepository(private val store: HoardStore? = null) {
 
     fun createSession(
         name: String = "새 세션",
-        modelId: String = MockData.models[1].id,
-        contextLimit: Int = 32_000
+        modelId: String = "",
+        contextLimit: Int = Defaults.CONTEXT_LIMIT
     ): ChatSession {
         val s = ChatSession(
             id = "session-" + UUID.randomUUID().toString().take(8),
             name = name,
-            systemPrompt = MockData.DEFAULT_SYSTEM_PROMPT,
+            systemPrompt = Defaults.SYSTEM_PROMPT,
             modelId = modelId,
             contextLimit = contextLimit
         )
         _sessions.update { listOf(s) + it }
         _messages.update { it + (s.id to emptyList()) }
         return s
+    }
+
+    /** Tests: put a fully formed session (and its messages) at the top of the list. */
+    internal fun insertSessionForTests(session: ChatSession, messages: List<ChatMessage>) {
+        _sessions.update { listOf(session) + it.filterNot { s -> s.id == session.id } }
+        _messages.update { it + (session.id to messages) }
     }
 
     fun renameSession(id: String, name: String) {
@@ -158,40 +154,6 @@ class HoardRepository(private val store: HoardStore? = null) {
         return branch
     }
 
-    fun setMcpEnabled(id: String, enabled: Boolean) {
-        _mcpServers.update { list -> list.map { if (it.id == id) it.copy(enabled = enabled) else it } }
-    }
-
-    fun addMcpServer(name: String, url: String) {
-        val s = McpServer(
-            id = "mcp-" + UUID.randomUUID().toString().take(6),
-            name = name.ifBlank { "새 MCP" },
-            url = url.ifBlank { "https://mcp.mock/untitled" },
-            enabled = true,
-            toolCount = 3,
-            status = "연결됨"
-        )
-        _mcpServers.update { it + s }
-    }
-
-    fun removeMcpServer(id: String) {
-        _mcpServers.update { it.filterNot { s -> s.id == id } }
-    }
-
-    fun setPluginEnabled(id: String, enabled: Boolean) {
-        _plugins.update { list -> list.map { if (it.id == id) it.copy(enabled = enabled) else it } }
-    }
-
-    fun setSkillEnabled(id: String, enabled: Boolean) {
-        _skills.update { list -> list.map { if (it.id == id) it.copy(enabled = enabled) else it } }
-    }
-
-    /** Enabled plugins, MCP servers and skills, as offered to the model. */
-    fun enabledToolNames(): List<String> =
-        _plugins.value.filter { it.enabled }.map { it.name } +
-            _mcpServers.value.filter { it.enabled }.map { it.name } +
-            _skills.value.filter { it.enabled }.map { it.name }
-
     private fun touch(sessionId: String) {
         _sessions.update { list -> list.map { if (it.id == sessionId) it.copy(updatedAt = System.currentTimeMillis()) else it } }
     }
@@ -203,13 +165,13 @@ class HoardRepository(private val store: HoardStore? = null) {
     init {
         store?.load()?.let(::restore)
         if (store != null) {
-            val initialState = listOf(_sessions.value, _messages.value, _mcpServers.value, _plugins.value, _skills.value)
+            val initialState = listOf(_sessions.value, _messages.value)
             saver.launch {
                 // Any change → save at most every SAVE_DEBOUNCE_MS (streaming updates are frequent).
-                // combine() emits once per change of any of the five. Skip only what equals the
+                // combine() emits once per change of either. Skip only what equals the
                 // state captured *before* this coroutine started: a plain drop(1) raced — a change
                 // made before collection began arrived as the first value and was never saved.
-                kotlinx.coroutines.flow.combine(_sessions, _messages, _mcpServers, _plugins, _skills) { a, b, c, d, e -> listOf(a, b, c, d, e) }
+                kotlinx.coroutines.flow.combine(_sessions, _messages) { a, b -> listOf(a, b) }
                     .dropWhile { it == initialState }
                     .debounce(SAVE_DEBOUNCE_MS)
                     .collect { flush() }
@@ -226,29 +188,25 @@ class HoardRepository(private val store: HoardStore? = null) {
     private fun snapshot() = with(HoardStore) {
         HoardStore.Snapshot(
             sessions = _sessions.value.map { it.toS() },
-            messages = _messages.value.mapValues { (_, list) -> list.map { it.toS() } },
-            mcpServers = _mcpServers.value.map { HoardStore.SMcp(it.id, it.name, it.url, it.enabled, it.toolCount, it.status) },
-            pluginEnabled = _plugins.value.associate { it.id to it.enabled },
-            skillEnabled = _skills.value.associate { it.id to it.enabled }
+            messages = _messages.value.mapValues { (_, list) -> list.map { it.toS() } }
         )
     }
 
     private fun restore(s: HoardStore.Snapshot) = with(HoardStore) {
-        if (s.sessions.isEmpty()) return@with
-        _sessions.value = s.sessions.map { it.toModel() }
-        _messages.value = s.sessions.associate { sess ->
-            sess.id to s.messages[sess.id].orEmpty().map { m ->
+        // Stores from older versions carry the canned welcome bubble (and its session,
+        // when nothing else was said there): not user data, drop it.
+        val msgs = s.messages.mapValues { (_, list) -> list.filterNot { it.id.startsWith(Defaults.LEGACY_WELCOME_PREFIX) } }
+        val sessions = s.sessions.filterNot { it.id == Defaults.LEGACY_WELCOME_SESSION && msgs[it.id].isNullOrEmpty() }
+        if (sessions.isEmpty()) return@with
+        _sessions.value = sessions.map { it.toModel() }
+        _messages.value = sessions.associate { sess ->
+            sess.id to msgs[sess.id].orEmpty().map { m ->
                 val msg = m.toModel()
                 // A reply that was streaming when the process died: its worker will either
                 // resume it (same bubble) or it's gone — never leave a spinner forever.
                 if (msg.isStreaming) msg.copy(isStreaming = false, errorText = msg.errorText ?: "앱이 종료되어 답변이 중단됐습니다.") else msg
             }
         }
-        if (s.mcpServers.isNotEmpty()) {
-            _mcpServers.value = s.mcpServers.map { McpServer(it.id, it.name, it.url, it.enabled, it.toolCount, it.status) }
-        }
-        _plugins.value = _plugins.value.map { p -> s.pluginEnabled[p.id]?.let { p.copy(enabled = it) } ?: p }
-        _skills.value = _skills.value.map { k -> s.skillEnabled[k.id]?.let { k.copy(enabled = it) } ?: k }
     }
 
     companion object {

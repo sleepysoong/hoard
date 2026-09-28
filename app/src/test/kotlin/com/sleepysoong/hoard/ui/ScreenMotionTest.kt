@@ -35,7 +35,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class ScreenMotionTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
     private val outDir = File(System.getProperty("hoard.artifacts") ?: "build/test-artifacts", "motion").apply { mkdirs() }

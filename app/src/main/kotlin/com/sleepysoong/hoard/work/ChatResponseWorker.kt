@@ -30,7 +30,7 @@ import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
 
 /**
- * Produces a reply (sleepyrouter, or the offline mock engine) in the background
+ * Produces a reply from sleepyrouter in the background
  * so leaving the app after send still finishes the response. The foreground service type is dataSync.
  */
 class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
@@ -38,7 +38,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result {
         val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
         val parentId = inputData.getString(KEY_PARENT) ?: return Result.failure()
-        val modelId = inputData.getString(KEY_MODEL) ?: "hoard-1-pro"
+        val modelId = inputData.getString(KEY_MODEL).orEmpty()
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
         val repo = HoardRepository.get()
         // Session gone (deleted / lost with the process), or the prompt was
@@ -52,7 +52,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val request = ReplyRequest.build(
             session = session,
             conversation = before.take(parentIdx + 1),
-            tools = repo.enabledToolNames(),
             modelId = modelId
         )
 

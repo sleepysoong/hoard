@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.asStateFlow
 
 /** Connection state shown in Settings and used to decide the model catalog. */
 sealed interface RouterStatus {
-    /** No router URL: replies come from the offline mock engine. */
+    /** No router URL: nothing can answer until one is connected. */
     data object Offline : RouterStatus
     data object Checking : RouterStatus
     data class Connected(val url: String, val groups: Int, val models: Int) : RouterStatus

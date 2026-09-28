@@ -35,9 +35,12 @@ fun ModelPickerSheet(
     GlassPopup(
         onDismiss = onDismiss,
         title = "모델 선택",
-        message = if (fromRouter) "sleepyrouter 그룹·모델" else "라우터 미연결 · 목업 응답",
+        message = if (fromRouter) "sleepyrouter 그룹·모델" else "라우터가 연결되지 않았습니다 · 설정 → 라우터",
         anchor = anchor
     ) {
+        if (models.isEmpty()) {
+            GlassPopupRow(label = "모델 없음", subtitle = "라우터를 연결하면 그룹과 모델이 여기에 나옵니다", closesPopup = true, onClick = onDismiss)
+        }
         models.forEachIndexed { i, model ->
             if (i > 0) GlassPopupDivider()
             GlassPopupRow(

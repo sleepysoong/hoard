@@ -34,7 +34,7 @@ import kotlin.math.abs
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class ShadowClipTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -67,7 +67,7 @@ class ShadowClipTest {
 
     @Test fun toolsLastCard() {
         compose.onNodeWithTag("tab-도구").performClick()
-        // Last MCP server card: its "제거" row ends ~12dp above the card edge.
-        assertNoCut("tools", "제거", belowTextDp = 14f)
+        // Last card (Termux): its status line ends ~12dp above the card edge.
+        assertNoCut("tools", "꺼짐 · 모델에 termux_exec를 주지 않음", belowTextDp = 14f)
     }
 }

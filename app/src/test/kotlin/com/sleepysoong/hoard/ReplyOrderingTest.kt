@@ -39,7 +39,7 @@ class ReplyOrderingTest {
 
     @Test
     fun rapidSendsInOneSessionStreamOneAtATimeInOrder() {
-        h = ChatHarness(pace = 0.2f)
+        h = ChatHarness(pace = 0.2f, greeting = true)
         val sid = h.vm.uiState.value.session!!.id
         val prompts = listOf("연속 질문 하나", "연속 질문 둘", "연속 질문 셋")
         prompts.forEach { h.vm.send(it, emptyList(), "hoard-1-pro"); h.idle() }
@@ -50,7 +50,7 @@ class ReplyOrderingTest {
         h.snapshot("settled", sid)
 
         assertEquals("replies must not stream concurrently", 1, maxConcurrent)
-        val turns = h.repo.messagesOf(sid).drop(1) // skip welcome
+        val turns = h.repo.messagesOf(sid).drop(1) // skip the greeting
         val users = turns.filter { it.role == MessageRole.User }.map { it.text }
         val replies = turns.filter { it.role == MessageRole.Assistant }
         assertEquals(prompts, users)
@@ -60,7 +60,7 @@ class ReplyOrderingTest {
 
     @Test
     fun regenerateWhileNextReplyIsQueuedDoesNotAnswerRemovedPrompt() {
-        h = ChatHarness(pace = 0.5f)
+        h = ChatHarness(pace = 0.5f, greeting = true)
         val sid = h.vm.uiState.value.session!!.id
         h.vm.send("첫 질문 A", emptyList(), "hoard-1-pro")
         h.vm.send("곧 지워질 둘째 질문 B", emptyList(), "hoard-1-pro")
@@ -81,7 +81,7 @@ class ReplyOrderingTest {
 
     @Test
     fun editWhileReplyStreamingReplacesItWithSingleReply() {
-        h = ChatHarness(pace = 0.5f)
+        h = ChatHarness(pace = 0.5f, greeting = true)
         val sid = h.vm.uiState.value.session!!.id
         h.vm.send("원래 질문", emptyList(), "hoard-1-pro")
         waitUntil("reply streaming") { streamingIn(sid) == 1 }
@@ -101,7 +101,7 @@ class ReplyOrderingTest {
 
     @Test
     fun otherSessionsAreNotBlockedByABusySession() {
-        h = ChatHarness(pace = 0.5f)
+        h = ChatHarness(pace = 0.5f, greeting = true)
         val busy = h.vm.uiState.value.session!!.id
         h.vm.send("바쁜 세션의 긴 답변", emptyList(), "hoard-1-pro")
         waitUntil("busy session streaming") { streamingIn(busy) == 1 }

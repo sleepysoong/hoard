@@ -39,6 +39,32 @@ class PersistenceTest {
         return HoardRepository.get()
     }
 
+    /** A store written by an older version: its canned welcome session/bubble and mock tool data are dropped. */
+    @Test fun legacySampleDataIsDroppedOnLoad() {
+        file.writeText("""
+            {"version":1,
+             "sessions":[
+               {"id":"session-welcome","name":"Hoard에 오신 것을 환영합니다","systemPrompt":"s","modelId":"hoard-1-pro","contextLimit":32000,"createdAt":1,"updatedAt":1},
+               {"id":"session-mine","name":"내 대화","systemPrompt":"s","modelId":"coding","contextLimit":32000,"createdAt":2,"updatedAt":2}
+             ],
+             "messages":{
+               "session-welcome":[{"id":"msg-welcome-1","role":"Assistant","text":"안녕하세요, Hoard입니다 (목업)"}],
+               "session-mine":[{"id":"msg-welcome-1","role":"Assistant","text":"안녕하세요"},{"id":"m1","role":"User","text":"진짜 질문"}]
+             },
+             "mcpServers":[{"id":"x","name":"GitHub","url":"https://mcp.mock/github","enabled":true,"toolCount":1,"status":"연결됨"}],
+             "pluginEnabled":{"web-search":false}}
+        """.trimIndent())
+        val r = restart()
+        assertEquals("welcome-only session dropped", listOf("session-mine"), r.sessions.value.map { it.id })
+        assertEquals("welcome bubble dropped, real messages kept", listOf("m1"), r.messagesOf("session-mine").map { it.id })
+    }
+
+    @Test fun freshInstallHasNoSampleSessions() {
+        val r = restart()
+        assertTrue(r.sessions.value.isEmpty())
+        assertTrue(r.modelCatalog().isEmpty())
+    }
+
     @Test fun conversationSurvivesRestart() {
         val h = ChatHarness(storeFile = file)
         val sid = h.vm.newSession("여행 계획")
@@ -55,8 +81,6 @@ class PersistenceTest {
                 RouteAttempt(2, "or/c", "or", "c", "succeeded", durationMs = 300)))
         val lastReply = h.repo.messagesOf(sid).last()
         h.repo.updateMessage(sid, lastReply.id) { it.copy(routing = routing) }
-        h.repo.setPluginEnabled(h.repo.plugins.value.first().id, false)
-        h.repo.addMcpServer("내 서버", "https://mcp.example/x")
         val branch = h.vm.branchFrom(h.repo.messagesOf(sid)[1].id, "브랜치")!!
         val before = h.repo.messagesOf(sid)
         h.repo.flush()
@@ -77,8 +101,6 @@ class PersistenceTest {
         assertEquals(before.last().completionTokens, msgs.last().completionTokens)
         assertNotNull(r.sessionOf(branch))
         assertEquals("sess branch keeps its origin", sid, r.sessionOf(branch)!!.branchedFrom)
-        assertFalse(r.plugins.value.first().enabled)
-        assertTrue(r.mcpServers.value.any { it.name == "내 서버" })
     }
 
     @Test fun changesAreSavedWithoutAnExplicitFlush() {
@@ -129,7 +151,7 @@ class PersistenceTest {
     @Test fun corruptFileIsKeptAsideAndAppStarts() {
         file.writeText("{ this is not json")
         val r = restart()
-        assertTrue("fresh default state", r.sessions.value.isNotEmpty())
+        assertTrue("starts empty (no sample data), no crash", r.sessions.value.isEmpty())
         assertFalse("corrupt file not overwritten in place", file.exists() && file.readText().startsWith("{ this is not json"))
         val kept = tmp.root.listFiles()!!.filter { it.name.startsWith("hoard-store.json.corrupt-") }
         assertEquals("original bytes preserved for recovery", "{ this is not json", kept.single().readText())

@@ -24,7 +24,8 @@ object SettingsStore {
 
     data class Settings(
         val theme: String = "system",
-        val defaultModel: String = "hoard-1-pro",
+        /** Router group/model for new sessions. Blank = the router's first group. */
+        val defaultModel: String = "",
         val defaultContext: Int = 32_000,
         /** sleepyrouter base URL, e.g. http://192.168.0.10:4567. Blank = offline mock engine. */
         val routerUrl: String = "",
@@ -45,7 +46,7 @@ object SettingsStore {
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
         Settings(
             theme = p[THEME] ?: "system",
-            defaultModel = p[DEFAULT_MODEL] ?: "hoard-1-pro",
+            defaultModel = p[DEFAULT_MODEL] ?: "",
             defaultContext = p[DEFAULT_CONTEXT] ?: 32_000,
             routerUrl = p[ROUTER_URL] ?: "",
             routerToken = p[ROUTER_TOKEN] ?: "",

@@ -103,20 +103,21 @@ class RouterUiTest {
     @Test fun connectShowsRouterCatalog() {
         connect()
         compose.onNodeWithTag("router-status").assertTextContains("그룹 2 · 모델 1", substring = true)
-        compose.onNodeWithText("기본 모델 (라우터)").assertExists()
+        compose.onNodeWithText("기본 모델").assertExists()
+        compose.onNodeWithTag("models-empty").assertDoesNotExist()
         compose.onNodeWithText("coding").assertExists()
         compose.onNodeWithText("openrouter/c").assertExists()
         shot("settings-connected")
         assertEquals("/v1/models", router.requests.last().path)
     }
 
-    @Test fun badUrlShowsWhyAndKeepsMockCatalog() {
+    @Test fun badUrlShowsWhyAndNoModels() {
         compose.onNodeWithTag("tab-설정").performClick()
         val dead = FakeRouter().also { it.close() }.url
         compose.onNode(hasSetTextAction() and hasText("라우터 주소")).performTextReplacement(dead)
         compose.onNodeWithText("연결").performClick()
         waitFor("failed") { compose.onAllNodesWithText("연결 실패", substring = true).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithText("기본 모델 (목업)").assertExists()
+        compose.onNodeWithTag("models-empty").assertExists()
         shot("settings-failed")
     }
 
@@ -204,7 +205,7 @@ class RouterUiTest {
     }
 
     @Test fun webToolsSettingsSaveMaskedBraveKeyAndSwitch() {
-        compose.onNodeWithTag("tab-설정").performClick()
+        compose.onNodeWithTag("tab-도구").performClick()
         compose.onNodeWithTag("web-tools-status").performScrollTo()
         compose.onNodeWithTag("web-tools-status").assertTextContains("web_fetch만", substring = true)
         compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).performTextReplacement("BSA-test-key")

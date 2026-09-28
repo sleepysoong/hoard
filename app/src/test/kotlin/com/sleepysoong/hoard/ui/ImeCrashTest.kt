@@ -27,7 +27,7 @@ import org.robolectric.annotation.GraphicsMode
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class ImeCrashTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -55,12 +55,10 @@ class ImeCrashTest {
         compose.waitForIdle()
     }
 
-    @Test fun mcpAddPopupFieldWithKeyboard() {
+    @Test fun toolsKeyFieldWithKeyboard() {
         compose.onNodeWithTag("tab-도구").performClick()
         compose.waitForIdle()
-        compose.onNode(androidx.compose.ui.test.hasText("MCP 서버 추가 (목업)")).performClick()
-        compose.waitForIdle()
-        compose.onNode(hasSetTextAction() and hasText("URL")).performClick()
+        compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).performClick()
         for (h in listOf(200, 500, 800, 900)) { keyboard(h); compose.mainClock.advanceTimeBy(80) }
         compose.mainClock.advanceTimeBy(2_000)
         keyboard(0)

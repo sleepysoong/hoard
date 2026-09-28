@@ -63,7 +63,6 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
-import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.UiAttachment
 import com.sleepysoong.hoard.engine.AttachmentEncoder
 import com.sleepysoong.hoard.ui.glass.GlassSurface
@@ -111,11 +110,10 @@ fun ChatInputBar(
             onAttachmentsChange(attachments + uris.map { uri -> describe(uri, uri.lastPathSegment?.substringAfterLast('/') ?: "파일") })
         }
     }
-    val showSlash = value.trimStart().startsWith("/") && !value.contains(" ")
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {
-        // The bar grows/shrinks on a spring as chips and the slash menu come and go.
+        // The bar grows/shrinks on a spring as attachment chips come and go.
         Column(
             Modifier.animateContentSize(GlassMotion.sizeSmooth()).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -159,59 +157,6 @@ fun ChatInputBar(
                             }
                         }
                         }
-                    }
-                }
-            }
-
-            GlassAnimatedVisibility(
-                visible = showSlash,
-                enter = fadeIn(GlassMotion.fade()) + expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Bottom) +
-                    scaleIn(GlassMotion.bouncy(), initialScale = 0.94f, transformOrigin = TransformOrigin(0.1f, 1f)),
-                exit = fadeOut(GlassMotion.fade()) + shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Bottom)
-            ) {
-                val query = value.trimStart().removePrefix("/").substringBefore(" ")
-                Box(
-                    Modifier
-                        .fillMaxWidth()
-                        .glassMaterial(RoundedCornerShape(20.dp), scheme.surface, tone = GlassTone.Regular, lifted = false)
-                        .testTag("slash-menu")
-                        .padding(vertical = 4.dp)
-                ) {
-                    Column {
-                        MockData.slashCommands
-                            .filter { it.command.removePrefix("/").startsWith(query) }
-                            .take(5)
-                            .forEachIndexed { i, cmd ->
-                                if (i > 0) {
-                                    HorizontalDivider(
-                                        modifier = Modifier.padding(start = 12.dp),
-                                        thickness = 0.5.dp,
-                                        color = scheme.onSurface.copy(alpha = 0.08f)
-                                    )
-                                }
-                                Row(
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .liquidClickable {
-                                            haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            onValueChange(cmd.command + " ")
-                                        }
-                                        .padding(horizontal = 12.dp, vertical = 9.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        cmd.command,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = scheme.primary
-                                    )
-                                    Text(
-                                        cmd.description,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = scheme.onSurfaceVariant
-                                    )
-                                }
-                            }
                     }
                 }
             }

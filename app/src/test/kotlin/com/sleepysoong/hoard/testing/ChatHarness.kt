@@ -24,7 +24,11 @@ import java.io.File
  * Drives the real chat stack (ChatViewModel → WorkManager → ChatResponseWorker →
  * MockAiEngine → HoardRepository) on Robolectric. Only the clock is faked (engine pace).
  */
-class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null) {
+/**
+ * @param greeting start the fixture session with an assistant bubble that has no
+ *   prompt before it (tests that exercise "a reply with nothing to answer").
+ */
+class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null, greeting: Boolean = false) {
     val app: Application = ApplicationProvider.getApplicationContext()
     lateinit var workManager: WorkManager
     /** Always the live store; after [simulateProcessDeath] this is the fresh instance. */
@@ -41,6 +45,10 @@ class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null) {
         MockAiEngine.pace = pace
         MockAiEngine.testHook = null
         com.sleepysoong.hoard.engine.Engines.override = null
+        // No sample data in the app: the fixture session to chat in, and the
+        // test-double engine for replies when no router is configured.
+        TestData.useMockEngine()
+        if (HoardRepository.get().sessions.value.isEmpty()) TestData.seed(greeting = greeting)
         com.sleepysoong.hoard.tools.WebTools.override = null
         com.sleepysoong.hoard.engine.RouterConnection.resetForTests()
         WorkManagerTestInitHelper.initializeTestWorkManager(

@@ -105,7 +105,7 @@ class OrphanReplyTest {
 
         assertNoOrphans()
         assertTrue(doneNotifications().isEmpty())
-        assertEquals(1, h.repo.messagesOf(keep).size) // welcome only, untouched
+        assertEquals(0, h.repo.messagesOf(keep).size) // untouched
     }
 
     @Test

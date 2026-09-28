@@ -35,7 +35,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class ChatMotionTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() { HoardRepository.resetForTests(); MockAiEngine.pace = 50f } // reply stays pending
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine(); MockAiEngine.pace = 50f } // reply stays pending
         override fun after() { MockAiEngine.pace = 1f } // don't leak into other tests in this JVM
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
@@ -86,9 +86,9 @@ class ChatMotionTest {
         openChat()
         // A reply with reasoning steps (the welcome bubble is plain guidance now).
         compose.runOnUiThread {
-            HoardRepository.get().appendMessage("session-welcome", com.sleepysoong.hoard.data.ChatMessage(
+            HoardRepository.get().appendMessage(com.sleepysoong.hoard.testing.TestData.SESSION_ID, com.sleepysoong.hoard.data.ChatMessage(
                 id = "msg-thinking", role = com.sleepysoong.hoard.data.MessageRole.Assistant, text = "답",
-                thinking = com.sleepysoong.hoard.data.MockData.mockThinking("추론", 1, 0, emptyList())
+                thinking = com.sleepysoong.hoard.engine.MockAiEngine.mockThinking("추론", 1, 0)
             ))
         }
         compose.waitForIdle()
@@ -103,8 +103,8 @@ class ChatMotionTest {
         assertTrue("opens over several frames, not a jump: $distinct", distinct.size >= 5)
     }
 
-    /** Composer chrome is glass too: slash menu + attachment chip. Screenshot for review. */
-    @Test fun composerSlashMenuAndChipShot() {
+    /** Composer chrome is glass too: attachment chip. Screenshot for review. */
+    @Test fun composerAttachmentChipShot() {
         openChat()
         compose.activity.let { a ->
             val vm = androidx.lifecycle.ViewModelProvider(a)[com.sleepysoong.hoard.ui.chat.ChatViewModel::class.java]
@@ -115,8 +115,9 @@ class ChatMotionTest {
         compose.onNode(hasSetTextAction()).performTextInput("/")
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(800)
-        compose.onNode(androidx.compose.ui.test.hasTestTag("slash-menu")).assertExists()
+        // No slash-command menu any more ("/" is just text).
+        compose.onNode(androidx.compose.ui.test.hasTestTag("slash-menu")).assertDoesNotExist()
         compose.onNode(androidx.compose.ui.test.hasTestTag("attachment-chip"), useUnmergedTree = true).assertExists()
-        frame("composer-slash-chip")
+        frame("composer-chip")
     }
 }

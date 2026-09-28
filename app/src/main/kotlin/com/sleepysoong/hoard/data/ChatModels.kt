@@ -88,7 +88,7 @@ data class ChatMessage(
     val createdAt: Long = System.currentTimeMillis(),
     val branchedFromId: String? = null,
     val isStreaming: Boolean = false,
-    /** Router trace for assistant replies (null for mock/offline replies). */
+    /** Router trace for assistant replies (null when the router sent none). */
     val routing: RoutingInfo? = null,
     /** Set when the reply failed; shown in the bubble instead of silently empty text. */
     val errorText: String? = null
@@ -114,35 +114,6 @@ data class AiModel(
     val description: String,
     val supportsVision: Boolean = true,
     val supportsThinking: Boolean = true
-)
-
-data class McpServer(
-    val id: String,
-    val name: String,
-    val url: String,
-    val enabled: Boolean,
-    val toolCount: Int,
-    val status: String
-)
-
-data class PluginItem(
-    val id: String,
-    val name: String,
-    val description: String,
-    val enabled: Boolean
-)
-
-data class SkillItem(
-    val id: String,
-    val name: String,
-    val description: String,
-    val enabled: Boolean
-)
-
-data class SlashCommand(
-    val command: String,
-    val description: String,
-    val hint: String
 )
 
 /** Allowed context window range (tokens) for typed input. */

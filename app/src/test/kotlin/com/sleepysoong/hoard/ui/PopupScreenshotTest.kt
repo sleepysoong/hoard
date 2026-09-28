@@ -43,7 +43,7 @@ import java.io.File
 open class PopupScreenshotTest {
     protected open val theme = "light"
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -91,16 +91,23 @@ open class PopupScreenshotTest {
         field.performTextReplacement("50000")
         compose.onNodeWithText("저장").assertIsEnabled().performClick()
         compose.waitForIdle()
-        check(HoardRepository.get().sessionOf("session-welcome")!!.contextLimit == 50_000)
+        check(HoardRepository.get().sessionOf(com.sleepysoong.hoard.testing.TestData.SESSION_ID)!!.contextLimit == 50_000)
         compose.onNodeWithText("/50000 토큰", substring = true).assertExists()
     }
 
     @Test fun modelPicker() {
+        // Models come only from the router.
+        compose.runOnUiThread {
+            HoardRepository.get().setRouterModels(listOf(
+                com.sleepysoong.hoard.data.AiModel("coding", "coding", "sleepyrouter", "그룹"),
+                com.sleepysoong.hoard.data.AiModel("fast", "fast", "sleepyrouter", "그룹")
+            ))
+        }
         compose.onAllNodesWithText("Hoard에 오신 것을 환영합니다").onFirst().performClick()
         shot("model-picker")
-        compose.onNodeWithText("Hoard 1 울트라").performClick()
+        compose.onNodeWithText("fast").performClick()
         compose.waitForIdle()
-        compose.onNodeWithText("hoard-1-ultra", substring = true).assertExists()
+        compose.onNodeWithText("fast ·", substring = true).assertExists()
     }
 
     @Test fun messageMenuThenEditAndDelete() {

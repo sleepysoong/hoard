@@ -4,8 +4,9 @@
 
 AI chat app shell by **sleepysoong** — https://github.com/sleepysoong/hoard
 
-Liquid-glass design shell (white-first + dark mode). ChatGPT/Claude/Gemini-style
-chat with **mock data only**: sending a message streams fake thinking + reply text.
+Liquid-glass AI chat app (white-first + dark mode). Replies come from
+[sleepyrouter](https://github.com/sleepysoong/sleepyrouter); the app ships no sample data
+or fake replies — without a router it says so.
 
 ## Brand colours
 
@@ -31,7 +32,7 @@ Still no gradients: every colour is solid.
 
 ## What is implemented
 
-- Chat with streaming replies from sleepyrouter (offline mock when no router is set), per-message elapsed seconds + token counts
+- Chat with streaming replies from sleepyrouter, per-message elapsed seconds + token counts
 - Routing trace per reply: answering model, tried models, why each failed
 - Photo (`PickMultipleVisualMedia`) and file (`OpenMultipleDocuments`) attachments, sent as real content
 - Conversations persist across restarts (`data/HoardStore.kt`: one JSON file in app storage, atomic writes,
@@ -60,8 +61,8 @@ Still no gradients: every colour is solid.
   `allow-external-apps` not set, timeout. Short commands only (Binder size limit); no PTY/streaming.
   One-time Termux setup: `mkdir -p ~/.termux && echo allow-external-apps=true >> ~/.termux/termux.properties && termux-reload-settings`.
   Code: `tools/TermuxExecTool.kt` (tool layer) ↔ `termux/` (Android side, `TermuxConstants` from termux-shared, compileOnly).
-- Model thinking blocks (expandable steps) + model picker (router groups/models, mock when offline)
-- Plugins / MCP / Skills / slash-commands tabs with liquid-glass UI + mock data (not sent to the router yet)
+- Work steps (reasoning / tool calls, expandable cards) + model picker (router groups/models)
+- 도구 tab: the real on-device tools (web_search / web_fetch, termux_exec) and their settings
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
   foreground notification, so leaving the app after send still finishes the reply.
@@ -93,7 +94,7 @@ inlined `input_text`, other files (e.g. PDF) → `input_file`. Files over 10 MB 
 reported to the model instead of silently dropped. Earlier turns only name their attachments.
 Whether a model can use `input_file` depends on the provider.
 
-With no router URL the app uses the offline mock engine. Plain HTTP is allowed
+With no router URL a reply fails with "라우터가 연결되지 않았습니다". Plain HTTP is allowed
 (`network_security_config.xml`) because sleepyrouter is a local gateway; note it applies app-wide.
 
 Code: `engine/RouterAiEngine.kt` (HTTP + SSE, request encoding, trace parsing, error

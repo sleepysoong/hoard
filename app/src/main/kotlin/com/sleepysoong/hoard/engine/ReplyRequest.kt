@@ -3,7 +3,6 @@ package com.sleepysoong.hoard.engine
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.MessageRole
-import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.data.estimateTokens
 
 /**
@@ -17,9 +16,7 @@ data class ReplyRequest(
     val history: List<ChatMessage>,
     val contextLimit: Int,
     /** Oldest messages left out to fit [contextLimit]. */
-    val droppedCount: Int,
-    /** Names of enabled plugins, MCP servers and skills. */
-    val tools: List<String>
+    val droppedCount: Int
 ) {
     val question: String get() = history.lastOrNull { it.role == MessageRole.User }?.text.orEmpty()
     val hasAttachments: Boolean get() = history.lastOrNull { it.role == MessageRole.User }?.attachments?.isNotEmpty() == true
@@ -31,7 +28,7 @@ data class ReplyRequest(
          * Keeps the system prompt and the newest messages that fit; the answered message is
          * always kept even if it alone exceeds the limit.
          */
-        fun build(session: ChatSession, conversation: List<ChatMessage>, tools: List<String>, modelId: String = session.modelId): ReplyRequest {
+        fun build(session: ChatSession, conversation: List<ChatMessage>, modelId: String = session.modelId): ReplyRequest {
             val usable = conversation.filter(::isSendable)
             var budget = session.contextLimit - estimateTokens(session.systemPrompt)
             val kept = ArrayDeque<ChatMessage>()
@@ -46,21 +43,15 @@ data class ReplyRequest(
                 systemPrompt = session.systemPrompt,
                 history = kept.toList(),
                 contextLimit = session.contextLimit,
-                droppedCount = usable.size - kept.size,
-                tools = tools
+                droppedCount = usable.size - kept.size
             )
         }
 
         /** Token estimate of a prompt: system prompt + every message text. Also the top-bar usage. */
         fun contextTokens(systemPrompt: String, messages: List<ChatMessage>): Int =
-            estimateTokens(systemPrompt) + messages.filter { !it.isWelcome && it.text.isNotBlank() }.sumOf { estimateTokens(it.text) }
+            estimateTokens(systemPrompt) + messages.filter { it.text.isNotBlank() }.sumOf { estimateTokens(it.text) }
 
-        /**
-         * Whether a message goes to the model. The canned welcome bubble is app chrome,
-         * not a model reply: sending it would put a fake assistant turn into the conversation.
-         */
-        fun isSendable(m: ChatMessage): Boolean = !m.isStreaming && m.text.isNotBlank() && !m.isWelcome
-
-        private val ChatMessage.isWelcome: Boolean get() = id.startsWith(MockData.WELCOME_PREFIX)
+        /** Whether a message goes to the model: finished and non-empty. */
+        fun isSendable(m: ChatMessage): Boolean = !m.isStreaming && m.text.isNotBlank()
     }
 }

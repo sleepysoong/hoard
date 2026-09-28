@@ -35,7 +35,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class PopupMotionTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -109,9 +109,9 @@ class PopupMotionTest {
         compose.onNodeWithText("저장").performClick()
         compose.mainClock.advanceTimeByFrame()
         assertTrue("popup still animating out", popupScale() != null)
-        assertEquals("not applied mid-exit", "Hoard에 오신 것을 환영합니다", HoardRepository.get().sessionOf("session-welcome")!!.name)
+        assertEquals("not applied mid-exit", "Hoard에 오신 것을 환영합니다", HoardRepository.get().sessionOf(com.sleepysoong.hoard.testing.TestData.SESSION_ID)!!.name)
         settle(400)
         assertEquals(null, popupScale())
-        assertEquals("applied after exit", "모션 테스트", HoardRepository.get().sessionOf("session-welcome")!!.name)
+        assertEquals("applied after exit", "모션 테스트", HoardRepository.get().sessionOf(com.sleepysoong.hoard.testing.TestData.SESSION_ID)!!.name)
     }
 }

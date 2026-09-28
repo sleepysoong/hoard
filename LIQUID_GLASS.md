@@ -325,7 +325,7 @@ Kyant 카탈로그 원본(`LiquidToggle.kt`, `LiquidBottomTabs.kt`, `LiquidSlide
 
 ```kotlin
 GlassFloatingBar(title = "세션", actions = { GlassIconButton(onClick = newSession) { Icon(Add, "새 세션") } })
-GlassFloatingBar(title = "도구", subtitle = "목업 데이터")
+GlassFloatingBar(title = "도구", subtitle = "모델이 호출하는 기기 도구")
 GlassFloatingBar(title = "설정")                                  // 스크롤 영역 밖 → 고정
 GlassFloatingBar(title = session.name, subtitle = "모델 · 사용/한도 토큰", onTitleClick = { showModels = true },
                  navigationIcon = { … }, actions = { … })
@@ -580,7 +580,7 @@ assertTrue(curve.max() > 1.005f)   // 오버슈트가 실제로 있는가
 - `advanceTimeBy(1000)` 한 번보다 `advanceTimeByFrame()` 반복이 실제 디스플레이에 가깝다
   (한 번에 크게 넘기면 팝업이 아직 없다고 나온 적 있음).
 - merged 노드(`toggleable`) 안의 태그는 `useUnmergedTree = true`.
-- 테스트 간 전역 상태 누수 주의: `MockAiEngine.pace`, `SettingsStore`는 규칙/하네스에서 복구.
+- 테스트 간 전역 상태 누수 주의: `MockAiEngine.pace`(테스트 전용 엔진), `Engines.offline`, `SettingsStore`는 규칙/하네스에서 복구.
 
 ### 픽셀 검사 예
 

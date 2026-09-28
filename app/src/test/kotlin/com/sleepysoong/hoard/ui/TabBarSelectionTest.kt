@@ -32,7 +32,7 @@ import org.robolectric.annotation.Config
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class TabBarSelectionTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -92,7 +92,7 @@ class TabBarSelectionTest {
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class TabCapsuleMotionTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -116,7 +116,7 @@ class TabCapsuleMotionTest {
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
 class TopBarConsistencyTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() = HoardRepository.resetForTests()
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine() }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
 
@@ -135,7 +135,7 @@ class TopBarConsistencyTest {
     @Test fun sameBarOnEveryTab() {
         val sessions = bar("세션")
         val tools = bar("도구")
-        compose.onAllNodes(androidx.compose.ui.test.hasText("목업 데이터")).fetchSemanticsNodes().let { assertEquals(1, it.size) }
+        compose.onAllNodes(androidx.compose.ui.test.hasText("모델이 호출하는 기기 도구")).fetchSemanticsNodes().let { assertEquals(1, it.size) }
         val settings = bar("설정")
         for ((name, r) in listOf("도구" to tools, "설정" to settings)) {
             assertEquals("$name bar top", sessions.top, r.top, 1f)

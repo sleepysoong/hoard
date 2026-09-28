@@ -48,7 +48,7 @@ class SettingsWiringTest {
     @Test
     fun newSessionsUseDefaultsAndExistingSessionsKeepTheirs() {
         h = ChatHarness()
-        val welcome = h.repo.sessionOf("session-welcome")!!
+        val welcome = h.repo.sessionOf(com.sleepysoong.hoard.testing.TestData.SESSION_ID)!!
         applySettings({
             SettingsStore.setDefaultModel(h.app, "hoard-1-ultra")
             SettingsStore.setDefaultContext(h.app, 128_000)
@@ -77,7 +77,7 @@ class SettingsWiringTest {
             SettingsStore.setDefaultContext(h.app, 8_000)
         }) { it.defaultModel == "hoard-1-mini" && it.defaultContext == 8_000 }
 
-        h.vm.deleteSession("session-welcome")
+        h.vm.deleteSession(com.sleepysoong.hoard.testing.TestData.SESSION_ID)
         h.idle()
         val s = h.repo.sessions.value.single()
         assertEquals("hoard-1-mini", s.modelId)

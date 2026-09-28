@@ -42,7 +42,7 @@ import java.io.File
 @Config(sdk = [35], qualifiers = "w320dp-h640dp-xhdpi", fontScale = 2.0f)
 class ResponsiveLayoutTest {
     @get:Rule(order = 0) val reset = object : org.junit.rules.ExternalResource() {
-        override fun before() { HoardRepository.resetForTests(); MockAiEngine.pace = 50f }
+        override fun before() { HoardRepository.resetForTests(); com.sleepysoong.hoard.testing.TestData.seed(greeting = true); com.sleepysoong.hoard.testing.TestData.useMockEngine(); MockAiEngine.pace = 50f }
         override fun after() { MockAiEngine.pace = 1f }
     }
     @get:Rule(order = 1) val compose = createAndroidComposeRule<MainActivity>()
@@ -100,12 +100,12 @@ class ResponsiveLayoutTest {
     @Test fun chatWithLongContentFitsAtLargeFont() {
         compose.runOnUiThread {
             val repo = HoardRepository.get()
-            repo.renameSession("session-welcome", "아주아주 긴 세션 이름이 상단 바를 넘치지 않는지 확인하는 세션")
-            repo.appendMessage("session-welcome", ChatMessage(
+            repo.renameSession(com.sleepysoong.hoard.testing.TestData.SESSION_ID, "아주아주 긴 세션 이름이 상단 바를 넘치지 않는지 확인하는 세션")
+            repo.appendMessage(com.sleepysoong.hoard.testing.TestData.SESSION_ID, ChatMessage(
                 id = "u-long", role = MessageRole.User,
                 text = "https://example.com/an/extremely/long/url/without/any/spaces/that/must/wrap/instead/of/overflowing"
             ))
-            repo.appendMessage("session-welcome", ChatMessage(
+            repo.appendMessage(com.sleepysoong.hoard.testing.TestData.SESSION_ID, ChatMessage(
                 id = "a-long", role = MessageRole.Assistant, modelId = "nvidia-nim/kimi-k3",
                 text = "**결과** `averyveryverylonginlinecodetokenwithoutspaces` 와 긴 문장입니다.\n\n| 열1 | 열2 | 열3 |\n|--|--|--|\n| 값 | 값 | 값 |",
                 thinking = listOf(ThinkingStep("웹 검색", "서울 날씨\n결과 5개", 900, StepKind.Tool))

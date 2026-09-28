@@ -289,12 +289,15 @@ class RouterIntegrationTest {
     }
 
     @Test
-    fun noRouterConfiguredUsesOfflineMock() {
+    fun noRouterConfiguredSaysSoInsteadOfAnswering() {
         h = ChatHarness()
+        com.sleepysoong.hoard.engine.Engines.offline = null // the app's real no-router behaviour
         router = FakeRouter()
         sendAndSettle("오프라인 질문")
-        assertTrue(reply().text.contains("오프라인 질문"))
-        assertNull(reply().routing)
+        val r = reply()
+        assertEquals("no invented answer", "", r.text)
+        assertTrue(r.errorText!!, r.errorText!!.contains("라우터가 연결되지 않았습니다"))
+        assertFalse(r.isStreaming)
         assertTrue(router.requests.isEmpty())
     }
 
@@ -312,17 +315,17 @@ class RouterIntegrationTest {
         assertEquals(listOf(true, false), models.map { it.isGroup })
     }
 
-    /** Sessions made offline carry mock IDs the router doesn't know: connecting moves them. */
+    /** Sessions carrying a model this router doesn't know (older router, none yet): connecting moves them. */
     @Test
     fun connectingMigratesStaleSessionModelsToTheRoutersFirstGroup() {
         start()
         val welcome = h.vm.uiState.value.session!!
-        assertEquals("hoard-1-pro", welcome.modelId)
+        assertEquals(com.sleepysoong.hoard.testing.TestData.MODEL, welcome.modelId)
         router.modelsBody = """{"object":"list","data":[{"id":"coding","owned_by":"sleepyrouter"},{"id":"zen/a","owned_by":"zen"}]}"""
         val routerSession = h.repo.createSession("라우터 모델 세션", modelId = "zen/a")
         runBlocking { com.sleepysoong.hoard.engine.RouterConnection.refresh(router.url, h.repo) }
         h.idle()
-        assertEquals("stale mock ID → router's first group", "coding", h.repo.sessionOf(welcome.id)!!.modelId)
+        assertEquals("unknown ID → router's first group", "coding", h.repo.sessionOf(welcome.id)!!.modelId)
         assertEquals("a model the router knows is kept", "zen/a", h.repo.sessionOf(routerSession.id)!!.modelId)
 
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
@@ -330,19 +333,6 @@ class RouterIntegrationTest {
         h.awaitReplies()
         val body = Json.parseToJsonElement(router.requests.last().body).jsonObject
         assertEquals("coding", body["model"]!!.jsonPrimitive.content)
-    }
-
-    /** The canned welcome bubble is guidance, not a model turn: never sent to the router. */
-    @Test
-    fun welcomeBubbleIsNotSentAsConversationHistory() {
-        start()
-        assertTrue(h.messages().first().id.startsWith(com.sleepysoong.hoard.data.MockData.WELCOME_PREFIX))
-        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
-        sendAndSettle("첫 질문")
-        val input = Json.parseToJsonElement(router.requests.last().body).jsonObject["input"]!!.jsonArray
-        assertEquals("only the user's question", 1, input.size)
-        assertEquals("user", input[0].jsonObject["role"]!!.jsonPrimitive.content)
-        assertTrue(!router.requests.last().body.contains("Hoard입니다"))
     }
 
     /** Offline in router mode: the reply waits for a network instead of burning its retries. */

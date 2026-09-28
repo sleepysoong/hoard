@@ -58,7 +58,6 @@ import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
-import com.sleepysoong.hoard.data.MockData
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -84,7 +83,7 @@ fun ChatScreen(
 ) {
     val state by vm.uiState.collectAsState()
     val routerModels by com.sleepysoong.hoard.data.HoardRepository.get().routerModels.collectAsState()
-    val catalog = routerModels.ifEmpty { MockData.models }
+    val catalog = routerModels
     val session = state.session
     var showModels by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
@@ -206,7 +205,7 @@ fun ChatScreen(
                             listOf(
                                 "이 코드 리팩터링해 줘",
                                 "요약해 줘",
-                                "/summarize 세션 요약"
+                                "오늘 할 일 정리해 줘"
                             ).forEach { suggestion ->
                                 GlassSuggestionChip(suggestion) {
                                     vm.input = suggestion + " "

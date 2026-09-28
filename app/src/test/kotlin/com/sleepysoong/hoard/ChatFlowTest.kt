@@ -29,7 +29,7 @@ class ChatFlowTest {
 
     @Test
     fun replyFinishesInItsOwnSessionAfterUserSwitchesAwayAndLeavesApp() {
-        h = ChatHarness(pace = 0.3f)
+        h = ChatHarness(pace = 0.3f, greeting = true)
         val origin = h.vm.uiState.value.session!!.id
         h.vm.send("백그라운드에서도 끝까지 답해줘. 리퀴드 글래스 채팅 앱 설계 요약", emptyList(), "hoard-1-ultra")
         h.idle()
@@ -61,7 +61,7 @@ class ChatFlowTest {
         assertEquals("app's own status icon, not the platform default", R.drawable.ic_stat_hoard, done.single().smallIcon.resId)
     }
 
-    /** Builds welcome, U1, A1, U2, A2, U3, A3 in the active session. */
+    /** Builds greeting, U1, A1, U2, A2, U3, A3 in the active session. */
     private fun threeTurnConversation(): List<String> {
         val prompts = listOf("첫 질문: 사과", "두번째 질문: 바나나", "세번째 질문: 체리")
         for (p in prompts) {
@@ -74,7 +74,7 @@ class ChatFlowTest {
 
     @Test
     fun retryMiddleReplyRegeneratesForItsOwnPromptInPlace() {
-        h = ChatHarness()
+        h = ChatHarness(greeting = true)
         val (q1, q2, _) = threeTurnConversation()
         val a2 = h.messages()[4]
         assertTrue(a2.text.contains(q2))
@@ -94,7 +94,7 @@ class ChatFlowTest {
 
     @Test
     fun retryFirstReplyUsesFirstPromptAndRetryLastUsesLast() {
-        h = ChatHarness()
+        h = ChatHarness(greeting = true)
         val (q1, _, _) = threeTurnConversation()
         h.vm.retryFrom(h.messages()[2].id)
         h.awaitReplies()
@@ -114,7 +114,7 @@ class ChatFlowTest {
 
     @Test
     fun editMiddleUserMessageDropsLaterTurnsAndAnswersEditedText() {
-        h = ChatHarness()
+        h = ChatHarness(greeting = true)
         val (q1, _, _) = threeTurnConversation()
         val u2 = h.messages()[3]
         val edited = "수정된 두번째 질문: 망고"
@@ -124,7 +124,7 @@ class ChatFlowTest {
         h.snapshot("after editing U2")
 
         val msgs = h.messages()
-        assertEquals("welcome, U1, A1, U2', A2'", 5, msgs.size)
+        assertEquals("greeting, U1, A1, U2', A2'", 5, msgs.size)
         assertEquals(listOf(q1, edited), msgs.filter { it.role == MessageRole.User }.map { it.text })
         assertEquals("edited message keeps its identity", u2.id, msgs[3].id)
         assertEquals(MessageRole.Assistant, msgs[4].role)
@@ -134,7 +134,7 @@ class ChatFlowTest {
 
     @Test
     fun editLastUserMessageReplacesItsReply() {
-        h = ChatHarness()
+        h = ChatHarness(greeting = true)
         threeTurnConversation()
         val u3 = h.messages()[5]
         h.vm.editUserMessage(u3.id, "체리 말고 자두")
@@ -148,7 +148,7 @@ class ChatFlowTest {
 
     @Test
     fun blankEditOrAssistantTargetChangesNothing() {
-        h = ChatHarness()
+        h = ChatHarness(greeting = true)
         threeTurnConversation()
         val before = h.messages()
         h.vm.editUserMessage(before[3].id, "   ")
@@ -160,12 +160,12 @@ class ChatFlowTest {
 
     @Test
     fun retryReplyThatHasNoPromptBeforeItKeepsConversation() {
-        h = ChatHarness()
+        h = ChatHarness(greeting = true)
         threeTurnConversation()
         val before = h.messages()
-        h.vm.retryFrom(before[0].id) // the welcome message: nothing to answer
+        h.vm.retryFrom(before[0].id) // the greeting: nothing to answer
         h.awaitReplies()
-        h.snapshot("after retry of welcome")
+        h.snapshot("after retry of greeting")
         assertEquals(before.map { it.id }, h.messages().map { it.id })
     }
 }
