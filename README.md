@@ -93,6 +93,11 @@ Still no gradients: every colour is solid.
   reboot; Doze may delay — 15 min grace). `schedule_wakeup` (5 s–1 h, one per session) wakes the same session
   later instead of busy-polling. Schedules are listed in 도구 → 예약 (pause/resume/cancel).
 - Work steps (reasoning / tool calls, expandable cards) + model picker (router groups/models)
+- Session task tracking through one `todo` tool (`create`, `update`, `remove`, `list`, `clear`), with no priorities.
+  State lives in one SQLite database keyed by session, independent of chat history. At most one task can be
+  in progress; app restart restores tasks, branches copy unfinished work with new IDs, and a new turn gets
+  one temporary reminder when unfinished tasks exist. A collapsible glass panel shows committed progress.
+  Contract, lifecycle and E2E artifacts: [`docs/TODO_TOOL.md`](docs/TODO_TOOL.md).
 - 도구 tab: the real on-device tools (web_search / web_fetch, termux_exec) and their settings
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a

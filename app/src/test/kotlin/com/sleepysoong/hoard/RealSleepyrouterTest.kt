@@ -48,6 +48,7 @@ class RealSleepyrouterTest {
     private val log = StringBuilder()
     private val upstreamBodies = mutableListOf<String>()
     private val upstreamAuth = mutableListOf<String?>()
+    @Volatile private var todoScenario = false
 
     @Before fun start() {
         val bin = System.getenv("SLEEPYROUTER_BIN")
@@ -68,7 +69,12 @@ class RealSleepyrouterTest {
                     else -> {
                         ex.responseHeaders.add("Content-Type", "text/event-stream")
                         ex.sendResponseHeaders(200, 0)
-                        val frames = listOf(
+                        val frames = if (todoScenario && !body.contains("\"function_call_output\"")) listOf(
+                            com.sleepysoong.hoard.testing.FakeRouter.created(),
+                            com.sleepysoong.hoard.testing.FakeRouter.toolCallCompleted(
+                                Triple("todo-real-1", "todo", """{"op":"create","content":"실제 라우터 도구 연결 확인"}""")
+                            )
+                        ) else listOf(
                             "response.created" to """{"type":"response.created","sequence_number":0,"response":{"id":"resp_up","object":"response","model":"$model","status":"in_progress","output":[]}}""",
                             "response.output_text.delta" to """{"type":"response.output_text.delta","sequence_number":1,"item_id":"m1","output_index":0,"content_index":0,"delta":"real "}""",
                             "response.output_text.delta" to """{"type":"response.output_text.delta","sequence_number":2,"item_id":"m1","output_index":0,"content_index":0,"delta":"answer"}""",
@@ -270,6 +276,27 @@ class RealSleepyrouterTest {
             assertTrue("tool definitions forwarded: $second", second.contains("\"web_search\""))
         } finally {
             com.sleepysoong.hoard.tools.WebTools.override = null
+        }
+    }
+
+    @Test fun todoStateAndReminderThroughRealRouter() {
+        todoScenario = true
+        val h = ChatHarness()
+        val sid = h.vm.uiState.value.session!!.id
+        h.repo.todos.execute(sid, com.sleepysoong.hoard.data.todo.TodoRequest.Create("이전 작업 이어가기"))
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:$port"); SettingsStore.setRouterToken(h.app, ROUTER_TOKEN) }
+        h.vm.send("계속하고 연결도 확인해줘", emptyList(), "p2/c")
+        h.awaitReplies(timeoutMs = 30_000)
+        assertNull(h.messages().last().errorText)
+        assertEquals(listOf("이전 작업 이어가기", "실제 라우터 도구 연결 확인"), h.repo.todos.list(sid).map { it.content })
+        synchronized(log) {
+            assertEquals(2, upstreamBodies.size)
+            assertTrue(upstreamBodies.first().contains("Current session tasks"))
+            assertTrue(upstreamBodies.first().contains("\"developer\""))
+            assertTrue(upstreamBodies.last().contains("function_call_output"))
+            assertTrue(upstreamBodies.last().contains("todo-real-1"))
+            assertTrue(!upstreamBodies.last().contains("Current session tasks"))
+            log.append("todo state=${h.repo.todos.list(sid)}\n")
         }
     }
 

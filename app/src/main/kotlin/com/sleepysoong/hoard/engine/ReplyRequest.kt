@@ -22,7 +22,9 @@ data class ReplyRequest(
     /** Hidden runtime turn (goal continuation / budget summary): sent last, not stored. */
     val hiddenUserMessage: String? = null,
     /** Final budget-summary turn: tools offered but not callable. */
-    val forbidTools: Boolean = false
+    val forbidTools: Boolean = false,
+    /** Authoritative execution state, captured at turn start; never stored as chat history. */
+    val todoReminder: String? = null
 ) {
     val question: String get() = history.lastOrNull { it.role == MessageRole.User }?.text.orEmpty()
     val hasAttachments: Boolean get() = history.lastOrNull { it.role == MessageRole.User }?.attachments?.isNotEmpty() == true

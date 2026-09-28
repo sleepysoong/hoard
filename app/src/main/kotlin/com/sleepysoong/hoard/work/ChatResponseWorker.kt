@@ -88,6 +88,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         )
         val goalBefore = goals.current(sessionId)
 
+        // A reminder is context, not a precondition: a todo-store problem must never fail the reply.
+        val turnRequest = request.copy(todoReminder = runCatching { repo.todos.reminder(sessionId) }.getOrNull())
         val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
         val hasTarget = if (runAttemptCount == 0) {
             // Placeholder streaming bubble owned by the worker. Fails when the session
@@ -124,13 +126,14 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                     schedules = if (runId == null) scheduleService else null,
                     wakeups = if (runId == null) wakeups else null,
                     permissions = allowed
-                )
+                ),
+                todo = com.sleepysoong.hoard.tools.TodoTool(repo.todos, sessionId)
             )
         )
         runId?.let(scheduler::onRunStarted)
         return try {
             promote("Hoard가 생각 중…")
-            engine.streamReply(request) { ev ->
+            engine.streamReply(turnRequest) { ev ->
                 val written = repo.updateMessage(sessionId, messageId) {
                     it.copy(
                         text = ev.deltaText,

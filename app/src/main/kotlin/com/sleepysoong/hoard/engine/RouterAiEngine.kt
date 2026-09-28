@@ -82,7 +82,8 @@ class RouterAiEngine(
         var round = 0
         while (true) {
             val finalRound = active == null || round >= maxToolRounds || request.forbidTools
-            val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems, forbidTools = active != null && finalRound)
+            val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems,
+                forbidTools = active != null && finalRound, includeTodoReminder = round == 0)
             val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
             if (state.toolCalls.isEmpty()) return
             prior.absorb(state)
@@ -439,7 +440,8 @@ class RouterAiEngine(
             toolItems: List<JsonObject> = emptyList(),
             forbidTools: Boolean = false,
             today: java.time.LocalDate = java.time.LocalDate.now(),
-            now: java.time.ZonedDateTime = java.time.ZonedDateTime.now()
+            now: java.time.ZonedDateTime = java.time.ZonedDateTime.now(),
+            includeTodoReminder: Boolean = true
         ): String = buildJsonObject {
             put("model", r.modelId)
             put("stream", true)
@@ -454,6 +456,14 @@ class RouterAiEngine(
             // answered) mention their attachments by name to keep requests small.
             val lastUser = r.history.indexOfLast { it.role == MessageRole.User }
             put("input", buildJsonArray {
+                if (includeTodoReminder) r.todoReminder?.let { reminder ->
+                    add(buildJsonObject {
+                        put("type", "message"); put("role", "developer")
+                        put("content", buildJsonArray {
+                            add(buildJsonObject { put("type", "input_text"); put("text", reminder) })
+                        })
+                    })
+                }
                 r.history.forEachIndexed { i, m -> add(encodeMessage(m, if (i == lastUser) attachments else null)) }
                 r.hiddenUserMessage?.let { hidden ->
                     add(buildJsonObject {
@@ -511,6 +521,7 @@ class RouterAiEngine(
         private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate, now: java.time.ZonedDateTime): String {
             val names = schemas.mapNotNull { it.str("name") }
             val lines = mutableListOf("Today's date: $today. Current time: ${now.withNano(0).toOffsetDateTime()} (${now.zone.id}).")
+            if ("todo" in names) lines += com.sleepysoong.hoard.tools.TodoTool.INSTRUCTIONS
             if ("goal" in names) lines += com.sleepysoong.hoard.goal.GoalRuntime.SYSTEM_RULES
             if ("schedule" in names) lines += "Scheduling: only when the user clearly asks for work in the future or on a cadence. " +
                 "Resolve relative times (\"tomorrow 9am\") against the current time and timezone into an exact trigger first; " +

@@ -169,6 +169,8 @@ fun ChatScreen(
             val goalNotice by vm.goalNotice.collectAsState()
             GoalBar(state.goal, goalNotice, onOpen = { vm.goalSheetOpen = true }, modifier = Modifier.padding(top = 6.dp))
 
+            session?.let { TodoPanel(it.id, state.todos) }
+
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val maxBubbleWidth = maxWidth * 0.78f
                 if (state.messages.isEmpty()) {

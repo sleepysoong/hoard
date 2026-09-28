@@ -34,7 +34,12 @@ import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
 
-/** Goal lifecycle/authority/continuation rules, cron math and the scheduler engine (plain JVM, fake clock). */
+/**
+ * Goal lifecycle/authority/continuation rules, cron math and the scheduler engine (fake clock).
+ * Robolectric only because the repository opens the todo SQLite database.
+ */
+@org.junit.runner.RunWith(androidx.test.ext.junit.runners.AndroidJUnit4::class)
+@org.robolectric.annotation.Config(sdk = [35])
 class GoalScheduleTest {
     private var now = ZonedDateTime.of(2026, 9, 28, 19, 41, 0, 0, SEOUL).toInstant().toEpochMilli()
     private val repo = HoardRepository(null).apply {
@@ -188,6 +193,7 @@ class GoalScheduleTest {
         assertEquals("schedule", repo.messagesOf(session.id).single().trigger)
         assertTrue("creator session untouched", repo.messagesOf("s1").isEmpty())
         assertEquals(Triple(session.id, repo.messagesOf(session.id).single().id, run.id), backend.started.single())
+        assertTrue("run session usable by the todo tool", repo.todos.list(session.id).isEmpty())
         assertEquals("next day 09:00", planned + 86_400_000L, repo.schedules.value.single().nextRunAt)
         assertEquals(planned + 86_400_000L, backend.armed[s.id]!!.first)
         engine.onRunStarted(run.id); engine.onRunFinished(run.id, RunStatus.Succeeded, summary = "3 outdated")

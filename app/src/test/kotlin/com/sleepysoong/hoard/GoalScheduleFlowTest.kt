@@ -212,6 +212,7 @@ class GoalScheduleFlowTest {
         assertTrue("run history is not shared", runReq.inputTexts().none { it.contains("매일 아침") })
         assertFalse("an unattended run can't create more future work", runReq.tools().any { it == "schedule" || it == "schedule_wakeup" })
         assertTrue(runReq.tools().contains("goal"))
+        assertTrue("todo works in the isolated run session too", runReq.tools().contains("todo"))
         assertTrue("next day re-armed", h.repo.schedules.value.single().nextRunAt!! > s.nextRunAt!!)
     }
 }

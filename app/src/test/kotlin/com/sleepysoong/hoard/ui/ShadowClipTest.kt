@@ -8,6 +8,9 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.swipeUp
+import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.onFirst
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sleepysoong.hoard.MainActivity
@@ -67,6 +70,14 @@ class ShadowClipTest {
 
     @Test fun toolsLastCard() {
         compose.onNodeWithTag("tab-도구").performClick()
+        compose.waitForIdle()
+        // The tools list is taller than the screen: check the last card at the scroll end,
+        // where the bottom padding (shadow bleed) must leave its shadow uncut.
+        repeat(3) {
+            compose.onAllNodes(androidx.compose.ui.test.hasScrollAction()).onFirst()
+                .performTouchInput { swipeUp() }
+            compose.waitForIdle()
+        }
         // Last card (Termux): its status line ends ~12dp above the card edge.
         assertNoCut("tools", "꺼짐 · 모델에 termux_exec를 주지 않음", belowTextDp = 14f)
     }

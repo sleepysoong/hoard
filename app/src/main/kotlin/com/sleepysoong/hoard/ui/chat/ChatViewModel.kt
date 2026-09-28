@@ -35,7 +35,8 @@ data class ChatUiState(
     val sessions: List<ChatSession> = emptyList(),
     val previews: Map<String, SessionPreview> = emptyMap(),
     /** The open session's current goal (null = none, or cleared). */
-    val goal: com.sleepysoong.hoard.data.Goal? = null
+    val goal: com.sleepysoong.hoard.data.Goal? = null,
+    val todos: List<com.sleepysoong.hoard.data.todo.TodoItem> = emptyList()
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
@@ -59,8 +60,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var goalSheetOpen by mutableStateOf(false)
 
     val uiState: StateFlow<ChatUiState> = combine(
-        repo.sessions, repo.messages, _activeSessionId, repo.goals
-    ) { sessions, allMessages, activeId, allGoals ->
+        repo.sessions, repo.messages, _activeSessionId, repo.goals, repo.todos.state
+    ) { sessions, allMessages, activeId, allGoals, allTodos ->
         val id = activeId.ifBlank { sessions.firstOrNull()?.id.orEmpty() }
         val msgs = allMessages[id].orEmpty()
         val previews = allMessages.mapNotNull { (key, list) ->
@@ -76,7 +77,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             usedTokens = session?.let { ReplyRequest.contextTokens(it.systemPrompt, msgs) } ?: 0,
             sessions = sessions,
             previews = previews,
-            goal = allGoals.lastOrNull { it.sessionId == id && it.status != com.sleepysoong.hoard.data.GoalStatus.Cleared }
+            goal = allGoals.lastOrNull { it.sessionId == id && it.status != com.sleepysoong.hoard.data.GoalStatus.Cleared },
+            todos = allTodos[id].orEmpty()
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ChatUiState())
 
