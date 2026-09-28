@@ -16,7 +16,13 @@ data class ReplyRequest(
     val history: List<ChatMessage>,
     val contextLimit: Int,
     /** Oldest messages left out to fit [contextLimit]. */
-    val droppedCount: Int
+    val droppedCount: Int,
+    /** Active goal, injected as ephemeral developer text (never stored in the conversation). */
+    val goalContext: String? = null,
+    /** Hidden runtime turn (goal continuation / budget summary): sent last, not stored. */
+    val hiddenUserMessage: String? = null,
+    /** Final budget-summary turn: tools offered but not callable. */
+    val forbidTools: Boolean = false
 ) {
     val question: String get() = history.lastOrNull { it.role == MessageRole.User }?.text.orEmpty()
     val hasAttachments: Boolean get() = history.lastOrNull { it.role == MessageRole.User }?.attachments?.isNotEmpty() == true

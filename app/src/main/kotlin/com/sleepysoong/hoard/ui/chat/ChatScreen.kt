@@ -166,6 +166,8 @@ fun ChatScreen(
             )
             // Context usage lives in the top bar subtitle ("96/32000 토큰"); the 2dp bar that
             // was here showed up as a stray dot under the bar at low usage.
+            val goalNotice by vm.goalNotice.collectAsState()
+            GoalBar(state.goal, goalNotice, onOpen = { vm.goalSheetOpen = true }, modifier = Modifier.padding(top = 6.dp))
 
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val maxBubbleWidth = maxWidth * 0.78f
@@ -230,7 +232,9 @@ fun ChatScreen(
                                 msg.createdAt - prev.createdAt < GROUP_WINDOW_MS
                             val footer = !grouped || next == null || next.role != msg.role ||
                                 next.createdAt - msg.createdAt >= GROUP_WINDOW_MS
-                            MessageBubble(
+                            if (msg.trigger != null) {
+                                TriggerNotice(msg, Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = GlassMotion.fade()).padding(top = 10.dp))
+                            } else MessageBubble(
                                 message = msg,
                                 modelName = msg.modelId?.let { id ->
                                     // Router models have no display name: show the ID itself.
@@ -350,6 +354,13 @@ fun ChatScreen(
         }
     }
 
+    if (vm.goalSheetOpen) {
+        GoalSheet(
+            goal = state.goal,
+            onPause = vm::pauseGoal, onResume = vm::resumeGoal, onClear = vm::clearGoal,
+            onDismiss = { vm.goalSheetOpen = false }
+        )
+    }
     if (showModels && session != null) {
         ModelPickerSheet(
             currentModelId = session.modelId,

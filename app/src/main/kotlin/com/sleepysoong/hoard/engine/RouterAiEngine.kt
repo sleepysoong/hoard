@@ -81,7 +81,7 @@ class RouterAiEngine(
         val toolItems = mutableListOf<JsonObject>()
         var round = 0
         while (true) {
-            val finalRound = active == null || round >= maxToolRounds
+            val finalRound = active == null || round >= maxToolRounds || request.forbidTools
             val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems, forbidTools = active != null && finalRound)
             val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
             if (state.toolCalls.isEmpty()) return
@@ -438,12 +438,13 @@ class RouterAiEngine(
             toolSchemas: List<JsonObject>? = null,
             toolItems: List<JsonObject> = emptyList(),
             forbidTools: Boolean = false,
-            today: java.time.LocalDate = java.time.LocalDate.now()
+            today: java.time.LocalDate = java.time.LocalDate.now(),
+            now: java.time.ZonedDateTime = java.time.ZonedDateTime.now()
         ): String = buildJsonObject {
             put("model", r.modelId)
             put("stream", true)
-            val note = if (toolSchemas.isNullOrEmpty()) "" else toolNote(toolSchemas, today)
-            val instructions = listOf(r.systemPrompt.trim(), note).filter { it.isNotEmpty() }.joinToString("\n\n")
+            val note = if (toolSchemas.isNullOrEmpty()) "" else toolNote(toolSchemas, today, now)
+            val instructions = listOf(r.systemPrompt.trim(), note, r.goalContext.orEmpty()).filter { it.isNotEmpty() }.joinToString("\n\n")
             if (instructions.isNotEmpty()) put("instructions", instructions)
             if (!toolSchemas.isNullOrEmpty()) {
                 put("tools", JsonArray(toolSchemas))
@@ -454,6 +455,12 @@ class RouterAiEngine(
             val lastUser = r.history.indexOfLast { it.role == MessageRole.User }
             put("input", buildJsonArray {
                 r.history.forEachIndexed { i, m -> add(encodeMessage(m, if (i == lastUser) attachments else null)) }
+                r.hiddenUserMessage?.let { hidden ->
+                    add(buildJsonObject {
+                        put("type", "message"); put("role", "user")
+                        put("content", buildJsonArray { add(buildJsonObject { put("type", "input_text"); put("text", hidden) }) })
+                    })
+                }
                 toolItems.forEach { add(it) }
             })
         }.toString()
@@ -465,7 +472,13 @@ class RouterAiEngine(
             put("type", "message")
             put("role", if (assistant) "assistant" else if (m.role == MessageRole.System) "system" else "user")
             put("content", buildJsonArray {
-                var text = m.text
+                var text = when (m.trigger) {
+                    // Runtime-created turns carry a label so the model knows nobody typed them.
+                    "goal" -> "Goal: " + m.text
+                    "wakeup" -> "[Wakeup you scheduled] " + m.text
+                    "schedule" -> "[Scheduled run] " + m.text
+                    else -> m.text
+                }
                 val attached = !assistant && m.attachments.isNotEmpty()
                 if (attached && files == null) {
                     text += "\n\n[첨부: " + m.attachments.joinToString { "${it.name} (${it.mime})" } + "]"
@@ -495,9 +508,14 @@ class RouterAiEngine(
                     ToolCall(callId, name, o.str("arguments").orEmpty().ifBlank { "{}" })
                 }
 
-        private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate): String {
+        private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate, now: java.time.ZonedDateTime): String {
             val names = schemas.mapNotNull { it.str("name") }
-            val lines = mutableListOf("Today's date: $today.")
+            val lines = mutableListOf("Today's date: $today. Current time: ${now.withNano(0).toOffsetDateTime()} (${now.zone.id}).")
+            if ("goal" in names) lines += com.sleepysoong.hoard.goal.GoalRuntime.SYSTEM_RULES
+            if ("schedule" in names) lines += "Scheduling: only when the user clearly asks for work in the future or on a cadence. " +
+                "Resolve relative times (\"tomorrow 9am\") against the current time and timezone into an exact trigger first; " +
+                "never create duplicates or recurring schedules just because repeated checks might be convenient. Scheduled runs " +
+                "happen without the user and with the tool permissions the user has now."
             if ("web_search" in names) lines += "Use web_search for current or unfamiliar facts. It returns up to 10 results with snippets only, not page contents. " +
                 "If results are weak, search again with a refined query: more specific keywords, English technical terms, " +
                 "site:domain, \"exact phrase\", -excluded words, AND/OR/NOT, filetype:pdf."

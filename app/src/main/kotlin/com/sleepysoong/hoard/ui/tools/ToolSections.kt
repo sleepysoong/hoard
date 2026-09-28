@@ -9,6 +9,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.rememberCoroutineScope
@@ -208,4 +209,77 @@ internal fun FileToolsSection(enabled: Boolean, fullStorage: Boolean) {
             )
         }
     }
+}
+
+/**
+ * Durable schedules (created by the model's `schedule` tool on request): trigger, next
+ * run, recent runs, and the user's pause / resume / cancel. Each run happens in its own
+ * session ("예약 · …" in the session list), never in the chat that created it.
+ */
+@Composable
+internal fun SchedulesSection() {
+    val ctx = LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    val repo = com.sleepysoong.hoard.data.HoardRepository.get()
+    val schedules by repo.schedules.collectAsState()
+    val runs by repo.scheduleRuns.collectAsState()
+    val service = androidx.compose.runtime.remember { com.sleepysoong.hoard.schedule.WorkManagerScheduler.services(ctx).first }
+    val visible = schedules.filter { it.status != com.sleepysoong.hoard.data.ScheduleStatus.Cancelled }.sortedBy { it.createdAt }
+
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (visible.isEmpty()) {
+            Text(
+                "예약된 작업이 없습니다 · 채팅에서 \"매일 오전 9시에 …\"처럼 요청하면 모델이 만듭니다",
+                style = MaterialTheme.typography.bodyMedium,
+                color = scheme.onSurfaceVariant,
+                modifier = Modifier.testTag("schedules-empty")
+            )
+        }
+        visible.forEach { s ->
+            val state = when (s.status) {
+                com.sleepysoong.hoard.data.ScheduleStatus.Active -> "사용 중"
+                com.sleepysoong.hoard.data.ScheduleStatus.Paused -> "일시정지"
+                com.sleepysoong.hoard.data.ScheduleStatus.Finished -> "끝남"
+                com.sleepysoong.hoard.data.ScheduleStatus.Cancelled -> "취소됨"
+            }
+            val recent = runs.filter { it.scheduleId == s.id }.sortedByDescending { it.plannedAt }.take(3)
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.testTag("schedule-row")) {
+                com.sleepysoong.hoard.ui.chat.WorkCard(
+                    title = s.name,
+                    body = buildString {
+                        append(com.sleepysoong.hoard.schedule.ScheduleService.describe(s.trigger))
+                        s.nextRunAt?.let { append("\n다음 · ").append(com.sleepysoong.hoard.schedule.ScheduleService.fmt(it)) }
+                        if (recent.isNotEmpty()) {
+                            append("\n최근 · ")
+                            append(recent.joinToString("  ") { r -> runMark(r.status) + " " + com.sleepysoong.hoard.schedule.ScheduleService.fmt(r.plannedAt) })
+                        }
+                    },
+                    textColor = scheme.onSurface,
+                    trailing = state,
+                    collapsedBodyLines = 4
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    fun act(block: () -> Unit) = runCatching(block)
+                    when (s.status) {
+                        com.sleepysoong.hoard.data.ScheduleStatus.Active ->
+                            GlassPillButton("일시정지", onClick = { act { service.pause(s.id) } }, modifier = Modifier.testTag("schedule-pause"))
+                        com.sleepysoong.hoard.data.ScheduleStatus.Paused ->
+                            GlassPillButton("재개", onClick = { act { service.resume(s.id) } }, tint = GlassPillTint.Accent, modifier = Modifier.testTag("schedule-resume"))
+                        else -> Unit
+                    }
+                    if (s.status != com.sleepysoong.hoard.data.ScheduleStatus.Finished) {
+                        GlassPillButton("취소", onClick = { act { service.cancel(s.id) } }, tint = GlassPillTint.Destructive, modifier = Modifier.testTag("schedule-cancel"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+private fun runMark(s: com.sleepysoong.hoard.data.RunStatus) = when (s) {
+    com.sleepysoong.hoard.data.RunStatus.Succeeded -> "성공"
+    com.sleepysoong.hoard.data.RunStatus.Running, com.sleepysoong.hoard.data.RunStatus.Queued -> "실행 중"
+    com.sleepysoong.hoard.data.RunStatus.Skipped -> "건너뜀"
+    com.sleepysoong.hoard.data.RunStatus.Cancelled -> "취소"
+    else -> "실패"
 }

@@ -1,5 +1,21 @@
 package com.sleepysoong.hoard.work
 
+import com.sleepysoong.hoard.data.Goal
+import com.sleepysoong.hoard.data.PermissionProfile
+import com.sleepysoong.hoard.data.RunStatus
+import com.sleepysoong.hoard.data.StepKind
+import com.sleepysoong.hoard.goal.ContinuationDecision
+import com.sleepysoong.hoard.goal.ContinuationEvaluator
+import com.sleepysoong.hoard.goal.GoalRuntime
+import com.sleepysoong.hoard.goal.GoalService
+import com.sleepysoong.hoard.goal.SessionActivity
+import com.sleepysoong.hoard.goal.TurnOutcome
+import com.sleepysoong.hoard.schedule.WakeupService
+import com.sleepysoong.hoard.schedule.WorkManagerScheduler
+import com.sleepysoong.hoard.tools.RuntimeContext
+import androidx.work.WorkInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import android.app.NotificationManager
 import android.content.Context
 import android.content.pm.ServiceInfo
@@ -40,20 +56,37 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val parentId = inputData.getString(KEY_PARENT) ?: return Result.failure()
         val modelId = inputData.getString(KEY_MODEL).orEmpty()
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
+        val mode = inputData.getString(KEY_MODE) ?: MODE_REPLY
+        val runId = inputData.getString(KEY_RUN)
         val repo = HoardRepository.get()
+        val goals = GoalService(repo)
+        val (scheduleService, scheduler, wakeups) = WorkManagerScheduler.services(applicationContext)
         // Session gone (deleted / lost with the process), or the prompt was
         // deleted/edited away while this reply was queued.
         val session = repo.sessionOf(sessionId) ?: return Result.success()
         val before = repo.messagesOf(sessionId)
         val parentIdx = before.indexOfFirst { it.id == parentId }
         if (parentIdx < 0) return Result.success()
+        // A continuation queued before the user paused/cleared the goal: nothing to do.
+        val goal = if (mode == MODE_BUDGET_SUMMARY) goals.current(sessionId) else goals.active(sessionId)
+        if (mode == MODE_CONTINUE && goal == null) return Result.success()
         // Built now, from the store: current system prompt, context limit, tools and
-        // exactly the turns up to the answered message.
+        // exactly the turns up to the answered message. The goal and any hidden runtime
+        // prompt are ephemeral: sent with this request, never stored in the conversation.
         val request = ReplyRequest.build(
             session = session,
             conversation = before.take(parentIdx + 1),
             modelId = modelId
+        ).copy(
+            goalContext = goal?.let(GoalRuntime::context),
+            hiddenUserMessage = when (mode) {
+                MODE_CONTINUE -> GoalRuntime.CONTINUE_MESSAGE
+                MODE_BUDGET_SUMMARY -> GoalRuntime.BUDGET_SUMMARY_MESSAGE
+                else -> null
+            },
+            forbidTools = mode == MODE_BUDGET_SUMMARY
         )
+        val goalBefore = goals.current(sessionId)
 
         val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
         val hasTarget = if (runAttemptCount == 0) {
@@ -69,16 +102,32 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         if (!hasTarget) return Result.success()
 
         val cfg = SettingsStore.current(applicationContext)
+        // A scheduled run gets the permissions snapshotted at creation, intersected with the
+        // current settings (never broader), and no schedule/wakeup tools of its own.
+        val scheduledPerms = runId?.let { scheduler.runOf(it) }?.let { r -> repo.schedules.value.firstOrNull { it.id == r.scheduleId }?.permissions }
+        val allowed = PermissionProfile(
+            web = cfg.webToolsEnabled && (scheduledPerms?.web ?: true),
+            files = cfg.fileToolsEnabled && (scheduledPerms?.files ?: true),
+            fullStorage = cfg.fileToolsFullStorage && (scheduledPerms?.fullStorage ?: true),
+            termux = cfg.termuxEnabled && (scheduledPerms?.termux ?: true)
+        )
         val engine = Engines.forRouter(
             cfg.routerUrl,
             AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
             token = cfg.routerToken,
             tools = WebTools.registry(
-                cfg.webToolsEnabled, cfg.braveApiKey,
-                termux = if (cfg.termuxEnabled) TermuxBridge(applicationContext) else null,
-                files = if (cfg.fileToolsEnabled) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext, cfg.fileToolsFullStorage) else null
+                allowed.web, cfg.braveApiKey,
+                termux = if (allowed.termux) TermuxBridge(applicationContext) else null,
+                files = if (allowed.files) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext, allowed.fullStorage) else null,
+                runtime = RuntimeContext(
+                    sessionId, session.modelId, goals,
+                    schedules = if (runId == null) scheduleService else null,
+                    wakeups = if (runId == null) wakeups else null,
+                    permissions = allowed
+                )
             )
         )
+        runId?.let(scheduler::onRunStarted)
         return try {
             promote("Hoard가 생각 중…")
             engine.streamReply(request) { ev ->
@@ -100,11 +149,16 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 if (!written) throw TargetGone()
                 if (!ev.done) promote("Hoard가 답변 중…")
             }
+            val reply = repo.messagesOf(sessionId).firstOrNull { it.id == messageId }
+            runId?.let { scheduler.onRunFinished(it, RunStatus.Succeeded, summary = reply?.text, tokens = reply?.totalTokens) }
+            afterTurn(sessionId, messageId, mode, reply, goals, goalBefore, wakeups, cfg.routerUrl.isNotBlank())
             notifyDone(sessionId)
             Result.success()
         } catch (_: TargetGone) {
+            runId?.let { scheduler.onRunFinished(it, RunStatus.Cancelled, error = "run session deleted") }
             Result.success()
         } catch (e: CancellationException) {
+            runId?.let { scheduler.onRunFinished(it, RunStatus.Cancelled, error = "stopped") }
             // Cancelled or stopped by the system: never leave a spinning bubble,
             // and let the coroutine machinery see the cancellation.
             // Stopped by the user (stop button / regenerate) or the system: keep whatever
@@ -118,6 +172,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             repo.updateMessage(sessionId, messageId) {
                 it.copy(isStreaming = false, errorText = e.message, routing = e.routing ?: it.routing)
             }
+            runId?.let { scheduler.onRunFinished(it, RunStatus.Failed, error = e.message) }
             Result.failure()
         } catch (e: Exception) {
             val willRetry = runAttemptCount + 1 < MAX_ATTEMPTS
@@ -130,7 +185,53 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                     isStreaming = false
                 )
             }
+            if (!willRetry) runId?.let { scheduler.onRunFinished(it, RunStatus.Failed, error = reason) }
             if (willRetry) Result.retry() else Result.failure()
+        }
+    }
+
+    /**
+     * Goal continuation engine: after a turn settles, account it against the goal and
+     * decide whether the thread keeps going on its own (a hidden continuation turn
+     * queued behind anything else in the session), stops, gets suppressed (the
+     * continuation did nothing), or ran out of budget (one final summary turn).
+     */
+    private suspend fun afterTurn(
+        sessionId: String, messageId: String, mode: String, reply: ChatMessage?,
+        goals: GoalService, before: Goal?, wakeups: WakeupService, needsNetwork: Boolean
+    ) {
+        if (mode == MODE_BUDGET_SUMMARY) return
+        val automatic = mode == MODE_CONTINUE
+        // Changed by this turn's tool calls (created, completed, blocked…) — compared before
+        // the token/turn bookkeeping below, which alone is not progress.
+        val after = goals.current(sessionId)
+        val goalChanged = before?.id != after?.id || before?.status != after?.status ||
+            before?.evidence != after?.evidence || before?.blockedReason != after?.blockedReason
+        goals.recordTurn(sessionId, reply?.totalTokens ?: 0, automatic, goalId = before?.takeIf { it.status == com.sleepysoong.hoard.data.GoalStatus.Active }?.id)
+        val turn = TurnOutcome(
+            succeeded = reply != null && reply.errorText == null,
+            automatic = automatic,
+            toolCalls = reply?.thinking?.count { it.kind == StepKind.Tool } ?: 0,
+            goalChanged = goalChanged
+        )
+        val queued = withContext(Dispatchers.IO) {
+            runCatching { WorkManager.getInstance(applicationContext).getWorkInfosForUniqueWork(uniqueName(sessionId)).get() }.getOrDefault(emptyList())
+        }.any { it.id != id && (it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED) }
+        val decision = ContinuationEvaluator(goals).decide(sessionId, turn, SessionActivity(queued, wakeups.pending(sessionId)))
+        when (decision) {
+            ContinuationDecision.Continue -> enqueue(
+                applicationContext, sessionId, inputData.getString(KEY_MODEL).orEmpty(), "msg-" + UUID.randomUUID().toString().take(8),
+                parentId = messageId, needsNetwork = needsNetwork, mode = MODE_CONTINUE
+            )
+            ContinuationDecision.Suppress -> goals.suppressContinuation(sessionId, true)
+            is ContinuationDecision.BudgetLimited -> {
+                goals.markBudgetLimited(sessionId)
+                enqueue(
+                    applicationContext, sessionId, inputData.getString(KEY_MODEL).orEmpty(), "msg-" + UUID.randomUUID().toString().take(8),
+                    parentId = messageId, needsNetwork = needsNetwork, mode = MODE_BUDGET_SUMMARY
+                )
+            }
+            is ContinuationDecision.Stop -> Unit
         }
     }
 
@@ -179,6 +280,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_MESSAGE = "message_id"
         /** The user message being answered; the reply is skipped if it was removed while queued. */
         const val KEY_PARENT = "parent_id"
+        const val KEY_MODE = "mode"
+        const val KEY_RUN = "schedule_run_id"
+        const val MODE_REPLY = "reply"
+        const val MODE_CONTINUE = "continue"
+        const val MODE_BUDGET_SUMMARY = "budget_summary"
 
         /** First run + 2 retries; a dead backend must not spin forever. */
         const val MAX_ATTEMPTS = 3
@@ -191,7 +297,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             parentId: String,
             replacePending: Boolean = false,
             /** Router mode: wait for a network instead of burning retries offline. */
-            needsNetwork: Boolean = false
+            needsNetwork: Boolean = false,
+            /** [MODE_REPLY] (answer [parentId]), [MODE_CONTINUE] (goal continuation), [MODE_BUDGET_SUMMARY]. */
+            mode: String = MODE_REPLY,
+            /** Set when this reply is a scheduled run. */
+            scheduleRunId: String? = null
         ) {
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
@@ -199,7 +309,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         KEY_SESSION to sessionId,
                         KEY_MODEL to modelId,
                         KEY_MESSAGE to messageId,
-                        KEY_PARENT to parentId
+                        KEY_PARENT to parentId,
+                        KEY_MODE to mode,
+                        KEY_RUN to scheduleRunId
                     )
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
@@ -223,6 +335,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             WorkManager.getInstance(ctx).cancelUniqueWork(uniqueName(sessionId))
         }
 
-        private fun uniqueName(sessionId: String) = "hoard-reply-$sessionId"
+        internal fun uniqueName(sessionId: String) = "hoard-reply-$sessionId"
     }
 }

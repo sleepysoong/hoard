@@ -75,6 +75,23 @@ Still no gradients: every colour is solid.
   `allow-external-apps` not set, timeout. Short commands only (Binder size limit); no PTY/streaming.
   One-time Termux setup: `mkdir -p ~/.termux && echo allow-external-apps=true >> ~/.termux/termux.properties && termux-reload-settings`.
   Code: `tools/TermuxExecTool.kt` (tool layer) ↔ `termux/` (Android side, `TermuxConstants` from termux-shared, compileOnly).
+- **Goals** (`goal/`): a thread-scoped persistent completion contract. `/goal <objective>` (or the model's
+  `goal` tool, action create/get/complete/block) sets one per session; after each settled turn the
+  continuation engine (in `ChatResponseWorker.afterTurn`, outside the agent loop) queues a hidden continuation
+  turn while the goal is active, the session is idle (nothing queued, no pending wakeup) and budget remains
+  (8 auto turns / 150k tokens / 30 min). Completion needs concrete evidence; a continuation with no tool call
+  and no goal change suppresses further ones (spin guard); an exhausted budget → `budget_limited` + one
+  summary turn, never "completed". Goal context is injected as ephemeral developer text, never stored in the
+  conversation. Pause/resume/clear are user-only (goal bar → sheet, `/goal pause|resume|clear`); the stop
+  button pauses; branching snapshots the goal (`parentGoalId`). Goals persist with the conversation store.
+- **Schedules** (`schedule/`): durable `at` / `every` (anchored, no drift) / 5-field `cron` + IANA zone,
+  created by the model's `schedule` tool on request. Each firing claims a unique (schedule, planned_at) run,
+  applies overlap (skip/queue/parallel) and catch-up (skip/latest/all≤3) policies, and runs in its **own
+  isolated session** ("예약 · …") with the prompt (+ optional context snapshot) and the permissions
+  snapshotted at creation ∩ current settings (no schedule/wakeup tools inside a run). Run history,
+  stale-run recovery and re-arming on app start (`SchedulerEngine.reconcile`). Backend: WorkManager (survives
+  reboot; Doze may delay — 15 min grace). `schedule_wakeup` (5 s–1 h, one per session) wakes the same session
+  later instead of busy-polling. Schedules are listed in 도구 → 예약 (pause/resume/cancel).
 - Work steps (reasoning / tool calls, expandable cards) + model picker (router groups/models)
 - 도구 tab: the real on-device tools (web_search / web_fetch, termux_exec) and their settings
 - Top floating bar: session name + live context usage

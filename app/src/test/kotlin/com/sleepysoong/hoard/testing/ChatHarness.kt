@@ -94,6 +94,16 @@ class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null, greeting: B
     fun unfinishedWork(): List<WorkInfo> = workManager.getWorkInfos(
         WorkQuery.fromStates(WorkInfo.State.ENQUEUED, WorkInfo.State.RUNNING, WorkInfo.State.BLOCKED)
     ).get()
+        // Armed schedules / wakeups wait for their time, not for the reply to settle.
+        .filterNot { it.state == WorkInfo.State.ENQUEUED && it.tags.any { t -> t == "hoard-schedule" || t == "hoard-wakeup" } }
+
+    /** Releases an armed schedule firing / wakeup now (as if its delay had passed). */
+    fun fireDelayed(tag: String) {
+        val driver = WorkManagerTestInitHelper.getTestDriver(app)!!
+        workManager.getWorkInfos(WorkQuery.Builder.fromTags(listOf(tag)).addStates(listOf(WorkInfo.State.ENQUEUED)).build()).get()
+            .forEach { driver.setInitialDelayMet(it.id) }
+        idle()
+    }
 
     /** Waits until every reply worker has finished and no bubble is still streaming. */
     fun awaitReplies(timeoutMs: Long = 15_000, onTick: () -> Unit = {}) {

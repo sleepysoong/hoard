@@ -33,7 +33,9 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val usedTokens: Int = 0,
     val sessions: List<ChatSession> = emptyList(),
-    val previews: Map<String, SessionPreview> = emptyMap()
+    val previews: Map<String, SessionPreview> = emptyMap(),
+    /** The open session's current goal (null = none, or cleared). */
+    val goal: com.sleepysoong.hoard.data.Goal? = null
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
@@ -47,9 +49,18 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var input by mutableStateOf("")
     var attachments by mutableStateOf<List<UiAttachment>>(emptyList())
 
+    private val goals = com.sleepysoong.hoard.goal.GoalService(repo)
+
+    /** Feedback for /goal commands (shown under the goal bar), cleared on the next command. */
+    private val _goalNotice = MutableStateFlow<String?>(null)
+    val goalNotice: StateFlow<String?> = _goalNotice
+
+    /** "/goal" with no argument opens the goal details. */
+    var goalSheetOpen by mutableStateOf(false)
+
     val uiState: StateFlow<ChatUiState> = combine(
-        repo.sessions, repo.messages, _activeSessionId
-    ) { sessions, allMessages, activeId ->
+        repo.sessions, repo.messages, _activeSessionId, repo.goals
+    ) { sessions, allMessages, activeId, allGoals ->
         val id = activeId.ifBlank { sessions.firstOrNull()?.id.orEmpty() }
         val msgs = allMessages[id].orEmpty()
         val previews = allMessages.mapNotNull { (key, list) ->
@@ -64,7 +75,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             // What the next request would carry: system prompt + every message.
             usedTokens = session?.let { ReplyRequest.contextTokens(it.systemPrompt, msgs) } ?: 0,
             sessions = sessions,
-            previews = previews
+            previews = previews,
+            goal = allGoals.lastOrNull { it.sessionId == id && it.status != com.sleepysoong.hoard.data.GoalStatus.Cleared }
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ChatUiState())
 
@@ -90,6 +102,13 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val session = uiState.value.session ?: return
         val clean = text.trim()
         if (clean.isEmpty() && attachments.isEmpty()) return
+        if (attachments.isEmpty() && (clean == "/goal" || clean.startsWith("/goal "))) {
+            input = ""
+            goalCommand(clean.removePrefix("/goal").trim(), modelId)
+            return
+        }
+        // The user said something: a spin-suppressed goal may continue again.
+        goals.suppressContinuation(session.id, false)
         val userMsg = ChatMessage(
             id = "msg-" + UUID.randomUUID().toString().take(8),
             role = MessageRole.User,
@@ -128,10 +147,60 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun usesRouter() = settings.value.routerUrl.isNotBlank()
 
-    /** Stop the reply being generated in the open session (keeps what arrived so far). */
+    /** Stop the reply being generated in the open session (keeps what arrived so far). An active goal is paused. */
     fun stopReply() {
         val session = uiState.value.session ?: return
         ChatResponseWorker.cancel(getApplication(), session.id)
+        if (goals.active(session.id) != null) {
+            goals.pause(session.id, com.sleepysoong.hoard.goal.Actor.User)
+            _goalNotice.value = "중지해서 목표를 일시정지했습니다 · /goal resume 으로 재개"
+        }
+    }
+
+    /**
+     * `/goal <objective>` sets a goal and starts on it; `/goal` shows it;
+     * `/goal pause|resume|clear` are the user's lifecycle controls (the model has none of them).
+     */
+    fun goalCommand(arg: String, modelId: String) {
+        val session = uiState.value.session ?: return
+        _goalNotice.value = null
+        try {
+            when (arg.lowercase()) {
+                "" -> goalSheetOpen = true
+                "pause" -> goals.pause(session.id, com.sleepysoong.hoard.goal.Actor.User)
+                "resume" -> {
+                    goals.resume(session.id, com.sleepysoong.hoard.goal.Actor.User)
+                    continueGoal(session.id, modelId)
+                }
+                "clear" -> goals.clear(session.id, com.sleepysoong.hoard.goal.Actor.User)
+                else -> {
+                    goals.create(session.id, arg, com.sleepysoong.hoard.goal.Actor.User)
+                    // The objective becomes the turn that starts the work.
+                    val msg = ChatMessage("msg-" + UUID.randomUUID().toString().take(8), MessageRole.User, arg, trigger = "goal")
+                    repo.appendMessage(session.id, msg)
+                    ChatResponseWorker.enqueue(
+                        getApplication(), session.id, modelId, "msg-" + UUID.randomUUID().toString().take(8),
+                        parentId = msg.id, needsNetwork = usesRouter()
+                    )
+                }
+            }
+        } catch (e: com.sleepysoong.hoard.goal.GoalException) {
+            _goalNotice.value = e.message
+        }
+    }
+
+    /** UI buttons (goal sheet). */
+    fun pauseGoal() = goalCommand("pause", uiState.value.session?.modelId.orEmpty())
+    fun resumeGoal() = goalCommand("resume", uiState.value.session?.modelId.orEmpty())
+    fun clearGoal() = goalCommand("clear", uiState.value.session?.modelId.orEmpty())
+
+    /** Resume = pick the work up again with a continuation turn after the last message. */
+    private fun continueGoal(sessionId: String, modelId: String) {
+        val last = repo.messagesOf(sessionId).lastOrNull() ?: return
+        ChatResponseWorker.enqueue(
+            getApplication(), sessionId, modelId, "msg-" + UUID.randomUUID().toString().take(8),
+            parentId = last.id, needsNetwork = usesRouter(), mode = ChatResponseWorker.MODE_CONTINUE
+        )
     }
 
     fun deleteMessage(messageId: String) {
@@ -162,6 +231,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun branchFrom(messageId: String, branchName: String): String? {
         val session = uiState.value.session ?: return null
         val branch = repo.branchFrom(session.id, messageId, branchName) ?: return null
+        // The branch gets an independent snapshot of the open goal (parent_goal_id → original).
+        goals.forkInto(session.id, branch.id)
         _activeSessionId.value = branch.id
         return branch.id
     }

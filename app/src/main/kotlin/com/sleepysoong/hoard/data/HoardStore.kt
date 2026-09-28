@@ -20,12 +20,16 @@ class HoardStore(private val file: File) {
     data class Snapshot(
         val version: Int = VERSION,
         val sessions: List<SSession> = emptyList(),
-        val messages: Map<String, List<SMessage>> = emptyMap()
+        val messages: Map<String, List<SMessage>> = emptyMap(),
+        val goals: List<Goal> = emptyList(),
+        val schedules: List<Schedule> = emptyList(),
+        val scheduleRuns: List<ScheduleRun> = emptyList()
     )
 
     @Serializable data class SSession(
         val id: String, val name: String, val systemPrompt: String, val modelId: String,
-        val contextLimit: Int, val createdAt: Long, val updatedAt: Long, val branchedFrom: String? = null
+        val contextLimit: Int, val createdAt: Long, val updatedAt: Long, val branchedFrom: String? = null,
+        val scheduleId: String? = null
     )
 
     @Serializable data class SAttachment(val id: String, val name: String, val mime: String, val sizeBytes: Long, val uri: String? = null)
@@ -45,7 +49,7 @@ class HoardStore(private val file: File) {
         val promptTokens: Int = 0, val completionTokens: Int = 0,
         val attachments: List<SAttachment> = emptyList(), val createdAt: Long = 0,
         val branchedFromId: String? = null, val isStreaming: Boolean = false,
-        val routing: SRouting? = null, val errorText: String? = null
+        val routing: SRouting? = null, val errorText: String? = null, val trigger: String? = null
     )
 
     /** Null when there is no saved state yet (first launch) or it was unreadable. */
@@ -76,8 +80,8 @@ class HoardStore(private val file: File) {
         const val VERSION = 1
         private val json = Json { ignoreUnknownKeys = true; encodeDefaults = false }
 
-        fun ChatSession.toS() = SSession(id, name, systemPrompt, modelId, contextLimit, createdAt, updatedAt, branchedFrom)
-        fun SSession.toModel() = ChatSession(id, name, systemPrompt, modelId, contextLimit, createdAt, updatedAt, branchedFrom)
+        fun ChatSession.toS() = SSession(id, name, systemPrompt, modelId, contextLimit, createdAt, updatedAt, branchedFrom, scheduleId)
+        fun SSession.toModel() = ChatSession(id, name, systemPrompt, modelId, contextLimit, createdAt, updatedAt, branchedFrom, scheduleId)
 
         fun ChatMessage.toS() = SMessage(
             id = id, role = role.name, text = text, modelId = modelId,
@@ -90,7 +94,7 @@ class HoardStore(private val file: File) {
                     SAttempt(it.index, it.model, it.provider, it.upstreamModel, it.outcome, it.errorClass, it.statusCode, it.reason, it.failedOver, it.durationMs)
                 })
             },
-            errorText = errorText
+            errorText = errorText, trigger = trigger
         )
 
         fun SMessage.toModel(): ChatMessage = ChatMessage(
@@ -109,7 +113,7 @@ class HoardStore(private val file: File) {
                     RouteAttempt(it.index, it.model, it.provider, it.upstreamModel, it.outcome, it.errorClass, it.statusCode, it.reason, it.failedOver, it.durationMs)
                 })
             },
-            errorText = errorText
+            errorText = errorText, trigger = trigger
         )
     }
 }

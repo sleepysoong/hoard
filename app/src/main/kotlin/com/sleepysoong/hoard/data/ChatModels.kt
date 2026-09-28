@@ -91,7 +91,13 @@ data class ChatMessage(
     /** Router trace for assistant replies (null when the router sent none). */
     val routing: RoutingInfo? = null,
     /** Set when the reply failed; shown in the bubble instead of silently empty text. */
-    val errorText: String? = null
+    val errorText: String? = null,
+    /**
+     * A user-role message the runtime created, not typed: "goal" (/goal objective),
+     * "wakeup" (schedule_wakeup fired), "schedule" (a scheduled run's prompt).
+     * Shown as a compact notice; sent to the model with a label.
+     */
+    val trigger: String? = null
 ) {
     val totalTokens: Int get() = promptTokens + completionTokens
 }
@@ -104,7 +110,9 @@ data class ChatSession(
     val contextLimit: Int,
     val createdAt: Long = System.currentTimeMillis(),
     val updatedAt: Long = System.currentTimeMillis(),
-    val branchedFrom: String? = null
+    val branchedFrom: String? = null,
+    /** Set on the isolated session a scheduled run executes in. */
+    val scheduleId: String? = null
 )
 
 data class AiModel(

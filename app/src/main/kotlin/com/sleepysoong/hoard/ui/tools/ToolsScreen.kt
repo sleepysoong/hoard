@@ -54,6 +54,10 @@ fun ToolsScreen(modifier: Modifier = Modifier) {
             IOSGroupedSection {
                 FileToolsSection(settings.fileToolsEnabled, settings.fileToolsFullStorage)
             }
+            IOSSectionHeader("예약")
+            IOSGroupedSection {
+                SchedulesSection()
+            }
             IOSSectionHeader("Termux")
             IOSGroupedSection {
                 TermuxSection(settings.termuxEnabled)

@@ -16,6 +16,11 @@ class HoardApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         com.sleepysoong.hoard.data.HoardRepository.init(java.io.File(filesDir, "hoard-store.json"))
+        // Scheduler recovery off the main thread: re-arm active schedules (catch-up policy
+        // for anything due while Hoard wasn't running) and fail runs a killed process left "running".
+        Thread({
+            runCatching { com.sleepysoong.hoard.schedule.WorkManagerScheduler.services(this).second.reconcile() }
+        }, "hoard-scheduler-reconcile").start()
         val channel = NotificationChannel(
             "hoard-replies",
             "Hoard 백그라운드 답변",

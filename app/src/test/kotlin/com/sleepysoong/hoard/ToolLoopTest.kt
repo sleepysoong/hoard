@@ -263,13 +263,14 @@ class ToolLoopTest {
         dir.deleteRecursively()
     }
 
+    /** Device tools off: only the runtime capabilities (goal / schedule / wakeup) remain. */
     @Test fun allToolsOffSendNoTools() {
         start(tools = null)
         runBlocking { SettingsStore.setWebToolsEnabled(h.app, false); SettingsStore.setFileToolsEnabled(h.app, false) }
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("도구 없이 답"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()
-        assertNull(body(0)["tools"])
+        assertEquals(listOf("goal", "schedule", "schedule_wakeup"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
         assertEquals("도구 없이 답", h.messages().last().text)
     }
 
@@ -278,6 +279,6 @@ class ToolLoopTest {
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()
-        assertEquals(listOf("web_fetch", "read_file", "write_file", "edit_file", "glob", "grep"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
+        assertEquals(listOf("web_fetch", "read_file", "write_file", "edit_file", "glob", "grep", "goal", "schedule", "schedule_wakeup"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
     }
 }

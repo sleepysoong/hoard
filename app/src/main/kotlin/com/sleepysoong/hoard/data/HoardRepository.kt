@@ -25,6 +25,27 @@ class HoardRepository(private val store: HoardStore? = null) {
     private val _messages = MutableStateFlow<Map<String, List<ChatMessage>>>(emptyMap())
     val messages: StateFlow<Map<String, List<ChatMessage>>> = _messages.asStateFlow()
 
+    /** Goals of every session (history included: cleared/completed goals are kept). */
+    private val _goals = MutableStateFlow<List<Goal>>(emptyList())
+    val goals: StateFlow<List<Goal>> = _goals.asStateFlow()
+
+    private val _schedules = MutableStateFlow<List<Schedule>>(emptyList())
+    val schedules: StateFlow<List<Schedule>> = _schedules.asStateFlow()
+
+    private val _scheduleRuns = MutableStateFlow<List<ScheduleRun>>(emptyList())
+    val scheduleRuns: StateFlow<List<ScheduleRun>> = _scheduleRuns.asStateFlow()
+
+    /** Atomic read-modify-write for the goal/schedule services (they own the rules). */
+    fun updateGoals(transform: (List<Goal>) -> List<Goal>) = _goals.update(transform)
+    fun updateSchedules(transform: (List<Schedule>) -> List<Schedule>) = _schedules.update(transform)
+    fun updateScheduleRuns(transform: (List<ScheduleRun>) -> List<ScheduleRun>) = _scheduleRuns.update(transform)
+
+    /** Adds a whole new session (a scheduled run's isolated session). */
+    fun addSession(session: ChatSession, messages: List<ChatMessage>) {
+        _sessions.update { listOf(session) + it }
+        _messages.update { it + (session.id to messages) }
+    }
+
     /** Router groups/models (empty = no router connected: nothing to pick). */
     private val _routerModels = MutableStateFlow<List<AiModel>>(emptyList())
     val routerModels: StateFlow<List<AiModel>> = _routerModels.asStateFlow()
@@ -83,6 +104,7 @@ class HoardRepository(private val store: HoardStore? = null) {
     fun deleteSession(id: String) {
         _sessions.update { it.filterNot { s -> s.id == id } }
         _messages.update { it - id }
+        _goals.update { it.filterNot { g -> g.sessionId == id } }
     }
 
     fun updateSession(id: String, transform: (ChatSession) -> ChatSession) {
@@ -165,13 +187,13 @@ class HoardRepository(private val store: HoardStore? = null) {
     init {
         store?.load()?.let(::restore)
         if (store != null) {
-            val initialState = listOf(_sessions.value, _messages.value)
+            val initialState = listOf(_sessions.value, _messages.value, _goals.value, _schedules.value, _scheduleRuns.value)
             saver.launch {
                 // Any change → save at most every SAVE_DEBOUNCE_MS (streaming updates are frequent).
-                // combine() emits once per change of either. Skip only what equals the
+                // combine() emits once per change of any of them. Skip only what equals the
                 // state captured *before* this coroutine started: a plain drop(1) raced — a change
                 // made before collection began arrived as the first value and was never saved.
-                kotlinx.coroutines.flow.combine(_sessions, _messages) { a, b -> listOf(a, b) }
+                kotlinx.coroutines.flow.combine(_sessions, _messages, _goals, _schedules, _scheduleRuns) { a, b, c, d, e -> listOf(a, b, c, d, e) }
                     .dropWhile { it == initialState }
                     .debounce(SAVE_DEBOUNCE_MS)
                     .collect { flush() }
@@ -188,7 +210,10 @@ class HoardRepository(private val store: HoardStore? = null) {
     private fun snapshot() = with(HoardStore) {
         HoardStore.Snapshot(
             sessions = _sessions.value.map { it.toS() },
-            messages = _messages.value.mapValues { (_, list) -> list.map { it.toS() } }
+            messages = _messages.value.mapValues { (_, list) -> list.map { it.toS() } },
+            goals = _goals.value,
+            schedules = _schedules.value,
+            scheduleRuns = _scheduleRuns.value
         )
     }
 
@@ -197,6 +222,9 @@ class HoardRepository(private val store: HoardStore? = null) {
         // when nothing else was said there): not user data, drop it.
         val msgs = s.messages.mapValues { (_, list) -> list.filterNot { it.id.startsWith(Defaults.LEGACY_WELCOME_PREFIX) } }
         val sessions = s.sessions.filterNot { it.id == Defaults.LEGACY_WELCOME_SESSION && msgs[it.id].isNullOrEmpty() }
+        _goals.value = s.goals.filter { g -> sessions.any { it.id == g.sessionId } }
+        _schedules.value = s.schedules
+        _scheduleRuns.value = s.scheduleRuns
         if (sessions.isEmpty()) return@with
         _sessions.value = sessions.map { it.toModel() }
         _messages.value = sessions.associate { sess ->
