@@ -16,7 +16,9 @@ data class ReplyRequest(
     val history: List<ChatMessage>,
     val contextLimit: Int,
     /** Oldest messages left out to fit [contextLimit]. */
-    val droppedCount: Int
+    val droppedCount: Int,
+    /** Authoritative execution state, captured at turn start; never stored as chat history. */
+    val todoReminder: String? = null
 ) {
     val question: String get() = history.lastOrNull { it.role == MessageRole.User }?.text.orEmpty()
     val hasAttachments: Boolean get() = history.lastOrNull { it.role == MessageRole.User }?.attachments?.isNotEmpty() == true

@@ -46,6 +46,14 @@ fun ToolsScreen(modifier: Modifier = Modifier) {
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp).testTag("tools-no-router")
                 )
             }
+            IOSSectionHeader("할 일")
+            IOSGroupedSection {
+                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("작업 진행 추적", style = MaterialTheme.typography.bodyLarge)
+                    Text("복잡한 작업의 단계를 세션별로 저장합니다. 진행 상황은 채팅에서 확인할 수 있고, 앱을 다시 열어도 이어집니다.",
+                        style = MaterialTheme.typography.bodyMedium, color = scheme.onSurfaceVariant)
+                }
+            }
             IOSSectionHeader("웹")
             IOSGroupedSection {
                 WebToolsSection(settings.webToolsEnabled, settings.braveApiKey)

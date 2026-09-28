@@ -55,6 +55,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             modelId = modelId
         )
 
+        val turnRequest = request.copy(todoReminder = repo.todos.reminder(sessionId))
         val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
         val hasTarget = if (runAttemptCount == 0) {
             // Placeholder streaming bubble owned by the worker. Fails when the session
@@ -76,12 +77,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             tools = WebTools.registry(
                 cfg.webToolsEnabled, cfg.braveApiKey,
                 termux = if (cfg.termuxEnabled) TermuxBridge(applicationContext) else null,
-                files = if (cfg.fileToolsEnabled) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext, cfg.fileToolsFullStorage) else null
+                files = if (cfg.fileToolsEnabled) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext, cfg.fileToolsFullStorage) else null,
+                todo = com.sleepysoong.hoard.tools.TodoTool(repo.todos, sessionId)
             )
         )
         return try {
             promote("Hoard가 생각 중…")
-            engine.streamReply(request) { ev ->
+            engine.streamReply(turnRequest) { ev ->
                 val written = repo.updateMessage(sessionId, messageId) {
                     it.copy(
                         text = ev.deltaText,

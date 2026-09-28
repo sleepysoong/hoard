@@ -15,6 +15,8 @@ import java.io.File
  * silently destroyed.
  */
 class HoardStore(private val file: File) {
+    /** A single sibling DB holds execution state for all sessions; existing chat JSON stays compatible. */
+    internal val todoDatabaseFile get() = File(file.parentFile, file.nameWithoutExtension + ".todos.db")
 
     @Serializable
     data class Snapshot(

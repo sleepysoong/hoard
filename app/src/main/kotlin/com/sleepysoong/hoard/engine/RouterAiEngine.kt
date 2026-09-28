@@ -82,7 +82,8 @@ class RouterAiEngine(
         var round = 0
         while (true) {
             val finalRound = active == null || round >= maxToolRounds
-            val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems, forbidTools = active != null && finalRound)
+            val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems,
+                forbidTools = active != null && finalRound, includeTodoReminder = round == 0)
             val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
             if (state.toolCalls.isEmpty()) return
             prior.absorb(state)
@@ -438,7 +439,8 @@ class RouterAiEngine(
             toolSchemas: List<JsonObject>? = null,
             toolItems: List<JsonObject> = emptyList(),
             forbidTools: Boolean = false,
-            today: java.time.LocalDate = java.time.LocalDate.now()
+            today: java.time.LocalDate = java.time.LocalDate.now(),
+            includeTodoReminder: Boolean = true
         ): String = buildJsonObject {
             put("model", r.modelId)
             put("stream", true)
@@ -453,6 +455,14 @@ class RouterAiEngine(
             // answered) mention their attachments by name to keep requests small.
             val lastUser = r.history.indexOfLast { it.role == MessageRole.User }
             put("input", buildJsonArray {
+                if (includeTodoReminder) r.todoReminder?.let { reminder ->
+                    add(buildJsonObject {
+                        put("type", "message"); put("role", "developer")
+                        put("content", buildJsonArray {
+                            add(buildJsonObject { put("type", "input_text"); put("text", reminder) })
+                        })
+                    })
+                }
                 r.history.forEachIndexed { i, m -> add(encodeMessage(m, if (i == lastUser) attachments else null)) }
                 toolItems.forEach { add(it) }
             })
@@ -498,6 +508,7 @@ class RouterAiEngine(
         private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate): String {
             val names = schemas.mapNotNull { it.str("name") }
             val lines = mutableListOf("Today's date: $today.")
+            if ("todo" in names) lines += com.sleepysoong.hoard.tools.TodoTool.INSTRUCTIONS
             if ("web_search" in names) lines += "Use web_search for current or unfamiliar facts. It returns up to 10 results with snippets only, not page contents. " +
                 "If results are weak, search again with a refined query: more specific keywords, English technical terms, " +
                 "site:domain, \"exact phrase\", -excluded words, AND/OR/NOT, filetype:pdf."

@@ -33,7 +33,8 @@ data class ChatUiState(
     val messages: List<ChatMessage> = emptyList(),
     val usedTokens: Int = 0,
     val sessions: List<ChatSession> = emptyList(),
-    val previews: Map<String, SessionPreview> = emptyMap()
+    val previews: Map<String, SessionPreview> = emptyMap(),
+    val todos: List<com.sleepysoong.hoard.data.todo.TodoItem> = emptyList()
 )
 
 class ChatViewModel(app: Application) : AndroidViewModel(app) {
@@ -48,8 +49,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     var attachments by mutableStateOf<List<UiAttachment>>(emptyList())
 
     val uiState: StateFlow<ChatUiState> = combine(
-        repo.sessions, repo.messages, _activeSessionId
-    ) { sessions, allMessages, activeId ->
+        repo.sessions, repo.messages, _activeSessionId, repo.todos.state
+    ) { sessions, allMessages, activeId, allTodos ->
         val id = activeId.ifBlank { sessions.firstOrNull()?.id.orEmpty() }
         val msgs = allMessages[id].orEmpty()
         val previews = allMessages.mapNotNull { (key, list) ->
@@ -64,7 +65,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             // What the next request would carry: system prompt + every message.
             usedTokens = session?.let { ReplyRequest.contextTokens(it.systemPrompt, msgs) } ?: 0,
             sessions = sessions,
-            previews = previews
+            previews = previews,
+            todos = allTodos[id].orEmpty()
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ChatUiState())
 

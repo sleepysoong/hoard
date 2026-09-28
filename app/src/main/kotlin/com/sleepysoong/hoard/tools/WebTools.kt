@@ -19,10 +19,13 @@ object WebTools {
         searchProvider: SearchProvider? = null,
         termux: TermuxExecutor? = null,
         /** File tools (read_file, write_file, edit_file, glob, grep) over this sandbox; null = off. */
-        files: com.sleepysoong.hoard.tools.files.Workspace? = null
+        files: com.sleepysoong.hoard.tools.files.Workspace? = null,
+        /** Bound by the worker to its session, independent of web/file settings. */
+        todo: TodoTool? = null
     ): ToolRegistry {
         override?.let { return it }
         val registry = ToolRegistry()
+        if (todo != null) registry.register(todo)
         if (enabled) {
             val provider = searchProvider ?: braveApiKey.trim().takeIf { it.isNotEmpty() }?.let { BraveSearchProvider(it) }
             if (provider != null) registry.register(WebSearchTool(provider))

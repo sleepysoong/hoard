@@ -18,6 +18,7 @@ import java.util.UUID
  * Writes are batched (debounced) off the main thread; [flush] forces one.
  */
 class HoardRepository(private val store: HoardStore? = null) {
+    val todos = com.sleepysoong.hoard.data.todo.TodoService(store?.todoDatabaseFile)
     /** No seeded sessions: a fresh install starts with an empty list. */
     private val _sessions = MutableStateFlow<List<ChatSession>>(emptyList())
     val sessions: StateFlow<List<ChatSession>> = _sessions.asStateFlow()
@@ -65,13 +66,16 @@ class HoardRepository(private val store: HoardStore? = null) {
             modelId = modelId,
             contextLimit = contextLimit
         )
+        todos.registerSessions(listOf(s.id))
         _sessions.update { listOf(s) + it }
         _messages.update { it + (s.id to emptyList()) }
+        flush()
         return s
     }
 
     /** Tests: put a fully formed session (and its messages) at the top of the list. */
     internal fun insertSessionForTests(session: ChatSession, messages: List<ChatMessage>) {
+        todos.registerSessions(listOf(session.id))
         _sessions.update { listOf(session) + it.filterNot { s -> s.id == session.id } }
         _messages.update { it + (session.id to messages) }
     }
@@ -81,8 +85,10 @@ class HoardRepository(private val store: HoardStore? = null) {
     }
 
     fun deleteSession(id: String) {
+        todos.deleteSession(id)
         _sessions.update { it.filterNot { s -> s.id == id } }
         _messages.update { it - id }
+        flush()
     }
 
     fun updateSession(id: String, transform: (ChatSession) -> ChatSession) {
@@ -149,8 +155,10 @@ class HoardRepository(private val store: HoardStore? = null) {
             contextLimit = src.contextLimit,
             branchedFrom = sessionId
         )
+        todos.forkSession(sessionId, branch.id)
         _sessions.update { listOf(branch) + it }
         _messages.update { it + (branch.id to list.take(idx + 1).map { m -> m.copy(branchedFromId = m.id) }) }
+        flush()
         return branch
     }
 
@@ -164,6 +172,7 @@ class HoardRepository(private val store: HoardStore? = null) {
 
     init {
         store?.load()?.let(::restore)
+        todos.registerSessions(_sessions.value.map { it.id })
         if (store != null) {
             val initialState = listOf(_sessions.value, _messages.value)
             saver.launch {
@@ -226,6 +235,7 @@ class HoardRepository(private val store: HoardStore? = null) {
         /** Simulates a fresh process: memory is gone, whatever reached disk is reloaded. */
         internal fun resetForTests() = synchronized(this) {
             instance?.saver?.cancel()
+            instance?.todos?.close()
             instance = null
         }
     }

@@ -167,6 +167,8 @@ fun ChatScreen(
             // Context usage lives in the top bar subtitle ("96/32000 토큰"); the 2dp bar that
             // was here showed up as a stray dot under the bar at low usage.
 
+            session?.let { TodoPanel(it.id, state.todos) }
+
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val maxBubbleWidth = maxWidth * 0.78f
                 if (state.messages.isEmpty()) {
