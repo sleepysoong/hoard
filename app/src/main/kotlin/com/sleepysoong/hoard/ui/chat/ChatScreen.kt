@@ -35,7 +35,6 @@ import androidx.compose.material.icons.rounded.KeyboardArrowDown
 import androidx.compose.material.icons.rounded.Refresh
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -166,14 +165,8 @@ fun ChatScreen(
                     }
                 }
             )
-            LinearProgressIndicator(
-                progress = {
-                    (state.usedTokens.toFloat() / (session?.contextLimit ?: 32_000).toFloat()).coerceIn(0f, 1f)
-                },
-                modifier = Modifier.fillMaxWidth().height(2.dp),
-                trackColor = Color.Transparent,
-                drawStopIndicator = {}
-            )
+            // Context usage lives in the top bar subtitle ("96/32000 토큰"); the 2dp bar that
+            // was here showed up as a stray dot under the bar at low usage.
 
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val maxBubbleWidth = maxWidth * 0.78f
