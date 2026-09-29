@@ -79,9 +79,12 @@ android {
                 // Low-spec: one Robolectric JVM, small heap, serial GC, capped CPU use.
                 it.maxHeapSize = "768m"
                 // Fresh JVM every 40 classes: Robolectric sandboxes pile up native memory otherwise.
-                it.setForkEvery(40)
+                it.setForkEvery(25)
                 it.maxParallelForks = 1
-                it.jvmArgs("-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-XX:TieredStopAtLevel=1")
+                // Robolectric loads a fresh sandbox of classes per config: the default code cache
+                // (48 MB with C1 only) ran out in CI ("Out of space in CodeCache for adapters").
+                // Reserved address space, committed only as used.
+                it.jvmArgs("-XX:+UseSerialGC", "-XX:ActiveProcessorCount=2", "-XX:TieredStopAtLevel=1", "-XX:ReservedCodeCacheSize=256m")
                 // Flow tests dump conversation transcripts here (reviewable artifact).
                 it.systemProperty("hoard.artifacts", layout.buildDirectory.dir("test-artifacts").get().asFile.path)
                 // Robolectric unpacks a ~200 MB native runtime into java.io.tmpdir per JVM and
