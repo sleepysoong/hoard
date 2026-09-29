@@ -1,5 +1,7 @@
 package com.sleepysoong.hoard.ui.chat
 
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.testTag
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
@@ -91,6 +93,8 @@ fun ChatInputBar(
     /** A reply is streaming in this session: the send button becomes a stop button. */
     replying: Boolean = false,
     onStop: () -> Unit = {},
+    /** The session's goal: decides which /goal commands the "/" menu offers. */
+    goal: com.sleepysoong.hoard.data.Goal? = null,
     modifier: Modifier = Modifier
 ) {
     val scheme = MaterialTheme.colorScheme
@@ -111,6 +115,7 @@ fun ChatInputBar(
         }
     }
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
+    val slash = SlashCommands.matching(value, goal)
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {
         // The bar grows/shrinks on a spring as attachment chips come and go.
@@ -161,6 +166,48 @@ fun ChatInputBar(
                 }
             }
 
+            // "/" menu: the commands that apply right now; tapping fills the field (send runs it).
+            GlassAnimatedVisibility(
+                visible = slash.isNotEmpty(),
+                enter = fadeIn(GlassMotion.fade()) + expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Bottom),
+                exit = fadeOut(GlassMotion.fade()) + shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Bottom)
+            ) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .glassMaterial(RoundedCornerShape(20.dp), scheme.surface, tone = GlassTone.Regular, lifted = false)
+                        .testTag("slash-menu")
+                        .padding(vertical = 4.dp)
+                ) {
+                    // Keep the last non-empty list while the menu animates out.
+                    var shown by remember { mutableStateOf(slash) }
+                    if (slash.isNotEmpty()) shown = slash
+                    shown.forEachIndexed { i, cmd ->
+                        if (i > 0) {
+                            HorizontalDivider(modifier = Modifier.padding(start = 12.dp), thickness = 0.5.dp, color = scheme.onSurface.copy(alpha = 0.08f))
+                        }
+                        Row(
+                            Modifier
+                                .fillMaxWidth()
+                                .liquidClickable {
+                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    onValueChange(cmd.insert)
+                                }
+                                .padding(horizontal = 12.dp, vertical = 9.dp)
+                                .testTag("slash-item"),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(cmd.label, style = MaterialTheme.typography.bodyMedium, color = scheme.primary, maxLines = 1)
+                            Text(
+                                cmd.description, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
+                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
+                }
+            }
+
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 // Liquid-glass attach buttons, same footprint as the send button.
                 GlassAttachButton(
@@ -194,9 +241,13 @@ fun ChatInputBar(
                             color = scheme.onSurfaceVariant.copy(alpha = 0.6f)
                         )
                     }
+                    // Local TextFieldValue so text set from outside (a "/" command, a cleared
+                    // draft) puts the cursor at the end instead of where it was.
+                    var field by remember { mutableStateOf(androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))) }
+                    if (field.text != value) field = androidx.compose.ui.text.input.TextFieldValue(value, androidx.compose.ui.text.TextRange(value.length))
                     BasicTextField(
-                        value = value,
-                        onValueChange = onValueChange,
+                        value = field,
+                        onValueChange = { field = it; if (it.text != value) onValueChange(it.text) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .onPreviewKeyEvent { ev ->

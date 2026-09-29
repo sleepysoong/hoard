@@ -103,7 +103,7 @@ class ChatMotionTest {
         assertTrue("opens over several frames, not a jump: $distinct", distinct.size >= 5)
     }
 
-    /** Composer chrome is glass too: attachment chip. Screenshot for review. */
+    /** Composer chrome is glass too: "/" menu + attachment chip. Screenshot for review. */
     @Test fun composerAttachmentChipShot() {
         openChat()
         compose.activity.let { a ->
@@ -115,9 +115,9 @@ class ChatMotionTest {
         compose.onNode(hasSetTextAction()).performTextInput("/")
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(800)
-        // No slash-command menu any more ("/" is just text).
-        compose.onNode(androidx.compose.ui.test.hasTestTag("slash-menu")).assertDoesNotExist()
+        // "/" opens the command menu (goal commands).
+        compose.onNode(androidx.compose.ui.test.hasTestTag("slash-menu")).assertExists()
         compose.onNode(androidx.compose.ui.test.hasTestTag("attachment-chip"), useUnmergedTree = true).assertExists()
-        frame("composer-chip")
+        frame("composer-slash-chip")
     }
 }
