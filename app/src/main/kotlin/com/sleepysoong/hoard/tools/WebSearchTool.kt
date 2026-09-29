@@ -21,6 +21,9 @@ import kotlinx.serialization.json.putJsonObject
 class WebSearchTool(private val provider: SearchProvider) : Tool {
     override val parallelSafe = true
     override val name = NAME
+    override val guidance = "Use web_search for current or unfamiliar facts. It returns up to 10 results with snippets only, not page contents. " +
+        "If results are weak, search again with a refined query: more specific keywords, English technical terms, " +
+        "site:domain, \"exact phrase\", -excluded words, AND/OR/NOT, filetype:pdf."
     override val description =
         "Search the public web and return up to 10 relevant pages (title, url, short snippet). " +
             "Search results contain only summaries/snippets, NOT the page contents: do not claim to have read a page " +
@@ -29,35 +32,12 @@ class WebSearchTool(private val provider: SearchProvider) : Tool {
             "more specific keywords, English technical terms, site:example.com, \"exact phrase\", -excluded, AND / OR / NOT, filetype:pdf. " +
             "Cite sources by url."
 
-    override val parameters: JsonObject = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            putJsonObject("query") {
-                put("type", "string")
-                put("description", "Search query. Operators: site:example.com, \"exact phrase\", -exclude, AND, OR, NOT, filetype:pdf.")
-            }
-            putJsonObject("count") {
-                put("type", "integer")
-                put("minimum", 1)
-                put("maximum", SearchRequest.MAX_COUNT)
-                put("description", "Number of results (default and max ${SearchRequest.MAX_COUNT}).")
-            }
-            putJsonObject("freshness") {
-                put("type", "string")
-                putJsonArray("enum") { listOf("day", "week", "month", "year").forEach { add(JsonPrimitive(it)) } }
-                put("description", "Only pages from the last day/week/month/year.")
-            }
-            putJsonObject("country") {
-                put("type", "string")
-                put("description", "Only for clearly local queries (e.g. a Seoul restaurant): 2-letter country code like KR. Omit otherwise.")
-            }
-            putJsonObject("language") {
-                put("type", "string")
-                put("description", "Only when results must be in one language: 2-letter code like ko, en. Omit otherwise (don't guess from the user's language).")
-            }
-        }
-        put("required", buildJsonArray { add(JsonPrimitive("query")) })
-        put("additionalProperties", false)
+    override val parameters: JsonObject = toolParameters {
+        string("query", "Search query. Operators: site:example.com, \"exact phrase\", -exclude, AND, OR, NOT, filetype:pdf.", required = true)
+        integer("count", "Number of results (default and max ${SearchRequest.MAX_COUNT}).", minimum = 1, maximum = SearchRequest.MAX_COUNT.toLong())
+        string("freshness", "Only pages from the last day/week/month/year.", enum = listOf("day", "week", "month", "year"))
+        string("country", "Only for clearly local queries (e.g. a Seoul restaurant): 2-letter country code like KR. Omit otherwise.")
+        string("language", "Only when results must be in one language: 2-letter code like ko, en. Omit otherwise (don't guess from the user's language).")
     }
 
     override val title = "웹 검색"

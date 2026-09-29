@@ -20,23 +20,11 @@ class TermuxExecTool(private val termux: TermuxExecutor) : Tool {
     override val title = "Termux 실행"
     override val description = "Execute a one-shot shell command in Termux and return its result."
 
-    override val parameters: JsonObject = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            putJsonObject("command") {
-                put("type", "string")
-                put("description", "Shell command to execute.")
-            }
-            putJsonObject("cwd") {
-                put("type", "string")
-                put("description", "Optional working directory.")
-            }
-            putJsonObject("timeout") {
-                put("type", "integer")
-                put("description", "Optional timeout in milliseconds.")
-            }
-        }
-        put("required", buildJsonArray { add(JsonPrimitive("command")) })
+    // The specified schema exactly (no additionalProperties key).
+    override val parameters: JsonObject = toolParameters(additionalProperties = null) {
+        string("command", "Shell command to execute.", required = true)
+        string("cwd", "Optional working directory.")
+        integer("timeout", "Optional timeout in milliseconds.")
     }
 
     override fun subject(args: JsonObject): String =

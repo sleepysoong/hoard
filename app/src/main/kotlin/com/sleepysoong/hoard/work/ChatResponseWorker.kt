@@ -12,7 +12,6 @@ import com.sleepysoong.hoard.goal.SessionActivity
 import com.sleepysoong.hoard.goal.TurnOutcome
 import com.sleepysoong.hoard.schedule.WakeupService
 import com.sleepysoong.hoard.schedule.WorkManagerScheduler
-import com.sleepysoong.hoard.tools.RuntimeContext
 import androidx.work.WorkInfo
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -39,8 +38,9 @@ import com.sleepysoong.hoard.engine.AttachmentEncoder
 import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
-import com.sleepysoong.hoard.tools.WebTools
-import com.sleepysoong.hoard.termux.TermuxBridge
+import com.sleepysoong.hoard.tools.AndroidToolServices
+import com.sleepysoong.hoard.tools.ToolContext
+import com.sleepysoong.hoard.tools.ToolKit
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
@@ -60,7 +60,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val runId = inputData.getString(KEY_RUN)
         val repo = HoardRepository.get()
         val goals = GoalService(repo)
-        val (scheduleService, scheduler, wakeups) = WorkManagerScheduler.services(applicationContext)
+        val (_, scheduler, wakeups) = WorkManagerScheduler.services(applicationContext)
         // Session gone (deleted / lost with the process), or the prompt was
         // deleted/edited away while this reply was queued.
         val session = repo.sessionOf(sessionId) ?: return Result.success()
@@ -114,17 +114,15 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             cfg.routerUrl,
             AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
             token = cfg.routerToken,
-            tools = WebTools.registry(
-                allowed.web, cfg.braveApiKey,
-                termux = if (allowed.termux) TermuxBridge(applicationContext) else null,
-                files = if (allowed.files) com.sleepysoong.hoard.tools.files.FileTools.workspace(applicationContext, allowed.fullStorage) else null,
-                runtime = RuntimeContext(
-                    sessionId, session.modelId, goals,
-                    schedules = if (runId == null) scheduleService else null,
-                    wakeups = if (runId == null) wakeups else null,
-                    permissions = allowed
-                ),
-                todo = com.sleepysoong.hoard.tools.TodoTool(repo.todos, sessionId)
+            // Every tool comes from ToolKit's modules; the context decides what's offered.
+            tools = ToolKit.registry(
+                ToolContext(
+                    sessionId = sessionId,
+                    modelId = session.modelId,
+                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo),
+                    permissions = allowed,
+                    scheduledRun = runId != null
+                )
             )
         )
         runId?.let(scheduler::onRunStarted)

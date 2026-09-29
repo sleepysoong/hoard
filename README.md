@@ -112,6 +112,88 @@ Still no gradients: every colour is solid.
 - Signed release APK via `.github/workflows/build-and-release.yml`:
   auto-bumps `version.properties`, tags, and attaches `hoard-<version>.apk` (e.g. `hoard-1.0.61.apk`) to a Release.
 
+## Tool API
+
+Every tool the model can call lives in `app/src/main/kotlin/com/sleepysoong/hoard/tools/` and is assembled
+per turn by one entry point, `ToolKit`:
+
+```
+ChatResponseWorker
+  └─ ToolKit.registry(ToolContext(sessionId, modelId, AndroidToolServices(…), permissions, scheduledRun))
+       └─ for each ToolModule in ToolKit.modules → module.tools(context)
+  = ToolRegistry ──► RouterAiEngine: schemas() → request `tools`, guidance() → `instructions`,
+                                      execute(name, args) in the tool loop (parallel-safe calls concurrently)
+```
+
+### Pieces
+
+| Type | Role |
+|--|--|
+| `Tool` | One function: `name`, `description`, `parameters` (JSON Schema), `execute(args): JsonObject`. Optional: `guidance` (system text while offered), `parallelSafe` (read-only → may run concurrently), `title` / `subject(args)` / `summarize(output)` (the reply's 작업 card). |
+| `ToolModule` | A group of related tools: `id` + `tools(context)`. Decides from the context whether its tools are offered this turn. |
+| `ToolContext` | One turn's facts: `sessionId`, `modelId`, `services`, `permissions` (a scheduled run's snapshot, else everything), `scheduledRun`. |
+| `ToolServices` | Dependencies, lazily created: `searchProvider`, `pageFetcher`, `workspace(fullStorage)`, `termux`, `todos`, `goals`, `schedules`, `wakeups`. `AndroidToolServices` in the app; `SimpleToolServices(…)` for tests/partial setups. A missing (null) service = its tools aren't offered. |
+| `ToolKit` | `modules` (built-in, in offer order) and `registry(context, modules = …)`. `ToolKit.override` replaces the whole registry in tests. |
+| `ToolRegistry` | `register(tool)`, `tools`, `schemas()`, `guidance()`, `execute(name, argumentsJson): ToolOutcome` (never throws except cancellation), `preview`, `isParallelSafe`. |
+| `toolParameters { … }` | Schema DSL: `string(name, description, required, enum, minLength, maxLength)`, `integer(name, description, required, minimum, maximum)`, `boolean(…)`; `additionalProperties = false` by default (`null` omits it). |
+| Argument helpers | `args.string(k)`, `args.requireString(k)`, `args.number(k)` / `long(k)` (accept `5`, `5.0`, `"5"`), `args.bool(k)`. |
+
+Built-in modules (`ToolKit.modules`, in this order):
+
+| Module | Tools | Offered when |
+|--|--|--|
+| `todo` | `todo` | always (session task list) |
+| `web` | `web_search`, `web_fetch` | `web_search` only with a search provider (Brave key in Settings) |
+| `termux` | `termux_exec` | always; the call reports if Termux / its permission is missing |
+| `files` | `read_file`, `write_file`, `edit_file`, `glob`, `grep` | always; shared storage needs "All files access" |
+| `goal` | `goal` | always |
+| `schedule` | `schedule`, `schedule_wakeup` | not inside a scheduled run |
+
+### Contract every tool follows
+
+- **Output** is a JSON object in the tool's own normalized shape (never a provider's raw response), small enough
+  for the model's context (cap long text and say so, e.g. `truncated: true`).
+- **Errors** the model should see: throw `ToolException("…")` → it receives `{"error": "…"}` and can adapt. Other
+  exceptions become `{"error": "Type: message"}`; cancellation propagates (stop button).
+- **Side effects**: leave `parallelSafe = false` (default). Read-only tools set it to `true`; consecutive read-only
+  calls of one round run concurrently (max 5), anything else runs alone, in call order.
+- **Security**: arguments come from the model — possibly steered by a web page it read. Validate them, keep file
+  access inside `Workspace`, network access to public addresses (`PageFetcher`), never bundle API keys.
+- **Card text**: `title` is the tool's short Korean name; `subject(args)` the call's target (query, path);
+  `summarize(output)` a one-line result. The registry shows failures as `실패: …`.
+- **Guidance**: put cross-turn usage rules (when to use it, what to do next) in `guidance`, not in every call.
+
+### Adding a tool
+
+1. Write the tool (next to related ones in `tools/`):
+
+   ```kotlin
+   class WeatherTool(private val api: WeatherApi) : Tool {
+       override val name = "weather"
+       override val title = "날씨"
+       override val description = "Current weather for a city. Returns temperature (°C) and conditions."
+       override val parameters = toolParameters { string("city", "City name, e.g. Seoul.", required = true) }
+       override val parallelSafe = true
+       override fun subject(args: JsonObject) = args.string("city").orEmpty()
+       override suspend fun execute(args: JsonObject): JsonObject {
+           val w = api.current(args.requireString("city")) ?: throw ToolException("unknown city")
+           return buildJsonObject { put("tempC", w.tempC); put("conditions", w.conditions) }
+       }
+   }
+   ```
+2. If it needs a new dependency, add it to `ToolServices` (nullable), `AndroidToolServices` and `SimpleToolServices`.
+3. Add a module (or extend one) and list it in `ToolKit.modules`:
+
+   ```kotlin
+   object WeatherModule : ToolModule {
+       override val id = "weather"
+       override fun tools(context: ToolContext) = listOfNotNull(context.services.weather?.let(::WeatherTool))
+   }
+   ```
+4. Test it without Android: `ToolKit.registry(ToolContext("s", "m", SimpleToolServices(…)), listOf(WeatherModule))`,
+   then `registry.execute("weather", """{"city":"Seoul"}""")`. End-to-end through the tool loop: set
+   `ToolKit.override` and drive a `FakeRouter` that returns a `function_call` (see `ToolLoopTest`, `ToolKitTest`).
+
 ## Backend: sleepyrouter
 
 Replies come from [sleepyrouter](https://github.com/sleepysoong/sleepyrouter)'s

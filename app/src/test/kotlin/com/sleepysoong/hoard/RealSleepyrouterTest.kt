@@ -250,7 +250,7 @@ class RealSleepyrouterTest {
     @Test fun webSearchToolLoopThroughRealRouterChatBridge() {
         val h = ChatHarness()
         val queries = mutableListOf<String>()
-        com.sleepysoong.hoard.tools.WebTools.override = com.sleepysoong.hoard.tools.ToolRegistry(listOf(
+        com.sleepysoong.hoard.tools.ToolKit.override = com.sleepysoong.hoard.tools.ToolRegistry(listOf(
             com.sleepysoong.hoard.tools.WebSearchTool(object : com.sleepysoong.hoard.tools.search.SearchProvider {
                 override val id = "fake"
                 override suspend fun search(request: com.sleepysoong.hoard.tools.search.SearchRequest): com.sleepysoong.hoard.tools.search.SearchResponse {
@@ -275,7 +275,7 @@ class RealSleepyrouterTest {
                 second.contains("\"role\":\"tool\"") && second.contains("call_1") && second.contains("search_1"))
             assertTrue("tool definitions forwarded: $second", second.contains("\"web_search\""))
         } finally {
-            com.sleepysoong.hoard.tools.WebTools.override = null
+            com.sleepysoong.hoard.tools.ToolKit.override = null
         }
     }
 

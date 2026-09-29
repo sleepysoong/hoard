@@ -2,6 +2,8 @@ package com.sleepysoong.hoard.tools.files
 
 import com.sleepysoong.hoard.tools.Tool
 import com.sleepysoong.hoard.tools.ToolException
+import com.sleepysoong.hoard.tools.bool
+import com.sleepysoong.hoard.tools.toolParameters
 import com.sleepysoong.hoard.tools.number
 import com.sleepysoong.hoard.tools.string
 import kotlinx.coroutines.Dispatchers
@@ -31,17 +33,6 @@ import java.nio.file.StandardCopyOption
 /** Largest file read/edited/searched (bytes). */
 internal const val MAX_FILE_BYTES = 5L * 1024 * 1024
 
-internal fun JsonObject.bool(key: String): Boolean? = (this[key] as? JsonPrimitive)?.booleanOrNull
-
-private fun schema(required: List<String>, props: JsonObjectBuilder.() -> Unit) = buildJsonObject {
-    put("type", "object")
-    putJsonObject("properties", props)
-    put("required", buildJsonArray { required.forEach { add(JsonPrimitive(it)) } })
-    put("additionalProperties", false)
-}
-
-private fun JsonObjectBuilder.prop(name: String, type: String, description: String) =
-    putJsonObject(name) { put("type", type); put("description", description) }
 
 private suspend fun <T> io(block: suspend () -> T): T = withContext(Dispatchers.IO) {
     try {
@@ -89,10 +80,10 @@ class ReadFileTool(private val ws: Workspace) : Tool {
     override val title = "파일 읽기"
     override val description = "Read a UTF-8 text file. Returns lines prefixed with their line numbers (\"<n>\\t<line>\"). " +
         "Use offset (1-based first line) and limit (number of lines, default $DEFAULT_LIMIT) to page through long files. " + ws.note
-    override val parameters = schema(listOf("path")) {
-        prop("path", "string", "File path relative to the workspace root.")
-        prop("offset", "integer", "1-based line number to start from (default 1).")
-        prop("limit", "integer", "Maximum number of lines to return (default $DEFAULT_LIMIT).")
+    override val parameters = toolParameters {
+        string("path", "File path relative to the workspace root.", required = true)
+        integer("offset", "1-based line number to start from (default 1).")
+        integer("limit", "Maximum number of lines to return (default $DEFAULT_LIMIT).")
     }
 
     override fun subject(args: JsonObject) = args.string("path").orEmpty()
@@ -144,9 +135,9 @@ class WriteFileTool(private val ws: Workspace) : Tool {
     override val title = "파일 쓰기"
     override val description = "Create or overwrite a UTF-8 text file with the given content (parent folders are created). " +
         "Overwrites without asking: read_file first if the file may already exist. " + ws.note
-    override val parameters = schema(listOf("path", "content")) {
-        prop("path", "string", "File path relative to the workspace root.")
-        prop("content", "string", "Full new content of the file.")
+    override val parameters = toolParameters {
+        string("path", "File path relative to the workspace root.", required = true)
+        string("content", "Full new content of the file.", required = true)
     }
 
     override fun subject(args: JsonObject) = args.string("path").orEmpty()
@@ -179,11 +170,11 @@ class EditFileTool(private val ws: Workspace) : Tool {
     override val title = "파일 수정"
     override val description = "Replace an exact string in a text file. old_string must match exactly (including whitespace) " +
         "and, unless replace_all is true, occur exactly once — add surrounding context to make it unique. " + ws.note
-    override val parameters = schema(listOf("path", "old_string", "new_string")) {
-        prop("path", "string", "File path relative to the workspace root.")
-        prop("old_string", "string", "Exact text to replace.")
-        prop("new_string", "string", "Replacement text (must differ from old_string).")
-        prop("replace_all", "boolean", "Replace every occurrence instead of requiring a unique match (default false).")
+    override val parameters = toolParameters {
+        string("path", "File path relative to the workspace root.", required = true)
+        string("old_string", "Exact text to replace.", required = true)
+        string("new_string", "Replacement text (must differ from old_string).", required = true)
+        boolean("replace_all", "Replace every occurrence instead of requiring a unique match (default false).")
     }
 
     override fun subject(args: JsonObject) = args.string("path").orEmpty()
@@ -224,9 +215,9 @@ class GlobTool(private val ws: Workspace) : Tool {
     override val title = "파일 찾기"
     override val description = "Find files by glob pattern (e.g. \"**/*.md\", \"notes/*.txt\", \"*.{kt,kts}\"), matched against paths " +
         "relative to the search folder. Returns matching file paths, newest first. " + ws.note
-    override val parameters = schema(listOf("pattern")) {
-        prop("pattern", "string", "Glob pattern: * matches within a folder, ** across folders, {a,b} alternatives.")
-        prop("path", "string", "Folder to search in, relative to the workspace root (default: the root).")
+    override val parameters = toolParameters {
+        string("pattern", "Glob pattern: * matches within a folder, ** across folders, {a,b} alternatives.", required = true)
+        string("path", "Folder to search in, relative to the workspace root (default: the root).")
     }
 
     override fun subject(args: JsonObject) = args.string("pattern").orEmpty() + (args.string("path")?.let { " · $it" } ?: "")
@@ -307,12 +298,12 @@ class GrepTool(private val ws: Workspace) : Tool {
     override val description = "Search file contents with a regular expression (Java regex syntax). Returns matching lines as " +
         "{file, line, text}. Optional path (file or folder), glob filter on file paths (e.g. \"**/*.md\"), " +
         "case_sensitive (default true) and max_results (default $DEFAULT_MAX). Binary and very large files are skipped. " + ws.note
-    override val parameters = schema(listOf("pattern")) {
-        prop("pattern", "string", "Regular expression to search for.")
-        prop("path", "string", "File or folder to search, relative to the workspace root (default: the root).")
-        prop("glob", "string", "Only search files whose path (relative to path) matches this glob, e.g. \"**/*.md\".")
-        prop("case_sensitive", "boolean", "Case-sensitive match (default true).")
-        prop("max_results", "integer", "Maximum matching lines to return (default $DEFAULT_MAX, max $MAX_MAX).")
+    override val parameters = toolParameters {
+        string("pattern", "Regular expression to search for.", required = true)
+        string("path", "File or folder to search, relative to the workspace root (default: the root).")
+        string("glob", "Only search files whose path (relative to path) matches this glob, e.g. \"**/*.md\".")
+        boolean("case_sensitive", "Case-sensitive match (default true).")
+        integer("max_results", "Maximum matching lines to return (default $DEFAULT_MAX, max $MAX_MAX).")
     }
 
     override fun subject(args: JsonObject) = args.string("pattern").orEmpty() + (args.string("glob")?.let { " · $it" } ?: "")

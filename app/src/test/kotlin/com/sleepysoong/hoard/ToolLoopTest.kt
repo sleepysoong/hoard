@@ -14,7 +14,11 @@ import com.sleepysoong.hoard.testing.FakeRouter.Companion.toolCallCompleted
 import com.sleepysoong.hoard.tools.ToolRegistry
 import com.sleepysoong.hoard.tools.WebFetchTool
 import com.sleepysoong.hoard.tools.WebSearchTool
-import com.sleepysoong.hoard.tools.WebTools
+import com.sleepysoong.hoard.tools.FileModule
+import com.sleepysoong.hoard.tools.SimpleToolServices
+import com.sleepysoong.hoard.tools.TermuxModule
+import com.sleepysoong.hoard.tools.ToolContext
+import com.sleepysoong.hoard.tools.ToolKit
 import com.sleepysoong.hoard.tools.search.SearchHit
 import com.sleepysoong.hoard.tools.search.SearchProvider
 import com.sleepysoong.hoard.tools.search.SearchRequest
@@ -60,7 +64,7 @@ class ToolLoopTest {
     private fun start(tools: ToolRegistry? = ToolRegistry(listOf(WebSearchTool(fakeSearch), WebFetchTool()))) {
         h = ChatHarness()
         router = FakeRouter()
-        WebTools.override = tools
+        ToolKit.override = tools
         runBlocking { SettingsStore.setRouterUrl(h.app, router.url) }
         val deadline = System.currentTimeMillis() + 5_000
         while (h.vm.settings.value.routerUrl != router.url) {
@@ -70,7 +74,7 @@ class ToolLoopTest {
     }
 
     @After fun tearDown() {
-        WebTools.override = null
+        ToolKit.override = null
         if (::router.isInitialized) router.close()
         if (::h.isInitialized) {
             h.snapshot("final")
@@ -131,6 +135,7 @@ class ToolLoopTest {
             override val name = "web_fetch"
             override val description = "fake"
             override val parallelSafe = true
+            override val guidance = "Fetch the chosen pages in parallel."
             override val parameters = kotlinx.serialization.json.buildJsonObject { put("type", kotlinx.serialization.json.JsonPrimitive("object")) }
             override suspend fun execute(args: JsonObject): JsonObject {
                 val now = running.incrementAndGet(); peak.accumulateAndGet(now, ::maxOf)
@@ -153,7 +158,7 @@ class ToolLoopTest {
         val outputs = body(1)["input"]!!.jsonArray.map { it.jsonObject }.filter { it["type"]!!.jsonPrimitive.content == "function_call_output" }
         assertEquals(listOf("f0", "f1", "f2"), outputs.map { it["call_id"]!!.jsonPrimitive.content })
         assertEquals(urls.map { "body of $it" }, outputs.map { Json.parseToJsonElement(it["output"]!!.jsonPrimitive.content).jsonObject["content"]!!.jsonPrimitive.content })
-        assertTrue(body(0)["instructions"]!!.jsonPrimitive.content.contains("in parallel"))
+        assertTrue("the tool's own guidance reaches the instructions", body(0)["instructions"]!!.jsonPrimitive.content.contains("Fetch the chosen pages in parallel."))
         assertEquals("세 페이지를 읽었어요.", h.messages().last().text)
         assertEquals(3, h.messages().last().thinking.count { it.kind == com.sleepysoong.hoard.data.StepKind.Tool })
     }
@@ -161,7 +166,7 @@ class ToolLoopTest {
     /** Side-effect tools are never run concurrently: write then read in one turn stays ordered. */
     @Test fun writeThenReadInOneTurnStaysOrdered() {
         val dir = java.nio.file.Files.createTempDirectory("ws2").toFile()
-        start(tools = WebTools.registry(enabled = false, braveApiKey = "", files = com.sleepysoong.hoard.tools.files.Workspace(dir)))
+        start(tools = ToolKit.registry(ToolContext("s", "coding", SimpleToolServices(workspace = com.sleepysoong.hoard.tools.files.Workspace(dir))), listOf(FileModule)))
         router.enqueue(
             FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(
                 Triple("a", "read_file", """{"path":"x.txt"}"""),
@@ -224,8 +229,8 @@ class ToolLoopTest {
                 return com.sleepysoong.hoard.termux.TermuxResult("On branch main\nnothing to commit\n", "", 0)
             }
         }
-        // As the worker builds it: web tools off, Termux registered like any other tool.
-        start(tools = WebTools.registry(enabled = false, braveApiKey = "", termux = termux))
+        // Built like the worker does, from the Termux module only.
+        start(tools = ToolKit.registry(ToolContext("s", "coding", SimpleToolServices(termux = termux)), listOf(TermuxModule)))
         router.enqueue(
             FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(Triple("t1", "termux_exec", """{"command":"git status"}""")))),
             FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("작업 트리가 깨끗해요.")))
@@ -244,7 +249,7 @@ class ToolLoopTest {
 
     @Test fun fileToolsWriteThenReadThroughTheLoop() {
         val dir = java.nio.file.Files.createTempDirectory("ws").toFile()
-        start(tools = WebTools.registry(enabled = false, braveApiKey = "", files = com.sleepysoong.hoard.tools.files.Workspace(dir)))
+        start(tools = ToolKit.registry(ToolContext("s", "coding", SimpleToolServices(workspace = com.sleepysoong.hoard.tools.files.Workspace(dir))), listOf(FileModule)))
         router.enqueue(
             FakeRouter.Reply.Sse(listOf(routingFrame(), created(), toolCallCompleted(
                 Triple("w1", "write_file", """{"path":"memo/today.md","content":"우유 사기\n"}"""),
@@ -265,7 +270,7 @@ class ToolLoopTest {
 
     /** No toggles: every tool is offered (web_search only once a Brave key is set). */
     @Test fun defaultsOfferWebFetchAndFileToolsButNoSearchWithoutKey() {
-        start(tools = null) // real WebTools.registry: everything on, no Brave key
+        start(tools = null) // the real ToolKit registry: everything on, no Brave key
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()

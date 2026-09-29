@@ -26,21 +26,15 @@ class WebFetchTool(
 ) : Tool {
     override val parallelSafe = true
     override val name = NAME
+    override val guidance = "Read before answering: pick the most relevant result URLs (usually 2-4) and call web_fetch " +
+        "for all of them in the same turn so they run in parallel; answer from the fetched contents and cite the URLs you used."
     override val description =
         "Download a web page and return its main readable content as Markdown (navigation, ads, scripts removed). " +
             "Use it to actually read a page — a web_search result's url or a URL the user gave — before relying on its contents. " +
             "Public http(s) HTML and text pages only; long pages are truncated."
 
-    override val parameters: JsonObject = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            putJsonObject("url") {
-                put("type", "string")
-                put("description", "Absolute http(s) URL of the page to read.")
-            }
-        }
-        put("required", buildJsonArray { add(JsonPrimitive("url")) })
-        put("additionalProperties", false)
+    override val parameters: JsonObject = toolParameters {
+        string("url", "Absolute http(s) URL of the page to read.", required = true)
     }
 
     override val title = "페이지 읽기"

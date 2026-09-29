@@ -49,7 +49,7 @@ class ChatHarness(pace: Float = 0f, storeFile: java.io.File? = null, greeting: B
         // test-double engine for replies when no router is configured.
         TestData.useMockEngine()
         if (HoardRepository.get().sessions.value.isEmpty()) TestData.seed(greeting = greeting)
-        com.sleepysoong.hoard.tools.WebTools.override = null
+        com.sleepysoong.hoard.tools.ToolKit.override = null
         com.sleepysoong.hoard.engine.RouterConnection.resetForTests()
         WorkManagerTestInitHelper.initializeTestWorkManager(
             app,

@@ -82,7 +82,7 @@ class RouterAiEngine(
         var round = 0
         while (true) {
             val finalRound = active == null || round >= maxToolRounds || request.forbidTools
-            val body = encodeRequest(request, attachments, if (active != null) active.schemas() else null, toolItems,
+            val body = encodeRequest(request, attachments, active?.schemas(), toolGuidance = active?.guidance().orEmpty(), toolItems = toolItems,
                 forbidTools = active != null && finalRound, includeTodoReminder = round == 0)
             val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
             if (state.toolCalls.isEmpty()) return
@@ -437,6 +437,8 @@ class RouterAiEngine(
             r: ReplyRequest,
             attachments: AttachmentEncoder? = null,
             toolSchemas: List<JsonObject>? = null,
+            /** [com.sleepysoong.hoard.tools.ToolRegistry.guidance] of the offered tools. */
+            toolGuidance: List<String> = emptyList(),
             toolItems: List<JsonObject> = emptyList(),
             forbidTools: Boolean = false,
             today: java.time.LocalDate = java.time.LocalDate.now(),
@@ -445,7 +447,7 @@ class RouterAiEngine(
         ): String = buildJsonObject {
             put("model", r.modelId)
             put("stream", true)
-            val note = if (toolSchemas.isNullOrEmpty()) "" else toolNote(toolSchemas, today, now)
+            val note = if (toolSchemas.isNullOrEmpty()) "" else toolNote(toolGuidance, today, now)
             val instructions = listOf(r.systemPrompt.trim(), note, r.goalContext.orEmpty()).filter { it.isNotEmpty() }.joinToString("\n\n")
             if (instructions.isNotEmpty()) put("instructions", instructions)
             if (!toolSchemas.isNullOrEmpty()) {
@@ -518,22 +520,9 @@ class RouterAiEngine(
                     ToolCall(callId, name, o.str("arguments").orEmpty().ifBlank { "{}" })
                 }
 
-        private fun toolNote(schemas: List<JsonObject>, today: java.time.LocalDate, now: java.time.ZonedDateTime): String {
-            val names = schemas.mapNotNull { it.str("name") }
-            val lines = mutableListOf("Today's date: $today. Current time: ${now.withNano(0).toOffsetDateTime()} (${now.zone.id}).")
-            if ("todo" in names) lines += com.sleepysoong.hoard.tools.TodoTool.INSTRUCTIONS
-            if ("goal" in names) lines += com.sleepysoong.hoard.goal.GoalRuntime.SYSTEM_RULES
-            if ("schedule" in names) lines += "Scheduling: only when the user clearly asks for work in the future or on a cadence. " +
-                "Resolve relative times (\"tomorrow 9am\") against the current time and timezone into an exact trigger first; " +
-                "never create duplicates or recurring schedules just because repeated checks might be convenient. Scheduled runs " +
-                "happen without the user and with the tool permissions the user has now."
-            if ("web_search" in names) lines += "Use web_search for current or unfamiliar facts. It returns up to 10 results with snippets only, not page contents. " +
-                "If results are weak, search again with a refined query: more specific keywords, English technical terms, " +
-                "site:domain, \"exact phrase\", -excluded words, AND/OR/NOT, filetype:pdf."
-            if ("web_fetch" in names) lines += "Read before answering: pick the most relevant result URLs (usually 2-4) and call web_fetch " +
-                "for all of them in the same turn so they run in parallel; answer from the fetched contents and cite the URLs you used."
-            return lines.joinToString(" ")
-        }
+        /** Current time (for relative dates / schedules) + each offered tool's own guidance. */
+        private fun toolNote(guidance: List<String>, today: java.time.LocalDate, now: java.time.ZonedDateTime): String =
+            (listOf("Today's date: $today. Current time: ${now.withNano(0).toOffsetDateTime()} (${now.zone.id}).") + guidance).joinToString(" ")
 
         fun outputText(resp: JsonObject): String =
             (resp["output"] as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }

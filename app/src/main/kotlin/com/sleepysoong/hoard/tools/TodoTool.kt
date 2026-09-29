@@ -19,21 +19,11 @@ class TodoTool(private val service: TodoService, private val sessionId: String) 
 
     // A root object is compatible with the router's provider bridges. The op discriminator
     // is validated strictly below, including per-operation fields and required arguments.
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            putJsonObject("op") {
-                put("type", "string")
-                put("enum", JsonArray(listOf("create", "update", "remove", "list", "clear").map(::JsonPrimitive)))
-            }
-            putJsonObject("content") { put("type", "string"); put("minLength", 1); put("maxLength", TodoService.MAX_CONTENT_LENGTH) }
-            putJsonObject("id") { put("type", "string"); put("description", "Task ID returned by this session's todo tool.") }
-            putJsonObject("status") {
-                put("type", "string"); put("enum", JsonArray(TodoStatus.entries.map { JsonPrimitive(it.wire) }))
-            }
-        }
-        put("required", JsonArray(listOf(JsonPrimitive("op"))))
-        put("additionalProperties", false)
+    override val parameters = toolParameters {
+        string("op", required = true, enum = listOf("create", "update", "remove", "list", "clear"))
+        string("content", minLength = 1, maxLength = TodoService.MAX_CONTENT_LENGTH)
+        string("id", "Task ID returned by this session's todo tool.")
+        string("status", enum = TodoStatus.entries.map { it.wire })
     }
 
     override fun subject(args: JsonObject) = when (args.string("op")) {
@@ -84,6 +74,8 @@ class TodoTool(private val service: TodoService, private val sessionId: String) 
             else -> TodoRequest.ListAll
         }
     }
+
+    override val guidance get() = INSTRUCTIONS
 
     companion object {
         const val INSTRUCTIONS = """Task tracking: Use todo for complex work with multiple distinct outcomes or work that needs progress across turns.

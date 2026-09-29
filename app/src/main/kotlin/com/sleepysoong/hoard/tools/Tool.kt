@@ -10,17 +10,25 @@ import kotlin.coroutines.cancellation.CancellationException
 /**
  * A function tool the model can call through sleepyrouter (Responses `tools`).
  * Tools run on the device; the router only relays the call and its output.
+ * Tools are grouped into [ToolModule]s and built per turn by [ToolKit]; see README "Tool API".
  *
  * Output is a JSON object in the tool's own *normalized* shape — never a
  * provider's raw response — so providers can be swapped without the model or
  * the tool schema noticing.
  */
 interface Tool {
+    /** Function name the model calls (snake_case, unique in a registry). */
     val name: String
     /** Shown to the model: when to use it and what it does NOT do. */
     val description: String
-    /** JSON Schema of the arguments object. */
+    /** JSON Schema of the arguments object — build it with [toolParameters]. */
     val parameters: JsonObject
+
+    /**
+     * Optional system guidance added to the request's instructions while this tool is
+     * offered (how to use it well across turns). Keep it short; the description covers the call itself.
+     */
+    val guidance: String? get() = null
 
     /**
      * Read-only (no side effects): may run at the same time as other such calls of the
@@ -98,6 +106,9 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
         }
     }
 
+    /** System guidance of every registered tool, in registration order, without duplicates. */
+    fun guidance(): List<String> = tools.mapNotNull { it.guidance?.trim()?.takeIf { g -> g.isNotEmpty() } }.distinct()
+
     fun isParallelSafe(name: String): Boolean = synchronized(byName) { byName[name] }?.parallelSafe ?: true
 
     /** Card title/body for a call before it runs. */
@@ -119,10 +130,3 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
     }
 }
 
-internal fun JsonObject.string(key: String): String? =
-    (this[key] as? kotlinx.serialization.json.JsonPrimitive)?.takeIf { it.isString }?.content
-
-internal fun JsonObject.number(key: String): Int? {
-    val p = this[key] as? kotlinx.serialization.json.JsonPrimitive ?: return null
-    return p.content.toDoubleOrNull()?.toInt()
-}

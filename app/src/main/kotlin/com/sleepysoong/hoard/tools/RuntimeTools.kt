@@ -27,11 +27,6 @@ import kotlinx.serialization.json.putJsonObject
 import java.time.OffsetDateTime
 import java.time.ZoneId
 
-private fun JsonObjectBuilder.str(name: String, description: String) = putJsonObject(name) { put("type", "string"); put("description", description) }
-private fun JsonObjectBuilder.int(name: String, description: String) = putJsonObject(name) { put("type", "integer"); put("description", description) }
-private fun JsonObjectBuilder.enum(name: String, values: List<String>, description: String) = putJsonObject(name) {
-    put("type", "string"); putJsonArray("enum") { values.forEach { add(JsonPrimitive(it)) } }; put("description", description)
-}
 
 // ---------------------------------------------------------------- goal
 
@@ -39,23 +34,20 @@ private fun JsonObjectBuilder.enum(name: String, values: List<String>, descripti
 class GoalTool(private val sessionId: String, private val goals: GoalService) : Tool {
     override val name = "goal"
     override val title = "목표"
+    override val guidance = com.sleepysoong.hoard.goal.GoalRuntime.SYSTEM_RULES
     override val description = "Manage this session's persistent goal (a verifiable objective that may take several turns; " +
         "the runtime keeps continuing it automatically while it is active). action=create (objective, optional success_criteria, " +
         "verification, constraints, boundaries), get, complete (evidence: the concrete result that proves it — test output, " +
         "command result, file; never mere confidence), block (reason: why progress is impossible). You cannot pause, resume or clear goals."
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            enum("action", listOf("create", "get", "complete", "block"), "What to do.")
-            str("objective", "create: the outcome to achieve.")
-            str("success_criteria", "create: what counts as done.")
-            str("verification", "create: how to verify it (test suite, command, benchmark…).")
-            str("constraints", "create: what must stay true.")
-            str("boundaries", "create: what not to touch.")
-            str("evidence", "complete: concrete evidence the goal is met.")
-            str("reason", "block: why progress is impossible under the constraints.")
-        }
-        put("required", buildJsonArray { add(JsonPrimitive("action")) })
+    override val parameters = toolParameters(additionalProperties = null) {
+        string("action", "What to do.", required = true, enum = listOf("create", "get", "complete", "block"))
+        string("objective", "create: the outcome to achieve.")
+        string("success_criteria", "create: what counts as done.")
+        string("verification", "create: how to verify it (test suite, command, benchmark…).")
+        string("constraints", "create: what must stay true.")
+        string("boundaries", "create: what not to touch.")
+        string("evidence", "complete: concrete evidence the goal is met.")
+        string("reason", "block: why progress is impossible under the constraints.")
     }
 
     override fun subject(args: JsonObject) = when (args.string("action")) {
@@ -114,32 +106,32 @@ class ScheduleTool(
 ) : Tool {
     override val name = "schedule"
     override val title = "예약"
+    override val guidance = "Scheduling: only when the user clearly asks for work in the future or on a cadence. " +
+        "Resolve relative times (\"tomorrow 9am\") against the current time and timezone into an exact trigger first; " +
+        "never create duplicates or recurring schedules just because repeated checks might be convenient. Scheduled runs " +
+        "happen without the user and with the tool permissions the user has now."
     override val description = "Create and manage scheduled runs: the prompt runs later in a separate session (the user may not be " +
         "present), on trigger type at (one time, ISO-8601 with offset), every (interval_ms, min 5 minutes) or cron (5-field, " +
         "with an IANA timezone; default ${zone.id}). Only when the user asks for future or recurring work. Resolve relative times " +
         "against the current time first. actions: create, list, get, pause, resume, cancel. Modify an existing schedule " +
         "(pause/resume/cancel) instead of creating duplicates."
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            enum("action", listOf("create", "list", "get", "pause", "resume", "cancel"), "What to do.")
-            str("id", "get/pause/resume/cancel: the schedule id.")
-            str("name", "create: short name.")
-            str("prompt", "create: what the scheduled run should do (self-contained: it runs without this conversation).")
-            enum("trigger_type", listOf("at", "every", "cron"), "create: kind of trigger.")
-            str("at", "create, at: exact time, ISO-8601 with offset, e.g. 2026-09-29T09:00:00+09:00.")
-            int("interval_ms", "create, every: interval in milliseconds (>= 300000).")
-            str("start_at", "create, every: optional first run (ISO-8601); default now + interval.")
-            str("cron", "create, cron: 5-field expression, e.g. \"0 9 * * 1-5\".")
-            str("timezone", "create, cron: IANA timezone (default ${zone.id}).")
-            int("max_runs", "create: stop after this many runs.")
-            str("expires_at", "create: stop after this time (ISO-8601).")
-            enum("context", listOf("clean", "snapshot"), "create: clean (default, prompt only) or snapshot (also context_snapshot).")
-            str("context_snapshot", "create, snapshot: compact context the run needs from this conversation.")
-            enum("catch_up", listOf("skip", "latest", "all"), "create: missed runs while the phone/app was off (default: at=latest, recurring=skip).")
-            enum("overlap", listOf("skip", "queue", "parallel"), "create: when the previous run is still going (default skip).")
-        }
-        put("required", buildJsonArray { add(JsonPrimitive("action")) })
+    override val parameters = toolParameters(additionalProperties = null) {
+        string("action", "What to do.", required = true, enum = listOf("create", "list", "get", "pause", "resume", "cancel"))
+        string("id", "get/pause/resume/cancel: the schedule id.")
+        string("name", "create: short name.")
+        string("prompt", "create: what the scheduled run should do (self-contained: it runs without this conversation).")
+        string("trigger_type", "create: kind of trigger.", enum = listOf("at", "every", "cron"))
+        string("at", "create, at: exact time, ISO-8601 with offset, e.g. 2026-09-29T09:00:00+09:00.")
+        integer("interval_ms", "create, every: interval in milliseconds (>= 300000).")
+        string("start_at", "create, every: optional first run (ISO-8601); default now + interval.")
+        string("cron", "create, cron: 5-field expression, e.g. \"0 9 * * 1-5\".")
+        string("timezone", "create, cron: IANA timezone (default ${zone.id}).")
+        integer("max_runs", "create: stop after this many runs.")
+        string("expires_at", "create: stop after this time (ISO-8601).")
+        string("context", "create: clean (default, prompt only) or snapshot (also context_snapshot).", enum = listOf("clean", "snapshot"))
+        string("context_snapshot", "create, snapshot: compact context the run needs from this conversation.")
+        string("catch_up", "create: missed runs while the phone/app was off (default: at=latest, recurring=skip).", enum = listOf("skip", "latest", "all"))
+        string("overlap", "create: when the previous run is still going (default skip).", enum = listOf("skip", "queue", "parallel"))
     }
 
     override fun subject(args: JsonObject) = when (args.string("action")) {
@@ -222,13 +214,9 @@ class WakeupTool(private val sessionId: String, private val wakeups: WakeupServi
     override val description = "Wake this conversation up after delay_ms (5 s – 1 h) with prompt, e.g. to check a deployment or " +
         "build again instead of waiting. End your turn after calling it. One pending wakeup per conversation (a new one replaces it). " +
         "Not for future work at a fixed time or recurring work: use schedule for that."
-    override val parameters = buildJsonObject {
-        put("type", "object")
-        putJsonObject("properties") {
-            int("delay_ms", "Delay in milliseconds (5000 – 3600000).")
-            str("prompt", "What to do when waking up.")
-        }
-        put("required", buildJsonArray { add(JsonPrimitive("delay_ms")); add(JsonPrimitive("prompt")) })
+    override val parameters = toolParameters(additionalProperties = null) {
+        integer("delay_ms", "Delay in milliseconds (5000 – 3600000).", required = true)
+        string("prompt", "What to do when waking up.", required = true)
     }
 
     override fun subject(args: JsonObject) = "${((args["delay_ms"] as? JsonPrimitive)?.content?.toDoubleOrNull() ?: 0.0).toLong() / 1000}초 후 · " + args.string("prompt").orEmpty()
