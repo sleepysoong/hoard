@@ -104,15 +104,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         if (!hasTarget) return Result.success()
 
         val cfg = SettingsStore.current(applicationContext)
-        // A scheduled run gets the permissions snapshotted at creation, intersected with the
-        // current settings (never broader), and no schedule/wakeup tools of its own.
+        // Every tool is always on (no toggles). A scheduled run still gets no more than what
+        // was snapshotted when it was created, and no schedule/wakeup tools of its own.
+        // Shared storage / Termux work once their Android permissions are granted (asked at
+        // app start); until then the tool reports exactly what's missing.
         val scheduledPerms = runId?.let { scheduler.runOf(it) }?.let { r -> repo.schedules.value.firstOrNull { it.id == r.scheduleId }?.permissions }
-        val allowed = PermissionProfile(
-            web = cfg.webToolsEnabled && (scheduledPerms?.web ?: true),
-            files = cfg.fileToolsEnabled && (scheduledPerms?.files ?: true),
-            fullStorage = cfg.fileToolsFullStorage && (scheduledPerms?.fullStorage ?: true),
-            termux = cfg.termuxEnabled && (scheduledPerms?.termux ?: true)
-        )
+        val allowed = scheduledPerms ?: PermissionProfile.ALL
         val engine = Engines.forRouter(
             cfg.routerUrl,
             AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),

@@ -5,6 +5,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.core.graphics.Insets
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
@@ -55,10 +56,10 @@ class ImeCrashTest {
         compose.waitForIdle()
     }
 
-    @Test fun toolsKeyFieldWithKeyboard() {
-        compose.onNodeWithTag("tab-도구").performClick()
+    @Test fun braveKeyFieldWithKeyboard() {
+        compose.onNodeWithTag("tab-설정").performClick()
         compose.waitForIdle()
-        compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).performClick()
+        compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).performScrollTo().performClick()
         for (h in listOf(200, 500, 800, 900)) { keyboard(h); compose.mainClock.advanceTimeBy(80) }
         compose.mainClock.advanceTimeBy(2_000)
         keyboard(0)

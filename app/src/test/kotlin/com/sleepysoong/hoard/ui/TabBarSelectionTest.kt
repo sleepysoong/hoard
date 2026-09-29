@@ -148,7 +148,7 @@ class TopBarConsistencyTest {
         compose.onNodeWithTag("tab-설정").performClick()
         compose.waitForIdle()
         val before = compose.onNode(androidx.compose.ui.test.hasTestTag("floating-bar")).fetchSemanticsNode().boundsInRoot
-        compose.onNodeWithText("정보").performScrollTo()
+        compose.onNodeWithText("기본 컨텍스트").performScrollTo() // the last section
         compose.waitForIdle()
         val after = compose.onNode(androidx.compose.ui.test.hasTestTag("floating-bar")).fetchSemanticsNode().boundsInRoot
         assertEquals("bar is fixed", before.top, after.top, 0.5f)

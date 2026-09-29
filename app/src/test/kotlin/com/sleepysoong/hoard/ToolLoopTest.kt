@@ -263,22 +263,12 @@ class ToolLoopTest {
         dir.deleteRecursively()
     }
 
-    /** Device tools off: only the session runtime capabilities (todo / goal / schedule / wakeup) remain. */
-    @Test fun allToolsOffSendNoTools() {
-        start(tools = null)
-        runBlocking { SettingsStore.setWebToolsEnabled(h.app, false); SettingsStore.setFileToolsEnabled(h.app, false) }
-        router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("도구 없이 답"))))
-        h.vm.send("안녕", emptyList(), "coding")
-        h.awaitReplies()
-        assertEquals(listOf("todo", "goal", "schedule", "schedule_wakeup"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
-        assertEquals("도구 없이 답", h.messages().last().text)
-    }
-
+    /** No toggles: every tool is offered (web_search only once a Brave key is set). */
     @Test fun defaultsOfferWebFetchAndFileToolsButNoSearchWithoutKey() {
-        start(tools = null) // real WebTools.registry from settings: web + file tools on, no Brave key, Termux off
+        start(tools = null) // real WebTools.registry: everything on, no Brave key
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()
-        assertEquals(listOf("todo", "web_fetch", "read_file", "write_file", "edit_file", "glob", "grep", "goal", "schedule", "schedule_wakeup"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
+        assertEquals(listOf("todo", "web_fetch", "termux_exec", "read_file", "write_file", "edit_file", "glob", "grep", "goal", "schedule", "schedule_wakeup"), body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content })
     }
 }

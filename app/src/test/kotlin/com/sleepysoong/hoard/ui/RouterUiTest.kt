@@ -104,9 +104,7 @@ class RouterUiTest {
         connect()
         compose.onNodeWithTag("router-status").assertTextContains("그룹 2 · 모델 1", substring = true)
         compose.onNodeWithText("기본 모델").assertExists()
-        compose.onNodeWithTag("models-empty").assertDoesNotExist()
-        compose.onNodeWithText("coding").assertExists()
-        compose.onNodeWithText("openrouter/c").assertExists()
+        compose.onNodeWithText("라우터: coding, fast, openrouter/c", substring = true).assertExists()
         shot("settings-connected")
         assertEquals("/v1/models", router.requests.last().path)
     }
@@ -117,7 +115,7 @@ class RouterUiTest {
         compose.onNode(hasSetTextAction() and hasText("라우터 주소")).performTextReplacement(dead)
         compose.onNodeWithText("연결").performClick()
         waitFor("failed") { compose.onAllNodesWithText("연결 실패", substring = true).fetchSemanticsNodes().isNotEmpty() }
-        compose.onNodeWithTag("models-empty").assertExists()
+        compose.onNodeWithText("비우면 라우터의 첫 그룹을 씁니다", substring = true).assertExists()
         shot("settings-failed")
     }
 
@@ -204,21 +202,31 @@ class RouterUiTest {
         shot("settings-token")
     }
 
-    @Test fun webToolsSettingsSaveMaskedBraveKeyAndSwitch() {
-        compose.onNodeWithTag("tab-도구").performClick()
-        compose.onNodeWithTag("web-tools-status").performScrollTo()
-        compose.onNodeWithTag("web-tools-status").assertTextContains("web_fetch만", substring = true)
+    @Test fun braveKeyIsInSettingsMaskedAndSaved() {
+        compose.onNodeWithTag("tab-설정").performClick()
+        compose.onNodeWithTag("brave-key").performScrollTo()
         compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).performTextReplacement("BSA-test-key")
         compose.waitForIdle()
         val field = compose.onNode(hasSetTextAction() and hasText("Brave Search API 키")).fetchSemanticsNode()
         assertTrue("Brave key is a password field", field.config.contains(androidx.compose.ui.semantics.SemanticsProperties.Password))
         val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
         waitFor("key saved") { runBlocking { SettingsStore.current(app).braveApiKey } == "BSA-test-key" }
-        compose.onNodeWithTag("web-tools-status").assertTextContains("web_search + web_fetch", substring = true)
-        shot("settings-web-tools")
-        compose.onNodeWithTag("web-tools-switch").performClick()
-        waitFor("switch saved") { !runBlocking { SettingsStore.current(app).webToolsEnabled } }
-        compose.onNodeWithTag("web-tools-status").assertTextContains("꺼짐", substring = true)
+        compose.onNodeWithText("web_search 사용", substring = true).assertExists()
+        shot("settings-brave-key")
         assertTrue("settings never print the key", !runBlocking { SettingsStore.current(app) }.toString().contains("BSA-test-key"))
+        // The info section is gone.
+        assertEquals(0, compose.onAllNodesWithText("sleepysoong 제작", substring = true).fetchSemanticsNodes().size)
+    }
+
+    @Test fun defaultModelIsTypedAndUsedForNewSessions() {
+        connect()
+        compose.onNode(hasSetTextAction() and hasText("새 세션의 모델")).performTextReplacement("fast")
+        val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+        waitFor("model saved") { runBlocking { SettingsStore.current(app).defaultModel } == "fast" }
+        compose.onNodeWithText("라우터: coding, fast, openrouter/c", substring = true).assertExists()
+        compose.onNodeWithTag("tab-세션").performClick()
+        compose.onNodeWithContentDescription("새 세션").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("fast ·", substring = true).assertExists()
     }
 }

@@ -89,35 +89,44 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         val routerModels by HoardRepository.get().routerModels.collectAsState()
         IOSSectionHeader("기본 모델")
         IOSGroupedSection {
-            if (routerModels.isEmpty()) {
-                Text(
-                    "라우터를 연결하면 그룹과 모델이 여기에 나옵니다",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = scheme.onSurfaceVariant,
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp).testTag("models-empty")
-                )
-            }
-            routerModels.forEachIndexed { i, m ->
-                if (i > 0) IOSRowDivider()
-                val selected = settings.defaultModel == m.id
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 52.dp)
-                        .liquidClickable { scope.launch { SettingsStore.setDefaultModel(ctx, m.id) } }
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Column(Modifier.weight(1f)) {
-                        Text(m.displayName, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                        Text(m.description, style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
-                    }
-                    if (selected) {
-                        Icon(Icons.Rounded.Check, contentDescription = null, tint = scheme.primary, modifier = Modifier.size(22.dp))
-                    }
-                }
-            }
+            // Typed, saved as you type: new sessions start on it. Blank = the router's first group.
+            var modelText by rememberSaveable { mutableStateOf<String?>(null) }
+            GlassTextField(
+                value = modelText ?: settings.defaultModel,
+                onValueChange = { v ->
+                    modelText = v
+                    scope.launch { SettingsStore.setDefaultModel(ctx, v.trim()) }
+                },
+                label = { Text("새 세션의 모델") },
+                placeholder = { Text("예: coding") },
+                singleLine = true,
+                supportingText = {
+                    Text(
+                        if (routerModels.isEmpty()) "비우면 라우터의 첫 그룹을 씁니다"
+                        else "라우터: " + routerModels.joinToString(", ") { it.id },
+                        maxLines = 2
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Ascii, imeAction = ImeAction.Done),
+                modifier = Modifier.padding(12.dp).testTag("default-model")
+            )
+        }
+
+        IOSSectionHeader("웹 검색")
+        IOSGroupedSection {
+            // The user's own Brave Search key (web_search); stored on this device only.
+            var key by rememberSaveable(settings.braveApiKey) { mutableStateOf(settings.braveApiKey) }
+            GlassTextField(
+                value = key,
+                onValueChange = { v -> key = v; scope.launch { SettingsStore.setBraveApiKey(ctx, v) } },
+                label = { Text("Brave Search API 키") },
+                placeholder = { Text("api-dashboard.search.brave.com에서 발급") },
+                singleLine = true,
+                supportingText = { Text(if (key.isBlank()) "없으면 web_fetch만 씁니다" else "web_search 사용 · 이 기기에만 저장") },
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                modifier = Modifier.padding(12.dp).testTag("brave-key")
+            )
         }
 
         IOSSectionHeader("기본 컨텍스트")
@@ -136,15 +145,6 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 label = "새 세션의 컨텍스트",
                 modifier = Modifier.padding(12.dp)
             )
-        }
-
-        IOSSectionHeader("정보")
-        IOSGroupedSection {
-            Column(Modifier.padding(horizontal = 16.dp, vertical = 10.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text("Hoard", style = MaterialTheme.typography.bodyLarge)
-                Text("sleepysoong 제작 · github.com/sleepysoong/hoard", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-                Text("sleepyrouter /hoard/v1/responses로 답변", style = MaterialTheme.typography.labelSmall, color = scheme.onSurfaceVariant)
-            }
         }
     }
     }

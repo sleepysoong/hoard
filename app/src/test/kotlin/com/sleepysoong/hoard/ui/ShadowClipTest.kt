@@ -68,17 +68,17 @@ class ShadowClipTest {
 
     @Test fun sessionsListSingleCard() = assertNoCut("sessions", "Hoard에 오신 것을 환영합니다")
 
-    @Test fun toolsLastCard() {
-        compose.onNodeWithTag("tab-도구").performClick()
+    @Test fun settingsLastCard() {
+        compose.onNodeWithTag("tab-설정").performClick()
         compose.waitForIdle()
-        // The tools list is taller than the screen: check the last card at the scroll end,
-        // where the bottom padding (shadow bleed) must leave its shadow uncut.
+        // Taller than the screen: check the last card at the scroll end, where the bottom
+        // padding (shadow bleed) must leave its shadow uncut.
         repeat(3) {
             compose.onAllNodes(androidx.compose.ui.test.hasScrollAction()).onFirst()
                 .performTouchInput { swipeUp() }
             compose.waitForIdle()
         }
-        // Last card (Termux): its status line ends ~12dp above the card edge.
-        assertNoCut("tools", "꺼짐 · 모델에 termux_exec를 주지 않음", belowTextDp = 14f)
+        // Last card (기본 컨텍스트): the (merged) field node ends 12dp above the card edge.
+        assertNoCut("settings", "새 세션의 컨텍스트", belowTextDp = 14f)
     }
 }

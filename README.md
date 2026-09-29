@@ -44,7 +44,7 @@ Still no gradients: every colour is solid.
   highlighting, and LaTeX (`$…$` inline, `$$…$$` block). What I type is shown verbatim.
   Remote images in replies are not fetched (alt text shown instead).
 - Web tools (`tools/`), run on the device and offered to the model through sleepyrouter's
-  function calling (Settings → 웹 도구; on by default in router mode):
+  function calling (always on in router mode; Brave key in 설정 → 웹 검색):
   - Flow: `web_search` → 10 results → the model picks the relevant URLs → several `web_fetch` in one turn
     (run in parallel, max 5) → answer from the fetched text. Read-only tools of a round run concurrently;
     side-effect tools (write/edit, termux) run alone in call order.
@@ -60,15 +60,15 @@ Still no gradients: every colour is solid.
   - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without
     touching the tool schema. Tool loop in `RouterAiEngine`: up to 8 rounds, then `tool_choice: none`.
     Each call appears as a step under the reply's 추론 section.
-- File tools (도구 → 파일, on by default): `read_file(path, offset?, limit?)`, `write_file(path, content)`,
+- File tools (always on): `read_file(path, offset?, limit?)`, `write_file(path, content)`,
   `edit_file(path, old_string, new_string, replace_all?)`, `glob(pattern, path?)`,
   `grep(pattern, path?, glob?, case_sensitive?, max_results?)`. Relative paths = the app's private workspace
-  (`filesDir/workspace`). Turn on **기기 전체 저장소** to also reach shared storage (`/storage/emulated/0`:
+  (`filesDir/workspace`). Shared storage is also reachable (`/storage/emulated/0`:
   Download, Documents, DCIM…) by absolute path, like a file manager — needs Android's "All files access"
   (`MANAGE_EXTERNAL_STORAGE`, granted in system settings; Android still blocks `Android/data`/`obb`).
   Anything else (`..`, other absolute paths, symlinks out) is refused. UTF-8 text only, atomic writes,
   grep has a 3 s regex budget, glob/grep walks stop at 200k entries / 15 s. Code: `tools/files/`.
-- `termux_exec` (Settings → Termux, off by default): one-shot shell commands in Termux via the official
+- `termux_exec` (always on; needs Termux + its RUN_COMMAND permission): one-shot shell commands in Termux via the official
   `com.termux.RUN_COMMAND` intent to `RunCommandService` (`bash -lc <command>`, background, result back
   through a PendingIntent → `TermuxResultReceiver`). Returns `{stdout, stderr, exitCode}` as-is (non-zero exit
   is a normal result). Distinct errors for: Termux not installed, RUN_COMMAND permission missing,
@@ -91,14 +91,17 @@ Still no gradients: every colour is solid.
   snapshotted at creation ∩ current settings (no schedule/wakeup tools inside a run). Run history,
   stale-run recovery and re-arming on app start (`SchedulerEngine.reconcile`). Backend: WorkManager (survives
   reboot; Doze may delay — 15 min grace). `schedule_wakeup` (5 s–1 h, one per session) wakes the same session
-  later instead of busy-polling. Schedules are listed in 도구 → 예약 (pause/resume/cancel).
+  later instead of busy-polling.
 - Work steps (reasoning / tool calls, expandable cards) + model picker (router groups/models)
 - Session task tracking through one `todo` tool (`create`, `update`, `remove`, `list`, `clear`), with no priorities.
   State lives in one SQLite database keyed by session, independent of chat history. At most one task can be
   in progress; app restart restores tasks, branches copy unfinished work with new IDs, and a new turn gets
   one temporary reminder when unfinished tasks exist. A collapsible glass panel shows committed progress.
   Contract, lifecycle and E2E artifacts: [`docs/TODO_TOOL.md`](docs/TODO_TOOL.md).
-- 도구 tab: the real on-device tools (web_search / web_fetch, termux_exec) and their settings
+- No tool toggles: every tool is always on (the 도구 tab is empty for now). At every app launch
+  `PermissionGate` asks for what's missing: notifications + Termux RUN_COMMAND (if Termux is installed) in one
+  dialog, then Android's "All files access" screen (shared storage for the file tools).
+- Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key, default context.
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
   foreground notification, so leaving the app after send still finishes the reply.

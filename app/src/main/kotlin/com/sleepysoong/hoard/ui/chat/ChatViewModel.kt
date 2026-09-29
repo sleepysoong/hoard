@@ -93,10 +93,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun createDefaultSession(name: String = "새 세션"): ChatSession {
         val d = settings.value
-        // The saved default may be unknown to the current router (or no router yet):
-        // start on the router's first entry (its first group), or blank until one connects.
-        val catalog = repo.modelCatalog()
-        val model = catalog.firstOrNull { it.id == d.defaultModel }?.id ?: catalog.firstOrNull()?.id ?: d.defaultModel
+        // The model typed in Settings; blank = the router's first entry (its first group).
+        val model = d.defaultModel.trim().ifEmpty { repo.modelCatalog().firstOrNull()?.id.orEmpty() }
         return repo.createSession(name, modelId = model, contextLimit = d.defaultContext)
     }
 

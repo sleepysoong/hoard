@@ -97,7 +97,12 @@ data class PermissionProfile(
     val files: Boolean,
     val fullStorage: Boolean,
     val termux: Boolean
-)
+) {
+    companion object {
+        /** Everything the app offers (tools are always on). */
+        val ALL = PermissionProfile(web = true, files = true, fullStorage = true, termux = true)
+    }
+}
 
 /** A durable future execution: fires isolated runs (own session) on its trigger. */
 @Serializable

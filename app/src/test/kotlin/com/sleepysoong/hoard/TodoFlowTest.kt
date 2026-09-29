@@ -62,8 +62,6 @@ class TodoFlowTest {
         val r = FakeRouter().also { router = it }
         runBlocking {
             SettingsStore.setRouterUrl(h.app, r.url)
-            SettingsStore.setWebToolsEnabled(h.app, false)
-            SettingsStore.setFileToolsEnabled(h.app, false)
         }
         r.enqueue(
             FakeRouter.Reply.Sse(listOf(FakeRouter.toolCallCompleted(

@@ -9,20 +9,14 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.onRoot
 import androidx.compose.ui.test.performClick
-import androidx.compose.ui.test.performScrollTo
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sleepysoong.hoard.MainActivity
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.GoalStatus
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
-import com.sleepysoong.hoard.data.PermissionProfile
-import com.sleepysoong.hoard.data.ScheduleStatus
-import com.sleepysoong.hoard.data.ScheduleTrigger
 import com.sleepysoong.hoard.goal.Actor
 import com.sleepysoong.hoard.goal.GoalService
-import com.sleepysoong.hoard.schedule.CreateScheduleInput
-import com.sleepysoong.hoard.schedule.WorkManagerScheduler
 import com.sleepysoong.hoard.testing.TestData
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -32,7 +26,7 @@ import org.robolectric.annotation.Config
 import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
-/** Goal bar + sheet (user controls), trigger notice, and the schedule list. Screenshots: build/test-artifacts/goal/. */
+/** Goal bar + sheet (user controls) and the trigger notice. Screenshots: build/test-artifacts/goal/. */
 @RunWith(AndroidJUnit4::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 @Config(sdk = [35], qualifiers = "w411dp-h891dp-xxhdpi")
@@ -69,24 +63,5 @@ class GoalScheduleUiTest {
         compose.mainClock.advanceTimeBy(1_000); compose.waitForIdle()
         assertEquals(GoalStatus.Paused, GoalService(HoardRepository.get()).current(TestData.SESSION_ID)!!.status)
         compose.onNodeWithText("목표 일시정지", useUnmergedTree = true).assertExists()
-    }
-
-    @Test fun scheduleListWithControls() {
-        val (service, _, _) = WorkManagerScheduler.services(compose.activity)
-        compose.runOnUiThread {
-            service.create(CreateScheduleInput(
-                "의존성 점검", "오래된 의존성 보고", ScheduleTrigger.Cron("0 9 * * *", "Asia/Seoul"), "coding", TestData.SESSION_ID,
-                PermissionProfile(web = true, files = true, fullStorage = false, termux = false)
-            ))
-        }
-        compose.onNodeWithTag("tab-도구").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithTag("schedule-pause", useUnmergedTree = true).performScrollTo()
-        compose.onNodeWithText("의존성 점검", useUnmergedTree = true).assertExists()
-        shot("tools-schedules")
-        compose.onNodeWithTag("schedule-pause", useUnmergedTree = true).performClick()
-        compose.waitForIdle()
-        assertEquals(ScheduleStatus.Paused, HoardRepository.get().schedules.value.single().status)
-        compose.onNodeWithTag("schedule-resume", useUnmergedTree = true).assertExists()
     }
 }

@@ -1,10 +1,5 @@
 package com.sleepysoong.hoard.ui.chat
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.scaleIn
@@ -55,7 +50,6 @@ import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
@@ -107,18 +101,8 @@ fun ChatScreen(
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboard.current
 
-    // Background replies post a notification; ask once, on the first send.
-    val context = LocalContext.current
-    val notifLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { }
-    val sendReply: (String, String) -> Unit = { prompt, modelId ->
-        if (Build.VERSION.SDK_INT >= 33 &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            notifLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        }
-        vm.send(prompt, vm.attachments, modelId)
-    }
+    // Notification permission is asked at app start (PermissionGate).
+    val sendReply: (String, String) -> Unit = { prompt, modelId -> vm.send(prompt, vm.attachments, modelId) }
 
     val atBottom by remember {
         derivedStateOf {

@@ -97,6 +97,8 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
 
         setContent {
+            // Every launch: ask for the permissions the always-on tools need.
+            PermissionGate()
             val ctx = LocalContext.current
             val settings by SettingsStore.flow(ctx).collectAsState(SettingsStore.Settings())
             // Load the router's catalog once the saved URL is known (and after it changes).
