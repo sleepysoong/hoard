@@ -103,7 +103,12 @@ internal object PageScripts {
     }
     if (tag === 'A') {
       const h = el.getAttribute('href');
-      if (h && !h.trim().toLowerCase().startsWith('javascript:')) o.href = cut(el.href, 200);
+      if (h && !h.trim().toLowerCase().startsWith('javascript:')) {
+        // Same-site links as paths: half the size on link-heavy pages.
+        let full = el.href;
+        try { const u = new URL(el.href); if (u.origin === location.origin) full = u.pathname + u.search + u.hash; } catch (e) {}
+        o.href = cut(full, 150);
+      }
     }
     if (t === 'checkbox' || t === 'radio') o.checked = !!el.checked;
     else if (el.hasAttribute('aria-checked')) o.checked = el.getAttribute('aria-checked') === 'true';

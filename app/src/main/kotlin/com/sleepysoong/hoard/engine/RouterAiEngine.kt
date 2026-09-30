@@ -122,8 +122,42 @@ class RouterAiEngine(
                     put("output", outcome.output)
                 }
             }
+            compactSuperseded(toolItems, active!!)
             onEvent(prior.event(request, started))
             round++
+        }
+    }
+
+    /**
+     * Only the newest snapshot of a tool that supersedes its results (browser page states)
+     * stays in full; earlier snapshots are replaced by [ToolRegistry.supersede]'s short form.
+     * Results that aren't snapshots (errors, tab lists) never push out the current state.
+     * Without this every round would resend every earlier page snapshot.
+     */
+    private fun compactSuperseded(items: MutableList<JsonObject>, tools: ToolRegistry) {
+        fun JsonObject.s(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
+        val nameOf = HashMap<String, String>()
+        for (item in items) if (item.s("type") == "function_call") {
+            val id = item.s("call_id") ?: continue
+            nameOf[id] = item.s("name") ?: continue
+        }
+        // (index, tool name, short form) of every output that is a full snapshot.
+        val snapshots = items.mapIndexedNotNull { i, item ->
+            if (item.s("type") != "function_call_output") return@mapIndexedNotNull null
+            val name = item.s("call_id")?.let { nameOf[it] } ?: return@mapIndexedNotNull null
+            val output = item.s("output") ?: return@mapIndexedNotNull null
+            val compact = tools.supersede(name, output)?.takeIf { it != output } ?: return@mapIndexedNotNull null
+            Triple(i, name, compact)
+        }
+        val newest = snapshots.groupBy { it.second }.mapValues { (_, list) -> list.last().first }
+        for ((i, name, compact) in snapshots) {
+            if (newest[name] == i) continue
+            val callId = items[i].s("call_id") ?: continue
+            items[i] = buildJsonObject {
+                put("type", "function_call_output")
+                put("call_id", callId)
+                put("output", compact)
+            }
         }
     }
 

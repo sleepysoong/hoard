@@ -24,7 +24,10 @@ VNC_PATTERN="x11vnc"
 VNC_RESTART_CMD="systemctl restart x11vnc"
 CDP_WAIT_SECONDS=30
 DISPLAY_WAIT_SECONDS=20
+# Window: fill the screen (VNC viewers see the whole page; the AI gets a tall viewport).
+CHROME_WINDOW_ARGS="--start-maximized --window-position=0,0 --window-size=1440,1080"
 CHROME_EXTRA_ARGS=""
+CHROME_UNIT="hoard-browser"
 [ -r /etc/ensure-browser-runtime.conf ] && . /etc/ensure-browser-runtime.conf
 
 export DISPLAY="$BROWSER_DISPLAY"
@@ -57,14 +60,30 @@ start_chrome() {
     local sandbox=""
     # Chrome refuses to run as root with its sandbox; prefer a dedicated non-root user.
     [ "$(id -u)" = "0" ] && sandbox="--no-sandbox"
-    setsid nohup "$CHROME_BIN" \
+    launch "$CHROME_BIN" \
         --remote-debugging-address=127.0.0.1 \
         --remote-debugging-port="$CDP_PORT" \
         --user-data-dir="$PROFILE_DIR" \
         --no-first-run --no-default-browser-check \
-        $sandbox $CHROME_EXTRA_ARGS \
-        about:blank >/tmp/ensure-browser-runtime.chrome.log 2>&1 < /dev/null &
+        $CHROME_WINDOW_ARGS $sandbox $CHROME_EXTRA_ARGS \
+        about:blank
     wait_for "$CDP_WAIT_SECONDS" cdp_ok
+}
+
+# Starts Chrome detached from the SSH session that asked for it. As root with systemd it
+# gets its own unit (hoard-browser.service, logs: journalctl -u hoard-browser): the SSH
+# session ending, or an out-of-memory kill in that session, never takes Chrome with it.
+launch() {
+    if [ "$(id -u)" = "0" ] && command -v systemd-run >/dev/null 2>&1; then
+        systemctl stop "$CHROME_UNIT.service" >/dev/null 2>&1
+        systemctl reset-failed "$CHROME_UNIT.service" >/dev/null 2>&1
+        local env=(--setenv=DISPLAY="$BROWSER_DISPLAY" --setenv=HOME="${HOME:-/root}")
+        [ -n "${XAUTHORITY:-}" ] && env+=(--setenv=XAUTHORITY="$XAUTHORITY")
+        [ -n "${LANG:-}" ] && env+=(--setenv=LANG="$LANG")
+        [ -n "${LANGUAGE:-}" ] && env+=(--setenv=LANGUAGE="$LANGUAGE")
+        systemd-run --quiet --collect --unit="$CHROME_UNIT" "${env[@]}" "$@" >/dev/null 2>&1 && return 0
+    fi
+    setsid nohup "$@" >/tmp/ensure-browser-runtime.chrome.log 2>&1 < /dev/null &
 }
 
 # 1. X display (XFCE comes with it)

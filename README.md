@@ -248,8 +248,10 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 
    Chrome is started as `DISPLAY=:0 google-chrome --remote-debugging-address=127.0.0.1
    --remote-debugging-port=9222 --user-data-dir=$HOME/.browser-agent-profile --no-first-run
-   --no-default-browser-check` (`--no-sandbox` only when running as root). **CDP is bound to 127.0.0.1 and
-   must never be exposed**; the app reaches it through the SSH tunnel.
+   --no-default-browser-check` plus a maximized window (`--no-sandbox` only when running as root). As root
+   with systemd it runs as its own unit, `hoard-browser.service` (`journalctl -u hoard-browser`), so the SSH
+   session that started it ending — or being killed for memory — never takes Chrome along. **CDP is bound to
+   127.0.0.1 and must never be exposed**; the app reaches it through the SSH tunnel.
 3. Optional `/etc/ensure-browser-runtime.conf` (shell syntax) for your setup, e.g.:
 
    ```bash
@@ -299,6 +301,9 @@ Every action except `tabs`/`screenshot` returns a fresh state, so the model alwa
   ("the page changed…") instead of hitting another page's element. The same element keeps its id across
   states of one document.
 - `text` is the visible text around the viewport (scroll to read more); passwords are never echoed.
+  Same-site link hrefs are paths (`/wiki/Foo`), and `open` accepts such a path for the current site.
+- Only the newest page state of a turn stays in full: earlier ones lose their element list
+  (`Tool.supersede`), so a multi-step task doesn't resend every old snapshot each round.
 - Clicks are real mouse events at the element's center (a DOM click if something covers it); a link that
   opens a new tab switches to it. JavaScript dialogs are accepted and reported; downloads go to the VPS
   Chrome's download folder and are reported. `screenshot` saves a JPEG in the workspace (`browser/…`, the
