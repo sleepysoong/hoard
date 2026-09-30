@@ -54,6 +54,10 @@ lives in sleepyrouter's `docs/protocol-openai.md` ("Hoard endpoint"); Hoard's si
 - Commit and push each repository separately, one logical change at a time.
 - Tools are assembled only through `ToolKit` (modules + `ToolContext`/`ToolServices`); follow README "Tool API" when adding one.
 - Tools (`tools/`) execute on the device; the router only relays `function_call` / `function_call_output`.
+- `browser_use` drives the VPS Chrome only over SSH (exec + local port forward to CDP 127.0.0.1:9222); never expose CDP,
+  never add a Chrome extension or HTTP proxy. The SSH private key is stored only Keystore-encrypted and the host key
+  must stay pinned (README "Remote browser"). Keep `scripts/vps/ensure-browser-runtime`'s JSON output in sync with
+  `BrowserRuntimeManager.parse`.
   Tool output must stay provider-neutral (never forward a search provider's raw JSON), and `web_fetch`
   URLs come from the model — keep the public-address check on every redirect hop (`PageFetcher`).
   Never bundle API keys (Brave): the user enters their own in Settings.

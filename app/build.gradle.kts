@@ -69,6 +69,8 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
             excludes += "/META-INF/gradle/incremental.annotation.processors"
+            // Multi-release jars (Bouncy Castle, JSch, OkHttp) each carry these; Android ignores them.
+            excludes += "/META-INF/versions/*/OSGI-INF/MANIFEST.MF"
         }
     }
 
@@ -119,6 +121,9 @@ dependencies {
     implementation(libs.kyant.backdrop)
     implementation(libs.kyant.shapes)
     implementation(libs.jsoup)
+    implementation(libs.jsch)
+    implementation(libs.okhttp)
+    implementation(libs.bouncycastle.prov)
     // Only TermuxConstants' compile-time String constants are used; they are inlined into
     // our bytecode, so none of termux-shared (appcompat, guava, markwon, native libs) ships.
     compileOnly(libs.termux.shared) { isTransitive = false }

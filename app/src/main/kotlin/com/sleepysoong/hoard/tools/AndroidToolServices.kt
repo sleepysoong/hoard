@@ -1,6 +1,9 @@
 package com.sleepysoong.hoard.tools
 
 import android.content.Context
+import com.sleepysoong.hoard.browser.RemoteBrowser
+import com.sleepysoong.hoard.browser.RemoteBrowserConfig
+import com.sleepysoong.hoard.browser.RemoteBrowsers
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.todo.TodoService
 import com.sleepysoong.hoard.goal.GoalService
@@ -17,11 +20,13 @@ import com.sleepysoong.hoard.tools.search.SearchProvider
 /**
  * The app's [ToolServices]: real backends, created on first use.
  * [braveApiKey]: the user's own key from Settings (blank = no web_search).
+ * [browserConfig]: the verified VPS from Settings → 원격 브라우저 (null = no browser_use).
  */
 class AndroidToolServices(
     private val context: Context,
     private val braveApiKey: String,
-    private val repo: HoardRepository = HoardRepository.get()
+    private val repo: HoardRepository = HoardRepository.get(),
+    private val browserConfig: RemoteBrowserConfig? = null
 ) : ToolServices {
     private val schedulerServices by lazy { WorkManagerScheduler.services(context) }
 
@@ -32,4 +37,6 @@ class AndroidToolServices(
     override val goals: GoalService by lazy { GoalService(repo) }
     override val schedules: ScheduleService get() = schedulerServices.first
     override val wakeups: WakeupService get() = schedulerServices.third
+    // Process-wide: SSH, tunnel and CDP session stay open between calls and turns.
+    override val browser: RemoteBrowser? get() = browserConfig?.let(RemoteBrowsers::get)
 }

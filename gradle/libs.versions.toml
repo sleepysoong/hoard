@@ -19,11 +19,18 @@ kyantShapes = "1.2.1"
 kyantBackdrop = "2.0.1"
 hrmMarkdown = "1.5.3"
 jsoup = "1.23.2"
+jsch = "2.28.7"
+okhttp = "5.5.0"
+bouncycastle = "1.86"
 termuxShared = "v0.118.3"
 hrmLatex = "1.5.4"
 hrmCodeHighlight = "1.1.2"
 
 [libraries]
+# browser_use: SSH (exec + CDP tunnel), WebSocket to Chrome DevTools, Ed25519/OpenSSH keys for JSch on Android.
+jsch = { module = "com.github.mwiede:jsch", version.ref = "jsch" }
+okhttp = { module = "com.squareup.okhttp3:okhttp", version.ref = "okhttp" }
+bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = "bouncycastle" }
 # Termux constants (RUN_COMMAND extras, result bundle keys). compileOnly: the String constants are inlined.
 termux-shared = { module = "com.github.termux.termux-app:termux-shared", version.ref = "termuxShared" }
 # web_fetch: HTML parsing / main-content extraction.

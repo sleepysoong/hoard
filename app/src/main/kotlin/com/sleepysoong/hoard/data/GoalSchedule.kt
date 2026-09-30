@@ -96,11 +96,13 @@ data class PermissionProfile(
     val web: Boolean,
     val files: Boolean,
     val fullStorage: Boolean,
-    val termux: Boolean
+    val termux: Boolean,
+    /** browser_use (remote Chrome). Snapshots from before it existed decode as false (never broader). */
+    val browser: Boolean = false
 ) {
     companion object {
         /** Everything the app offers (tools are always on). */
-        val ALL = PermissionProfile(web = true, files = true, fullStorage = true, termux = true)
+        val ALL = PermissionProfile(web = true, files = true, fullStorage = true, termux = true, browser = true)
     }
 }
 

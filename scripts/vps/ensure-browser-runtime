@@ -1,0 +1,91 @@
+#!/usr/bin/env bash
+# ensure-browser-runtime — checks (and repairs only what's broken) the VPS browser runtime
+# for Hoard's browser_use tool, then prints ONE JSON object on stdout:
+#
+#   {"ready":true,"display":"running","vnc":"running","chrome":"running","cdp":"running","restarted":[]}
+#   {"ready":false,"error":"failed_to_start_chrome", ...}
+#
+# Order: X display → VNC → Chrome → CDP. Chrome is judged healthy by its CDP answer
+# (/json/version), not by the process existing. VNC and Chrome are independent: a dead
+# VNC never restarts Chrome. CDP is bound to 127.0.0.1 only (reach it through an SSH tunnel).
+#
+# Install:  sudo install -m 755 ensure-browser-runtime /usr/local/bin/
+# Config :  /etc/ensure-browser-runtime.conf (optional, shell syntax; defaults below)
+set -uo pipefail
+
+BROWSER_DISPLAY=":0"
+CDP_PORT=9222
+CHROME_BIN="$(command -v google-chrome || command -v google-chrome-stable || command -v chromium || command -v chromium-browser || echo google-chrome)"
+PROFILE_DIR="${HOME:-/root}/.browser-agent-profile"
+# How to bring the display back (XFCE included). Default: a display manager service.
+DISPLAY_RESTART_CMD="systemctl restart lightdm"
+# How to recognise and restart VNC (used only for VNC; never touches Chrome).
+VNC_PATTERN="x11vnc"
+VNC_RESTART_CMD="systemctl restart x11vnc"
+CDP_WAIT_SECONDS=30
+DISPLAY_WAIT_SECONDS=20
+CHROME_EXTRA_ARGS=""
+[ -r /etc/ensure-browser-runtime.conf ] && . /etc/ensure-browser-runtime.conf
+
+export DISPLAY="$BROWSER_DISPLAY"
+restarted=()
+display_state="running"; vnc_state="running"; chrome_state="running"; cdp_state="running"
+
+json_list() { local out="" x; for x in "$@"; do out+="${out:+,}\"$x\""; done; printf '[%s]' "$out"; }
+fail() {
+    printf '{"ready":false,"error":"%s","display":"%s","vnc":"%s","chrome":"%s","cdp":"%s","restarted":%s}\n' \
+        "$1" "$display_state" "$vnc_state" "$chrome_state" "$cdp_state" "$(json_list "${restarted[@]}")"
+    exit 0
+}
+display_ok() { xdpyinfo -display "$BROWSER_DISPLAY" >/dev/null 2>&1; }
+vnc_ok()     { pgrep -f "$VNC_PATTERN" >/dev/null 2>&1; }
+cdp_ok()     { curl -sf --max-time 3 "http://127.0.0.1:${CDP_PORT}/json/version" >/dev/null 2>&1; }
+chrome_pids() { pgrep -f -- "--remote-debugging-port=${CDP_PORT}" 2>/dev/null; }
+
+wait_for() { # seconds, check-function
+    local i
+    for ((i = 0; i < $1 * 2; i++)); do "$2" && return 0; sleep 0.5; done
+    return 1
+}
+
+start_chrome() {
+    # Stop only the CDP Chrome (our profile), never the user's other browsers.
+    local pids; pids="$(chrome_pids)"
+    if [ -n "$pids" ]; then kill $pids 2>/dev/null; sleep 1; pids="$(chrome_pids)"; [ -n "$pids" ] && kill -9 $pids 2>/dev/null; fi
+    rm -f "$PROFILE_DIR/SingletonLock" "$PROFILE_DIR/SingletonSocket" "$PROFILE_DIR/SingletonCookie" 2>/dev/null
+    mkdir -p "$PROFILE_DIR"
+    local sandbox=""
+    # Chrome refuses to run as root with its sandbox; prefer a dedicated non-root user.
+    [ "$(id -u)" = "0" ] && sandbox="--no-sandbox"
+    setsid nohup "$CHROME_BIN" \
+        --remote-debugging-address=127.0.0.1 \
+        --remote-debugging-port="$CDP_PORT" \
+        --user-data-dir="$PROFILE_DIR" \
+        --no-first-run --no-default-browser-check \
+        $sandbox $CHROME_EXTRA_ARGS \
+        about:blank >/tmp/ensure-browser-runtime.chrome.log 2>&1 < /dev/null &
+    wait_for "$CDP_WAIT_SECONDS" cdp_ok
+}
+
+# 1. X display (XFCE comes with it)
+if ! display_ok; then
+    display_state="restarted"; restarted+=("display")
+    sh -c "$DISPLAY_RESTART_CMD" >/dev/null 2>&1
+    wait_for "$DISPLAY_WAIT_SECONDS" display_ok || { display_state="down"; fail "failed_to_start_display"; }
+fi
+
+# 2. VNC (human viewing only) — independent of Chrome
+if ! vnc_ok; then
+    vnc_state="restarted"; restarted+=("vnc")
+    sh -c "$VNC_RESTART_CMD" >/dev/null 2>&1
+    wait_for 10 vnc_ok || vnc_state="down"   # not fatal: the AI doesn't use VNC
+fi
+
+# 3 + 4. Chrome, judged by CDP (re-checked after a display restart)
+if ! cdp_ok; then
+    chrome_state="restarted"; cdp_state="restarted"; restarted+=("chrome")
+    start_chrome || { chrome_state="down"; cdp_state="down"; fail "failed_to_start_chrome"; }
+fi
+
+printf '{"ready":true,"display":"%s","vnc":"%s","chrome":"%s","cdp":"%s","restarted":%s}\n' \
+    "$display_state" "$vnc_state" "$chrome_state" "$cdp_state" "$(json_list "${restarted[@]}")"

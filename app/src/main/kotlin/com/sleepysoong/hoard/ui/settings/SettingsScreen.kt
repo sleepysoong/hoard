@@ -129,6 +129,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        IOSSectionHeader("원격 브라우저")
+        IOSGroupedSection {
+            RemoteBrowserSection(settings)
+        }
+
         IOSSectionHeader("기본 컨텍스트")
         IOSGroupedSection {
             // Typed, saved as soon as the number is valid (new sessions start with it).

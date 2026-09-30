@@ -39,6 +39,7 @@ import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
 import com.sleepysoong.hoard.tools.AndroidToolServices
+import com.sleepysoong.hoard.browser.RemoteBrowserConfig
 import com.sleepysoong.hoard.tools.ToolContext
 import com.sleepysoong.hoard.tools.ToolKit
 import java.util.UUID
@@ -119,7 +120,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 ToolContext(
                     sessionId = sessionId,
                     modelId = session.modelId,
-                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo),
+                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo, RemoteBrowserConfig.from(cfg)),
                     permissions = allowed,
                     scheduledRun = runId != null
                 )
