@@ -12,14 +12,11 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.ContentCopy
@@ -64,9 +61,6 @@ import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassMotion
 import com.sleepysoong.hoard.ui.glass.GlassSheetAction
 import com.sleepysoong.hoard.ui.glass.GlassSurface
-import com.sleepysoong.hoard.ui.glass.GlassTone
-import com.sleepysoong.hoard.ui.glass.glassMaterial
-import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -203,51 +197,8 @@ fun ChatScreen(
 
             BoxWithConstraints(Modifier.weight(1f).fillMaxWidth()) {
                 val maxBubbleWidth = maxWidth * 0.78f
-                if (state.messages.isEmpty()) {
-                    // iOS-style empty state: glass mark, headline, suggestion chips.
-                    Column(
-                        Modifier.align(Alignment.Center).padding(horizontal = 8.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        Box(
-                            Modifier
-                                .size(72.dp)
-                                .glassMaterial(
-                                    RoundedCornerShape(24.dp),
-                                    MaterialTheme.colorScheme.surface,
-                                    GlassTone.Thick
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                "H",
-                                style = MaterialTheme.typography.displayMedium,
-                                color = MaterialTheme.colorScheme.primary
-                            )
-                        }
-                        Text(
-                            "무엇을 도와드릴까요?",
-                            style = MaterialTheme.typography.titleLarge,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        FlowRow(
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            listOf(
-                                "이 코드 리팩터링해 줘",
-                                "요약해 줘",
-                                "오늘 할 일 정리해 줘"
-                            ).forEach { suggestion ->
-                                GlassSuggestionChip(suggestion) {
-                                    vm.input = suggestion + " "
-                                }
-                            }
-                        }
-                    }
-                } else {
+                run {
+                    // No empty-state hero/suggestions: a fresh chat is just the composer.
                     // Bubbles present when this chat opened appear at rest; only new ones pop in.
                     val initialIds = remember(session?.id) { state.messages.map { it.id }.toSet() }
                     LazyColumn(
@@ -466,26 +417,6 @@ fun ChatScreen(
             message = "세션에서 메시지가 삭제됩니다.",
             onConfirm = { vm.deleteMessage(deleteTarget!!); deleteTarget = null },
             onDismiss = { deleteTarget = null }
-        )
-    }
-}
-
-/** Glass suggestion chip for the empty state. */
-@Composable
-private fun GlassSuggestionChip(text: String, onClick: () -> Unit) {
-    GlassSurface(
-        shape = RoundedCornerShape(50),
-        color = MaterialTheme.colorScheme.surface,
-        tone = GlassTone.Thin,
-        lifted = false
-    ) {
-        Text(
-            text,
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier
-                .liquidClickable(onClick = onClick)
-                .padding(horizontal = 14.dp, vertical = 9.dp)
         )
     }
 }

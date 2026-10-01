@@ -166,6 +166,20 @@ class ChatLifecycleFlowTest {
         shot("queue-cancelled")
     }
 
+    @Test fun emptyChatHasNoHeroOrSuggestionsAndComposerStillSends() {
+        router.enqueue(FakeRouter.Reply.Sse(listOf(FakeRouter.created(), FakeRouter.delta("첫 답변", 1), FakeRouter.completed("첫 답변"))))
+        compose.onNodeWithContentDescription("새 세션").performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("무엇을 도와드릴까요?", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("요약해 줘", substring = true).assertDoesNotExist()
+        compose.onNodeWithText("H").assertDoesNotExist()
+        shot("empty-minimal")
+        compose.onNode(hasSetTextAction()).performTextInput("처음 질문")
+        compose.onNodeWithContentDescription("보내기").performClick()
+        val newSession = vm.uiState.value.session!!.id
+        waitFor { repo.messagesOf(newSession).any { it.text == "첫 답변" } }
+    }
+
     @Test fun noRouterBlocksSendAndRegenerateWithoutLosingDraftOrExistingReply() {
         openChat()
         runBlocking { SettingsStore.setRouterUrl(app, "") }
