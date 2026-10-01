@@ -122,8 +122,42 @@ class RouterAiEngine(
                     put("output", outcome.output)
                 }
             }
+            compactSuperseded(toolItems, active!!)
             onEvent(prior.event(request, started))
             round++
+        }
+    }
+
+    /**
+     * Only the newest snapshot of a tool that supersedes its results (browser page states)
+     * stays in full; earlier snapshots are replaced by [ToolRegistry.supersede]'s short form.
+     * Results that aren't snapshots (errors, tab lists) never push out the current state.
+     * Without this every round would resend every earlier page snapshot.
+     */
+    private fun compactSuperseded(items: MutableList<JsonObject>, tools: ToolRegistry) {
+        fun JsonObject.s(k: String) = (this[k] as? JsonPrimitive)?.contentOrNull
+        val nameOf = HashMap<String, String>()
+        for (item in items) if (item.s("type") == "function_call") {
+            val id = item.s("call_id") ?: continue
+            nameOf[id] = item.s("name") ?: continue
+        }
+        // (index, tool name, short form) of every output that is a full snapshot.
+        val snapshots = items.mapIndexedNotNull { i, item ->
+            if (item.s("type") != "function_call_output") return@mapIndexedNotNull null
+            val name = item.s("call_id")?.let { nameOf[it] } ?: return@mapIndexedNotNull null
+            val output = item.s("output") ?: return@mapIndexedNotNull null
+            val compact = tools.supersede(name, output)?.takeIf { it != output } ?: return@mapIndexedNotNull null
+            Triple(i, name, compact)
+        }
+        val newest = snapshots.groupBy { it.second }.mapValues { (_, list) -> list.last().first }
+        for ((i, name, compact) in snapshots) {
+            if (newest[name] == i) continue
+            val callId = items[i].s("call_id") ?: continue
+            items[i] = buildJsonObject {
+                put("type", "function_call_output")
+                put("call_id", callId)
+                put("output", compact)
+            }
         }
     }
 
@@ -279,10 +313,10 @@ class RouterAiEngine(
                     val full = resp?.let(::outputText)
                     if (!full.isNullOrEmpty()) { text.setLength(0); text.append(full) }
                     if (text.isEmpty()) throw RouterException.Permanent("응답이 완료되지 않았습니다 ($why)", routing, null)
-                    text.append("\n\n(응답이 잘렸습니다: $why)")
+                    text.append("\n\n$INCOMPLETE_PREFIX$why)")
                     routing = routing?.withSelectedOutcome("incomplete")
                     done = true
-                    return event(elapsed, done = true)
+                    return event(elapsed, done = true, incomplete = true)
                 }
                 "response.failed" -> {
                     val err = obj.obj("response")?.obj("error")
@@ -315,9 +349,10 @@ class RouterAiEngine(
         val ownCompletionTokens: Int get() =
             if (completionTokens > 0) completionTokens else com.sleepysoong.hoard.data.estimateTokens(text.toString())
 
-        private fun event(elapsed: Long, done: Boolean = false): StreamEvent {
+        private fun event(elapsed: Long, done: Boolean = false, incomplete: Boolean = false): StreamEvent {
             lastElapsed = elapsed
             return StreamEvent(
+                incomplete = incomplete,
                 thinking = prior.thinking + listOfNotNull(reasoningStep),
                 deltaText = prior.joinText(text.toString()),
                 done = done,
@@ -489,6 +524,8 @@ class RouterAiEngine(
                     "goal" -> "Goal: " + m.text
                     "wakeup" -> "[Wakeup you scheduled] " + m.text
                     "schedule" -> "[Scheduled run] " + m.text
+                    // A compaction summary: framed as the checkpoint it is (see Compaction).
+                    com.sleepysoong.hoard.data.TRIGGER_COMPACT -> Compaction.forModel(m.text)
                     else -> m.text
                 }
                 val attached = !assistant && m.attachments.isNotEmpty()
@@ -507,6 +544,9 @@ class RouterAiEngine(
 
         /** Concatenated output_text of a Responses object. */
         const val EMPTY_REPLY = "모델이 빈 응답을 보냈습니다 (추론만 하고 답을 쓰지 않음)"
+
+        /** Start of the note appended to a reply cut off by `response.incomplete` (followed by the reason and ")"). */
+        const val INCOMPLETE_PREFIX = "(응답이 잘렸습니다: "
 
         fun hasToolCall(resp: JsonObject): Boolean = functionCalls(resp).isNotEmpty()
 

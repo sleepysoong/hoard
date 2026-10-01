@@ -1,5 +1,6 @@
 package com.sleepysoong.hoard.tools
 
+import com.sleepysoong.hoard.browser.RemoteBrowser
 import com.sleepysoong.hoard.data.PermissionProfile
 import com.sleepysoong.hoard.data.todo.TodoService
 import com.sleepysoong.hoard.goal.GoalService
@@ -50,6 +51,8 @@ interface ToolServices {
     val goals: GoalService?
     val schedules: ScheduleService?
     val wakeups: WakeupService?
+    /** The VPS Chrome (browser_use), or null until Settings → 원격 브라우저 is set up and verified. */
+    val browser: RemoteBrowser? get() = null
 }
 
 /** A group of related tools, offered together when the context allows it. */
@@ -61,7 +64,7 @@ interface ToolModule {
 
 object ToolKit {
     /** Built-in modules in the order their tools are offered to the model. */
-    val modules: List<ToolModule> = listOf(TodoModule, WebModule, TermuxModule, FileModule, GoalModule, ScheduleModule)
+    val modules: List<ToolModule> = listOf(TodoModule, WebModule, BrowserModule, TermuxModule, FileModule, GoalModule, ScheduleModule)
 
     /** Tests: replaces the whole registry the app would build. */
     @Volatile var override: ToolRegistry? = null
@@ -89,6 +92,18 @@ object WebModule : ToolModule {
     override fun tools(context: ToolContext): List<Tool> {
         if (!context.permissions.web) return emptyList()
         return listOfNotNull(context.services.searchProvider?.let(::WebSearchTool), WebFetchTool(context.services.pageFetcher))
+    }
+}
+
+/** `browser_use`: the user's VPS Chrome over SSH + CDP (needs Settings → 원격 브라우저). */
+object BrowserModule : ToolModule {
+    override val id = "browser"
+    override fun tools(context: ToolContext): List<Tool> {
+        if (!context.permissions.browser) return emptyList()
+        val browser = context.services.browser ?: return emptyList()
+        // Screenshots go to the app workspace (browser/…), shown to the model as a workspace path.
+        val ws = context.services.workspace(false)
+        return listOf(BrowserUseTool(browser, ws?.let { java.io.File(it.root, "browser") }, displayPath = { f -> ws?.relative(f) ?: f.path }))
     }
 }
 
@@ -136,7 +151,8 @@ class SimpleToolServices(
     override val goals: GoalService? = null,
     override val schedules: ScheduleService? = null,
     override val wakeups: WakeupService? = null,
-    override val pageFetcher: PageFetcher = PageFetcher()
+    override val pageFetcher: PageFetcher = PageFetcher(),
+    override val browser: RemoteBrowser? = null
 ) : ToolServices {
     override fun workspace(fullStorage: Boolean) = workspace
 }

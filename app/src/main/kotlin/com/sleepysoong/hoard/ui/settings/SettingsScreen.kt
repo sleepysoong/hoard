@@ -33,6 +33,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -40,11 +42,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.stateDescription
+import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.HoardRepository
+import com.sleepysoong.hoard.data.Defaults
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.parseContextLimit
 import com.sleepysoong.hoard.ui.glass.GlassTokenField
+import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassTokens
 import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
@@ -53,6 +60,7 @@ import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
 import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.launch
+import kotlin.math.roundToInt
 
 /** Settings: floating glass top bar, grouped glass sections, liquid controls. */
 @Composable
@@ -129,6 +137,11 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
+        IOSSectionHeader("원격 브라우저")
+        IOSGroupedSection {
+            RemoteBrowserSection(settings)
+        }
+
         IOSSectionHeader("기본 컨텍스트")
         IOSGroupedSection {
             // Typed, saved as soon as the number is valid (new sessions start with it).
@@ -145,6 +158,35 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 label = "새 세션의 컨텍스트",
                 modifier = Modifier.padding(12.dp)
             )
+        }
+        IOSSectionHeader("자동 압축")
+        IOSGroupedSection {
+            // Save once on release, rather than writing DataStore on every drag frame.
+            var percent by remember(settings.autoCompactPercent) { mutableFloatStateOf(settings.autoCompactPercent.toFloat()) }
+            val range = Defaults.AUTO_COMPACT_RANGE
+            Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("이전 대화를 요약할 시점", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                    Text("${percent.roundToInt()}%", style = MaterialTheme.typography.labelLarge, color = scheme.primary,
+                        modifier = Modifier.testTag("auto-compact-value"))
+                }
+                GlassSlider(
+                    value = percent,
+                    onValueChange = { percent = it },
+                    valueRange = range.first.toFloat()..range.last.toFloat(),
+                    steps = (range.last - range.first) / Defaults.AUTO_COMPACT_STEP - 1,
+                    onValueChangeFinished = {
+                        val saved = percent.roundToInt()
+                        scope.launch { SettingsStore.setAutoCompactPercent(ctx, saved) }
+                    },
+                    modifier = Modifier.fillMaxWidth().semantics {
+                        contentDescription = "자동 압축 기준"
+                        stateDescription = "${percent.roundToInt()}%"
+                    }.testTag("auto-compact-slider")
+                )
+                Text("세션 컨텍스트의 ${percent.roundToInt()}%부터 자동 요약 · /compact 로 직접 실행 · 4,000 토큰 미만은 기존 자르기 사용",
+                    style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
+            }
         }
     }
     }

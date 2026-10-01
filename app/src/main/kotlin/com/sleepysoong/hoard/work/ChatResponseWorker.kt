@@ -31,19 +31,27 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.sleepysoong.hoard.R
 import com.sleepysoong.hoard.data.ChatMessage
+import com.sleepysoong.hoard.data.ChatSession
+import com.sleepysoong.hoard.data.CompactionInfo
 import com.sleepysoong.hoard.data.HoardRepository
+import com.sleepysoong.hoard.data.TRIGGER_COMPACT
+import com.sleepysoong.hoard.data.isCompaction
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.engine.AttachmentEncoder
+import com.sleepysoong.hoard.engine.Compaction
 import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
 import com.sleepysoong.hoard.tools.AndroidToolServices
+import com.sleepysoong.hoard.browser.RemoteBrowserConfig
 import com.sleepysoong.hoard.tools.ToolContext
 import com.sleepysoong.hoard.tools.ToolKit
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 
 /**
  * Produces a reply from sleepyrouter in the background
@@ -58,25 +66,56 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
         val mode = inputData.getString(KEY_MODE) ?: MODE_REPLY
         val runId = inputData.getString(KEY_RUN)
+        val focus = inputData.getString(KEY_FOCUS)?.takeIf { it.isNotBlank() }
         val repo = HoardRepository.get()
         val goals = GoalService(repo)
         val (_, scheduler, wakeups) = WorkManagerScheduler.services(applicationContext)
         // Session gone (deleted / lost with the process), or the prompt was
         // deleted/edited away while this reply was queued.
         val session = repo.sessionOf(sessionId) ?: return Result.success()
-        val before = repo.messagesOf(sessionId)
-        val parentIdx = before.indexOfFirst { it.id == parentId }
+        val cfg = SettingsStore.current(applicationContext)
+        // The model this reply asked for; a manual /compact has none of its own.
+        val model = modelId.ifBlank { session.modelId }
+        var before = repo.messagesOf(sessionId)
+        var parentIdx = before.indexOfFirst { it.id == parentId }
+
+        if (mode == MODE_COMPACT) {
+            if (parentIdx < 0) return Result.success()
+            // Include completed replies queued before the command, but never fold later user
+            // prompts that are waiting behind it (those must still be answered verbatim).
+            val nextPrompt = before.indices.firstOrNull { it > parentIdx && before[it].role == MessageRole.User && !before[it].isCompaction }
+            compact(repo, session, cfg, model, auto = false, focus = focus, conversation = before, point = nextPrompt ?: before.size, markerId = messageId)
+            return Result.success()
+        }
+
         if (parentIdx < 0) return Result.success()
         // A continuation queued before the user paused/cleared the goal: nothing to do.
         val goal = if (mode == MODE_BUDGET_SUMMARY) goals.current(sessionId) else goals.active(sessionId)
         if (mode == MODE_CONTINUE && goal == null) return Result.success()
+
+        // The next turn would carry more than the auto-compact share of the session's limit:
+        // fold the older conversation into a summary marker first (the answered message and
+        // the latest turn stay verbatim below it). A failed or stopped compaction never blocks
+        // the reply — requests start from the last finished summary and trimming fits the rest.
+        if (Compaction.autoDue(session, before.take(parentIdx + 1), cfg.autoCompactPercent) && Engines.canAnswer(cfg.routerUrl)) {
+            try {
+                compact(repo, session, cfg, model, auto = true, focus = null, conversation = before, point = parentIdx, markerId = "$messageId-cmp")
+            } catch (e: CancellationException) {
+                runId?.let { scheduler.onRunFinished(it, RunStatus.Cancelled, error = "stopped") }
+                throw e
+            }
+            before = repo.messagesOf(sessionId)
+            parentIdx = before.indexOfFirst { it.id == parentId }
+            if (parentIdx < 0) return Result.success()
+        }
+
         // Built now, from the store: current system prompt, context limit, tools and
         // exactly the turns up to the answered message. The goal and any hidden runtime
         // prompt are ephemeral: sent with this request, never stored in the conversation.
         val request = ReplyRequest.build(
             session = session,
             conversation = before.take(parentIdx + 1),
-            modelId = modelId
+            modelId = model
         ).copy(
             goalContext = goal?.let(GoalRuntime::context),
             hiddenUserMessage = when (mode) {
@@ -90,7 +129,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
 
         // A reminder is context, not a precondition: a todo-store problem must never fail the reply.
         val turnRequest = request.copy(todoReminder = runCatching { repo.todos.reminder(sessionId) }.getOrNull())
-        val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = modelId, isStreaming = true)
+        val placeholder = ChatMessage(id = messageId, role = MessageRole.Assistant, text = "", modelId = model, isStreaming = true)
         val hasTarget = if (runAttemptCount == 0) {
             // Placeholder streaming bubble owned by the worker. Fails when the session
             // is gone — e.g. a job WorkManager restored after the in-memory store died.
@@ -103,7 +142,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // Nobody is waiting for this reply any more: finish quietly, never resurrect it.
         if (!hasTarget) return Result.success()
 
-        val cfg = SettingsStore.current(applicationContext)
         // Every tool is always on (no toggles). A scheduled run still gets no more than what
         // was snapshotted when it was created, and no schedule/wakeup tools of its own.
         // Shared storage / Termux work once their Android permissions are granted (asked at
@@ -119,7 +157,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 ToolContext(
                     sessionId = sessionId,
                     modelId = session.modelId,
-                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo),
+                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo, RemoteBrowserConfig.from(cfg)),
                     permissions = allowed,
                     scheduledRun = runId != null
                 )
@@ -189,6 +227,75 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     }
 
     /**
+     * Fold the conversation before [point] into a compaction summary marker ([Compaction]).
+     * The marker streams like a reply; on failure it stays as a failed notice, never sent,
+     * and the caller carries on (the next request just goes out uncompacted, trimmed to fit).
+     * False = nothing was folded.
+     */
+    private suspend fun compact(
+        repo: HoardRepository,
+        session: ChatSession,
+        cfg: SettingsStore.Settings,
+        modelId: String,
+        auto: Boolean,
+        focus: String?,
+        conversation: List<ChatMessage>,
+        point: Int = conversation.size,
+        markerId: String
+    ): Boolean {
+        val plan = Compaction.plan(session, conversation, point) ?: return false
+        if (repo.messagesOf(session.id).any { it.id == markerId }) return true // already done for this reply (a retry)
+        val marker = ChatMessage(
+            id = markerId, role = MessageRole.User, text = "", modelId = modelId, isStreaming = true,
+            trigger = TRIGGER_COMPACT,
+            compaction = CompactionInfo(auto = auto, summarized = plan.head.size, tokensBefore = plan.tokensBefore, focus = focus)
+        )
+        val insertion = plan.insertBeforeId?.let { id -> conversation.indexOfFirst { it.id == id } } ?: conversation.size
+        val prefix = conversation.take(insertion)
+        if (!repo.insertMessageBefore(session.id, plan.insertBeforeId, marker, prefix)) return false
+        return try {
+            promote("Hoard가 대화를 요약 중…")
+            currentCoroutineContext().ensureActive()
+            // One plain stream, no tools, no attachments: the serialized transcript with the
+            // summarizer's own instructions (tool note / goal context stay off on purpose).
+            val engine = Engines.forRouter(cfg.routerUrl, attachments = null, token = cfg.routerToken, tools = null)
+            var raw = ""
+            var completed = false
+            var incomplete = false
+            engine.streamReply(Compaction.request(session, plan, modelId, focus)) { ev ->
+                currentCoroutineContext().ensureActive()
+                raw = ev.deltaText
+                completed = completed || ev.done
+                incomplete = incomplete || ev.incomplete
+                if (!repo.updateMessage(session.id, markerId) {
+                        it.copy(text = raw, routing = ev.routing ?: it.routing, modelId = ev.routing?.selectedModel ?: it.modelId)
+                    }) throw TargetGone()
+            }
+            currentCoroutineContext().ensureActive()
+            val summary = Compaction.clean(raw)
+            val problem = when {
+                !completed || incomplete -> "응답이 완료되지 않아 요약을 쓰지 않았습니다"
+                else -> Compaction.problem(summary, plan, session.contextLimit)
+            }
+            repo.finishCompaction(session.id, markerId, prefix, summary, problem)
+        } catch (_: TargetGone) {
+            false
+        } catch (e: CancellationException) {
+            repo.updateMessage(session.id, markerId) { it.copy(isStreaming = false, errorText = it.errorText ?: "사용자가 중지함") }
+            throw e
+        } catch (e: Exception) {
+            repo.updateMessage(session.id, markerId) {
+                it.copy(
+                    isStreaming = false,
+                    errorText = e.message ?: "요약에 실패했습니다",
+                    routing = (e as? RouterException)?.routing ?: it.routing
+                )
+            }
+            false
+        }
+    }
+
+    /**
      * Goal continuation engine: after a turn settles, account it against the goal and
      * decide whether the thread keeps going on its own (a hidden continuation turn
      * queued behind anything else in the session), stops, gets suppressed (the
@@ -214,7 +321,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         )
         val queued = withContext(Dispatchers.IO) {
             runCatching { WorkManager.getInstance(applicationContext).getWorkInfosForUniqueWork(uniqueName(sessionId)).get() }.getOrDefault(emptyList())
-        }.any { it.id != id && (it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED) }
+        }.any { it.id != id && COMPACTION_TAG !in it.tags && (it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED) }
         val decision = ContinuationEvaluator(goals).decide(sessionId, turn, SessionActivity(queued, wakeups.pending(sessionId)))
         when (decision) {
             ContinuationDecision.Continue -> enqueue(
@@ -280,9 +387,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_PARENT = "parent_id"
         const val KEY_MODE = "mode"
         const val KEY_RUN = "schedule_run_id"
+        /** [MODE_COMPACT]: the user's `/compact <focus>` note (blank = none). */
+        const val KEY_FOCUS = "focus"
         const val MODE_REPLY = "reply"
         const val MODE_CONTINUE = "continue"
         const val MODE_BUDGET_SUMMARY = "budget_summary"
+        const val MODE_COMPACT = "compact"
+        private const val COMPACTION_TAG = "hoard-compaction"
 
         /** First run + 2 retries; a dead backend must not spin forever. */
         const val MAX_ATTEMPTS = 3
@@ -296,10 +407,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             replacePending: Boolean = false,
             /** Router mode: wait for a network instead of burning retries offline. */
             needsNetwork: Boolean = false,
-            /** [MODE_REPLY] (answer [parentId]), [MODE_CONTINUE] (goal continuation), [MODE_BUDGET_SUMMARY]. */
+            /** [MODE_REPLY] (answer [parentId]), [MODE_CONTINUE] (goal continuation), [MODE_BUDGET_SUMMARY], [MODE_COMPACT] (/compact). */
             mode: String = MODE_REPLY,
             /** Set when this reply is a scheduled run. */
-            scheduleRunId: String? = null
+            scheduleRunId: String? = null,
+            /** [MODE_COMPACT] only: the `/compact <focus>` the user typed (capped in [Compaction]). */
+            focus: String? = null
         ) {
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
@@ -309,11 +422,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         KEY_MESSAGE to messageId,
                         KEY_PARENT to parentId,
                         KEY_MODE to mode,
-                        KEY_RUN to scheduleRunId
+                        KEY_RUN to scheduleRunId,
+                        KEY_FOCUS to focus?.take(Compaction.FOCUS_MAX_CHARS)
                     )
                 )
                 .setBackoffCriteria(BackoffPolicy.EXPONENTIAL, 10, TimeUnit.SECONDS)
                 .apply {
+                    if (mode == MODE_COMPACT) addTag(COMPACTION_TAG)
                     if (needsNetwork) {
                         setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
                     }

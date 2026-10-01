@@ -38,6 +38,15 @@ Still no gradients: every colour is solid.
 - Conversations persist across restarts (`data/HoardStore.kt`: one JSON file in app storage, atomic writes,
   debounced + flushed when the app leaves the screen; a corrupt file is kept aside, not overwritten)
 - System prompt editing, per-session context limit, session rename/delete
+- **Conversation compaction**: `/compact [지시]` manually summarizes older history; automatic
+  compaction starts at 90% of the session context limit (설정 → 자동 압축 slider, 50–100% in 5% steps).
+  The full visible transcript is retained. Model requests start from the latest successful checkpoint
+  plus newer messages; a recent turn is kept verbatim when it fits. Repeated compaction merges the
+  earlier summary, while failed or incomplete summaries fall back to ordinary history trimming.
+  Tap a checkpoint to read/copy/remove it. Removing the latest checkpoint restores the preceding
+  checkpoint (or original history) for subsequent requests, subject to trimming/automatic compaction.
+  Context usage reflects this model-facing window. Limits below 4,000 tokens use trimming instead
+  of automatic compaction. Design and prompt research: [`docs/COMPACTION.md`](docs/COMPACTION.md).
 - Edit my message (save & regenerate), branch from a message, delete message, retry
 - Model replies render as Markdown (`ui/chat/MarkdownText.kt`, [huarangmeng/Markdown](https://github.com/huarangmeng/Markdown)):
   headings, **bold**/*italic*/~~strike~~, lists, task lists, GFM tables, quotes, code blocks with
@@ -66,6 +75,10 @@ Still no gradients: every colour is solid.
   - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without
     touching the tool schema. Tool loop in `RouterAiEngine`: up to 8 rounds, then `tool_choice: none`.
     Each call appears as a step under the reply's 추론 section.
+- `browser_use` — a real Chrome on the user's Ubuntu VPS, driven over SSH + Chrome DevTools Protocol
+  (one tool: open / state / click / type / press / scroll / back / forward / reload / tabs / switch_tab /
+  close_tab / screenshot; elements addressed by ids from the latest state). Setup and design:
+  [Remote browser](#remote-browser-browser_use).
 - File tools (always on): `read_file(path, offset?, limit?)`, `write_file(path, content)`,
   `edit_file(path, old_string, new_string, replace_all?)`, `glob(pattern, path?)`,
   `grep(pattern, path?, glob?, case_sensitive?, max_results?)`. Relative paths = the app's private workspace
@@ -107,7 +120,8 @@ Still no gradients: every colour is solid.
 - No tool toggles: every tool is always on (the 도구 tab is empty for now). At every app launch
   `PermissionGate` asks for what's missing: notifications + Termux RUN_COMMAND (if Termux is installed) in one
   dialog, then Android's "All files access" screen (shared storage for the file tools).
-- Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key, default context.
+- Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key,
+  remote browser (VPS host / SSH port / user / SSH key / host key check), default context, auto-compaction threshold.
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
   foreground notification, so leaving the app after send still finishes the reply.
@@ -138,7 +152,7 @@ ChatResponseWorker
 | `Tool` | One function: `name`, `description`, `parameters` (JSON Schema), `execute(args): JsonObject`. Optional: `guidance` (system text while offered), `parallelSafe` (read-only → may run concurrently), `title` / `subject(args)` / `summarize(output)` (the reply's 작업 card). |
 | `ToolModule` | A group of related tools: `id` + `tools(context)`. Decides from the context whether its tools are offered this turn. |
 | `ToolContext` | One turn's facts: `sessionId`, `modelId`, `services`, `permissions` (a scheduled run's snapshot, else everything), `scheduledRun`. |
-| `ToolServices` | Dependencies, lazily created: `searchProvider`, `pageFetcher`, `workspace(fullStorage)`, `termux`, `todos`, `goals`, `schedules`, `wakeups`. `AndroidToolServices` in the app; `SimpleToolServices(…)` for tests/partial setups. A missing (null) service = its tools aren't offered. |
+| `ToolServices` | Dependencies, lazily created: `searchProvider`, `pageFetcher`, `workspace(fullStorage)`, `termux`, `todos`, `goals`, `schedules`, `wakeups`, `browser`. `AndroidToolServices` in the app; `SimpleToolServices(…)` for tests/partial setups. A missing (null) service = its tools aren't offered. |
 | `ToolKit` | `modules` (built-in, in offer order) and `registry(context, modules = …)`. `ToolKit.override` replaces the whole registry in tests. |
 | `ToolRegistry` | `register(tool)`, `tools`, `schemas()`, `guidance()`, `execute(name, argumentsJson): ToolOutcome` (never throws except cancellation), `preview`, `isParallelSafe`. |
 | `toolParameters { … }` | Schema DSL: `string(name, description, required, enum, minLength, maxLength)`, `integer(name, description, required, minimum, maximum)`, `boolean(…)`; `additionalProperties = false` by default (`null` omits it). |
@@ -150,6 +164,7 @@ Built-in modules (`ToolKit.modules`, in this order):
 |--|--|--|
 | `todo` | `todo` | always (session task list) |
 | `web` | `web_search`, `web_fetch` | `web_search` only with a search provider (Brave key in Settings) |
+| `browser` | `browser_use` | a verified VPS in Settings → 원격 브라우저 (and `permissions.browser`) |
 | `termux` | `termux_exec` | always; the call reports if Termux / its permission is missing |
 | `files` | `read_file`, `write_file`, `edit_file`, `glob`, `grep` | always; shared storage needs "All files access" |
 | `goal` | `goal` | always |
@@ -199,6 +214,124 @@ Built-in modules (`ToolKit.modules`, in this order):
 4. Test it without Android: `ToolKit.registry(ToolContext("s", "m", SimpleToolServices(…)), listOf(WeatherModule))`,
    then `registry.execute("weather", """{"city":"Seoul"}""")`. End-to-end through the tool loop: set
    `ToolKit.override` and drive a `FakeRouter` that returns a `function_call` (see `ToolLoopTest`, `ToolKitTest`).
+
+## Remote browser (browser_use)
+
+`browser_use` lets the model drive a real Chrome on the user's Ubuntu VPS. No Chrome extension, no HTTP
+proxy: SSH carries everything.
+
+```
+Android (Hoard)                                    Ubuntu VPS
+┌──────────────────────────────┐                   ┌─────────────────────────────────┐
+│ LLM / tool loop              │                   │ X display (Xvfb/XFCE)           │
+│  ├─ web_search  (discover)   │                   │  ├─ VNC ── a person watches     │
+│  ├─ web_fetch   (read)       │       SSH         │  └─ Chrome (own profile)        │
+│  └─ browser_use (interact)   │ ════════════════► │       CDP 127.0.0.1:9222 only   │
+│       RemoteBrowserManager   │  exec + -L tunnel │                                 │
+│       ├─ SshClient           │                   │ /usr/local/bin/                 │
+│       ├─ BrowserRuntimeMgr   │ ── ensure ──────► │   ensure-browser-runtime        │
+│       ├─ SshTunnelManager    │ 127.0.0.1:<port> ─► 127.0.0.1:9222                  │
+│       └─ BrowserService (CDP)│                   │                                 │
+└──────────────────────────────┘                   └─────────────────────────────────┘
+SSH = control + secure transport · CDP = browser control · VNC = human viewing only
+```
+
+**Every action** runs the same flow (`browser/RemoteBrowserManager.kt`): SSH connected? (else connect) →
+`ensure-browser-runtime` → only `ready: true` continues → tunnel alive? (else a new local forward on a free
+port) → CDP connected? (else `GET /json/version` through the tunnel + WebSocket) → action → result. A broken
+SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay open between calls and turns
+(`RemoteBrowsers`, process-wide); Chrome and its profile (logins, cookies) live on the VPS.
+
+### VPS setup
+
+1. X display + XFCE + VNC (VNC is only for watching/helping, never on the control path) and Google Chrome or
+   Chromium.
+2. Install the runtime script (from this repo):
+
+   ```bash
+   sudo install -m 755 scripts/vps/ensure-browser-runtime /usr/local/bin/
+   ```
+
+   It checks X display → VNC → Chrome → CDP, repairs only what's broken (a dead VNC never restarts Chrome;
+   a restarted display re-checks Chrome), judges Chrome by its CDP answer (`/json/version`), waits for CDP
+   after a restart and prints one JSON line:
+
+   ```json
+   {"ready":true,"display":"running","vnc":"restarted","chrome":"running","cdp":"running","restarted":["vnc"]}
+   {"ready":false,"error":"failed_to_start_chrome", …}
+   ```
+
+   Chrome is started as `DISPLAY=:0 google-chrome --remote-debugging-address=127.0.0.1
+   --remote-debugging-port=9222 --user-data-dir=$HOME/.browser-agent-profile --no-first-run
+   --no-default-browser-check` plus a maximized window (`--no-sandbox` only when running as root). As root
+   with systemd it runs as its own unit, `hoard-browser.service` (`journalctl -u hoard-browser`), so the SSH
+   session that started it ending — or being killed for memory — never takes Chrome along. **CDP is bound to
+   127.0.0.1 and must never be exposed**; the app reaches it through the SSH tunnel.
+3. Optional `/etc/ensure-browser-runtime.conf` (shell syntax) for your setup, e.g.:
+
+   ```bash
+   BROWSER_DISPLAY=":1"                                  # default :0
+   DISPLAY_RESTART_CMD="systemctl restart lightdm"       # how to bring the display/XFCE back
+   VNC_PATTERN="x11vnc -display :0"                      # how to find the VNC server
+   VNC_RESTART_CMD="systemctl restart x11vnc"            # how to restart only VNC
+   PROFILE_DIR="$HOME/.browser-agent-profile"
+   ```
+
+   Restarting services needs root (or `sudo -n` in these commands).
+
+### App setup (설정 → 원격 브라우저)
+
+1. Host, SSH port (22), user.
+2. SSH key: paste a private key (OpenSSH/PEM, no passphrase) or tap **새 키 만들기** (Ed25519, made on the
+   phone). The private key is stored only encrypted with an Android Keystore AES-GCM key (`browser/SecretStore.kt`);
+   the public key is shown — add it to `~/.ssh/authorized_keys` on the VPS.
+3. **연결 확인**: the first time, the app only reads the server's host key and shows its SHA256 fingerprint.
+   Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VPS, then **신뢰하고 연결** pins it
+   and runs `ensure-browser-runtime`. Every later connection must present exactly that key (another key
+   aborts before authentication; changing host/port un-pins it).
+
+`browser_use` is offered once host, user, key and the pinned host key are all set.
+
+### Actions and page state
+
+One tool, one `action` per call: `open(url, new_tab?)`, `state`, `click(element_id)`,
+`type(element_id, text, clear?=true, submit?)` (on a `<select>` it picks that option), `press(key)`
+(`Enter`, `Escape`, `ArrowDown`, `Control+A`…), `scroll(direction, amount?, element_id?)`, `back`, `forward`,
+`reload`, `tabs`, `switch_tab(tab_id)`, `close_tab(tab_id?)`, `screenshot`.
+
+Every action except `tabs`/`screenshot` returns a fresh state, so the model always holds valid ids:
+
+```json
+{"action":"click","result":"clicked element 12","tab":{"id":1,"open_tabs":2},
+ "url":"https://github.com/login","title":"Sign in to GitHub",
+ "elements":[{"id":18,"type":"input","input_type":"email","label":"Username or email address"},
+             {"id":21,"type":"button","text":"Sign in"}],
+ "more_elements":3,"text":"Sign in to GitHub\nUsername or email address …",
+ "scroll":{"y":0,"height":1320,"viewport":1100,"at_top":true,"at_bottom":false}}
+```
+
+- Interactive elements (links, buttons, fields, ARIA roles, contenteditable, pointer-cursor elements;
+  open shadow roots included) near the viewport get ids; the model never writes CSS selectors or XPath.
+- Ids are per document: a navigation makes a new document and new ids, and an old id is refused
+  ("the page changed…") instead of hitting another page's element. The same element keeps its id across
+  states of one document.
+- `text` is the visible text around the viewport (scroll to read more); passwords are never echoed.
+  Same-site link hrefs are paths (`/wiki/Foo`), and `open` accepts such a path for the current site.
+- Only the newest page state of a turn stays in full: earlier ones lose their element list
+  (`Tool.supersede`), so a multi-step task doesn't resend every old snapshot each round.
+- Clicks are real mouse events at the element's center (a DOM click if something covers it); a link that
+  opens a new tab switches to it. JavaScript dialogs are accepted and reported; downloads go to the VPS
+  Chrome's download folder and are reported. `screenshot` saves a JPEG in the workspace (`browser/…`, the
+  newest 30 kept); the model gets the path, not the image.
+- `open` accepts http(s) only and refuses the server's own loopback/metadata addresses.
+- Guidance tells the model: web_search → web_fetch → browser_use (only for JavaScript/SPAs, clicks, forms,
+  logins, multi-step navigation, tabs, downloads), never to submit purchases/posts/account changes unless asked,
+  and to hand logins/CAPTCHAs it can't finish to the user (VNC).
+
+Code: `browser/` (`SshClient`, `BrowserRuntimeManager` + `SshTunnelManager`, `CdpConnection`, `BrowserService`,
+`PageScripts`, `RemoteBrowserManager`, `SecretStore`, `SshKeys`), `tools/BrowserUseTool.kt`,
+`ui/settings/RemoteBrowserSection.kt`, `scripts/vps/ensure-browser-runtime`. Libraries: JSch (mwiede) for SSH,
+OkHttp for the CDP WebSocket, Bouncy Castle for Ed25519/X25519 on Android.
 
 ## Backend: sleepyrouter
 
