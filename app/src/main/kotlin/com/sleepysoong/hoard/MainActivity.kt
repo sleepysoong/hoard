@@ -28,6 +28,8 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -227,7 +229,8 @@ class MainActivity : ComponentActivity() {
                             backdrop = backdrop,
                             pressedTabIndex = pressed,
                             modifier = Modifier
-                                .fillMaxWidth()
+                                .widthIn(max = 312.dp)
+                                .width(312.dp)
                                 .navigationBarsPadding()
                                 .padding(horizontal = 16.dp, vertical = 12.dp)
                         ) {

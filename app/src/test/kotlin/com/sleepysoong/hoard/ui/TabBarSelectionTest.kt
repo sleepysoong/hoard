@@ -54,6 +54,16 @@ class TabBarSelectionTest {
 
     @Test fun launchHighlightsSessions() = onlySelected("세션")
 
+    @Test fun floatingTabsAreCompactAndCentered() {
+        compose.waitForIdle()
+        val root = compose.onRoot().fetchSemanticsNode().boundsInRoot
+        val left = compose.onNodeWithTag("tab-세션").fetchSemanticsNode().boundsInRoot
+        val right = compose.onNodeWithTag("tab-설정").fetchSemanticsNode().boundsInRoot
+        assertTrue("tabs leave visible side margins", right.right - left.left < root.width * 0.85f)
+        assertEquals("tabs centered", root.center.x, (left.left + right.right) / 2f, 3f)
+        assertTrue("each tab remains a usable touch target", left.width >= 44f * compose.activity.resources.displayMetrics.density)
+    }
+
     @Test fun tappingTabsMovesHighlight() {
         compose.onNodeWithTag("tab-도구").performClick(); onlySelected("도구")
         compose.onNodeWithTag("tab-설정").performClick(); onlySelected("설정")
