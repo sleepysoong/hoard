@@ -53,7 +53,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.skills.SkillStore
-import com.sleepysoong.hoard.data.isCompactionimport com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
+import com.sleepysoong.hoard.data.isCompaction
+import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
