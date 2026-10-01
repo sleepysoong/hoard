@@ -20,8 +20,10 @@ import java.net.URLEncoder
  * Brave Web Search API (`GET /res/v1/web/search`). Only this class knows Brave's
  * parameters and response shape; it hands back provider-neutral [SearchHit]s.
  *
- * Fixed parameters: `result_filter=web`, `text_decorations=false`, `operators=true`,
- * `extra_snippets=false` (unless the internal [SearchRequest.extraSnippets] is set).
+ * Fixed parameters: `result_filter=web,news,faq,discussions` (so a how-to query can
+ * surface a direct Q&A card and a "what are people saying" query a forum thread, not
+ * just ten blue links), `text_decorations=false`, `operators=true`, and
+ * `extra_snippets` following [SearchRequest.extraSnippets] (on by default).
  *
  * 429/5xx: retried with backoff, waiting at least the per-second window from
  * `X-RateLimit-Reset`. An exhausted long-window quota (e.g. monthly) fails
@@ -68,7 +70,7 @@ class BraveSearchProvider(
         val params = linkedMapOf(
             "q" to r.query,
             "count" to r.count.coerceIn(1, SearchRequest.MAX_COUNT).toString(),
-            "result_filter" to "web",
+            "result_filter" to "web,news,faq,discussions",
             "text_decorations" to "false",
             "extra_snippets" to r.extraSnippets.toString(),
             "operators" to "true"
@@ -107,20 +109,54 @@ class BraveSearchProvider(
         val q = root["query"] as? JsonObject
         val original = q?.str("original") ?: fallbackQuery
         val altered = q?.str("altered")?.takeIf { it.isNotBlank() && it != original }
-        val results = ((root["web"] as? JsonObject)?.get("results") as? JsonArray).orEmpty()
-        val hits = results.mapNotNull { el ->
-            val o = el as? JsonObject ?: return@mapNotNull null
-            SearchHit(
-                title = o.str("title"),
+        val related = (q?.get("related_queries") as? JsonArray).orEmpty()
+            .mapNotNull { (it as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf(String::isNotEmpty) }
+            .filter { !it.equals(original, ignoreCase = true) }
+            .distinct()
+
+        val hits = ArrayList<SearchHit>()
+        // Keep the engine's web ranking as the baseline; supplemental sections follow it.
+        for (el in webResults(root, "web")) hits += toHit(el, ResultType.Web)
+        for (el in webResults(root, "news")) hits += toHit(el, ResultType.News)
+        for (el in webResults(root, "discussions")) hits += toHit(el, ResultType.Discussion)
+        // FAQ excerpts are source content, not verified answers. Duplicate URLs are merged later.
+        for (el in ((root["faq"] as? JsonObject)?.get("results") as? JsonArray).orEmpty()) {
+            val o = el as? JsonObject ?: continue
+            val answer = o.str("answer")
+            hits += SearchHit(
+                title = o.str("title") ?: o.str("question"),
                 url = o.str("url"),
-                snippet = o.str("description"),
-                language = o.str("language"),
-                pageAge = o.str("page_age") ?: o.str("age"),
-                extraSnippets = (o["extra_snippets"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
+                snippet = answer ?: o.str("question"),
+                type = ResultType.Faq,
+                source = o.host(),
+                question = o.str("question"),
+                answer = answer
             )
         }
+
         val more = (q?.get("more_results_available") as? JsonPrimitive)?.booleanOrNull ?: false
-        return SearchResponse(query = original, alteredQuery = altered, hits = hits, moreResultsAvailable = more)
+        return SearchResponse(query = original, alteredQuery = altered, hits = hits, moreResultsAvailable = more, relatedQueries = related)
+    }
+
+    private fun webResults(root: JsonObject, section: String): List<JsonObject> =
+        ((root[section] as? JsonObject)?.get("results") as? JsonArray).orEmpty().mapNotNull { it as? JsonObject }
+
+    private fun toHit(o: JsonObject, type: ResultType) = SearchHit(
+        title = o.str("title"),
+        url = o.str("url"),
+        snippet = o.str("description"),
+        language = o.str("language"),
+        pageAge = o.str("page_age") ?: o.str("age"),
+        extraSnippets = (o["extra_snippets"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.contentOrNull },
+        type = type,
+        source = o.host()
+    )
+
+    /** Brave's clean host label (`profile.long_name` / `meta_url.hostname`), if present. */
+    private fun JsonObject.host(): String? {
+        (this["profile"] as? JsonObject)?.str("long_name")?.takeIf { it.isNotBlank() }?.let { return it }
+        (this["meta_url"] as? JsonObject)?.str("hostname")?.takeIf { it.isNotBlank() }?.let { return it }
+        return null
     }
 
     private fun errorDetail(body: String): String =
