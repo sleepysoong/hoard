@@ -216,6 +216,44 @@ class WebToolsTest {
         assertEquals("<b> A", r[1].snippet)
     }
 
+    @Test fun richerSearchCombinesSectionsAndPreservesFaqWhenUrlsOverlap() = runBlocking {
+        val base = server { ex -> ex.send(200, """
+            {"query":{"original":"kotlin coroutine","related_queries":["kotlin coroutine","Coroutine cancellation","coroutine cancellation"," structured concurrency "]},
+             "web":{"results":[{"title":"Kotlin coroutine guide","url":"https://docs.example/guide","description":"Main excerpt","extra_snippets":["Main excerpt","<b>Cancellation</b>","Cancellation"]}]},
+             "news":{"results":[{"title":"Kotlin coroutine release","url":"https://news.example/release","description":"Release notes","page_age":"2026-09-30"}]},
+             "discussions":{"results":[{"title":"Kotlin coroutine discussion","url":"https://forum.example/thread","description":"Community explanation"}]},
+             "faq":{"results":[
+               {"question":"How to cancel a coroutine?","answer":"Call cancel on its Job.","url":"https://www.docs.example/guide/#faq"},
+               {"question":"What is structured concurrency?","answer":"Scopes own child coroutines.","url":"https://faq.example/scopes"},
+               {"question":"Unsafe result","answer":"not usable","url":"file:///private/secret"}]}}
+        """.trimIndent()) }
+        val out = WebSearchTool(BraveSearchProvider("test-key", endpoint = "$base/search"))
+            .execute(Json.parseToJsonElement("""{"query":"kotlin coroutine"}""").jsonObject)
+        val results = out["results"]!!.jsonArray.map { it.jsonObject }
+        assertEquals("web/FAQ duplicate is merged and unsafe URL dropped", 4, results.size)
+        assertEquals(setOf("web", "news", "discussion", "faq"), results.map { it.str("type") }.toSet())
+        val guide = results.single { it.str("source") == "docs.example" }
+        assertEquals("Call cancel on its Job.", guide.str("answer"))
+        assertEquals("How to cancel a coroutine?", guide.str("question"))
+        assertEquals(listOf("Cancellation", "Call cancel on its Job."), guide["extraSnippets"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertEquals(listOf("Coroutine cancellation", "structured concurrency"), out["relatedQueries"]!!.jsonArray.map { it.jsonPrimitive.content })
+        assertFalse(out.toString().contains("test-key"))
+        assertFalse(out.toString().contains("file:///"))
+    }
+
+    @Test fun relevanceCanPromoteUsefulLowerRankedCandidatesBeforeTrimming() = runBlocking {
+        val base = server { ex -> ex.send(200, """
+            {"web":{"results":[
+              {"title":"Unrelated page","url":"https://unrelated.example","description":"General text on another subject."},
+              {"title":"Kotlin coroutine cancellation","url":"https://docs.example/cancel","description":"Kotlin coroutine cancellation uses a Job; structured scopes own child coroutines."}]}}
+        """.trimIndent()) }
+        val out = WebSearchTool(BraveSearchProvider("k", endpoint = "$base/search"))
+            .execute(Json.parseToJsonElement("""{"query":"kotlin coroutine cancellation","count":1}""").jsonObject)
+        assertEquals("https://docs.example/cancel", out["results"]!!.jsonArray.single().jsonObject.str("url"))
+        assertEquals("search_1", out["results"]!!.jsonArray.single().jsonObject.str("id"))
+        assertTrue("unshown valid candidates remain", out["hasMore"]!!.jsonPrimitive.content.toBoolean())
+    }
+
     // --- web_fetch --------------------------------------------------------
 
     /** Loopback is private, so tests allow it explicitly; production uses isPublicAddress. */

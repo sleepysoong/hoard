@@ -388,19 +388,25 @@ classification), `engine/RouterConnection.kt` (`/v1/models` check + catalog),
 ## Tests
 
 ```bash
-scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q   # low-spec wrapper, see AGENTS.md
+scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q --tests '*ReplyOrderingTest' --tests '*ToolLoopTest'
 ```
 
 Robolectric E2E flows drive the real ViewModel → WorkManager → worker → engine → store
 stack. Each test writes a conversation transcript to `app/build/test-artifacts/`.
+Run only one or two classes at a time on the low-spec dev machine (see `AGENTS.md`).
+GitHub Actions runs the full suite, including a freshly built sleepyrouter, on every push.
 
 - `RouterIntegrationTest`, `RouterUiTest`: against `FakeRouter`, which speaks sleepyrouter's exact wire format.
+- `CompactionFlowTest`: manual/automatic summaries, rejected or incomplete output, checkpoint invalidation,
+  and preserving the checkpoint when skill context consumes the history budget.
+- `SkillFlowTest`: real local bundles through the tool loop, persisted instructions, user-only invocation,
+  code-trust revocation on helper edits, unsafe YAML isolation, and corrupt-registry recovery.
 - `RealSleepyrouterTest` (opt-in): runs the **real** sleepyrouter binary in front of fake upstreams.
   ```bash
-  (cd ../sleepyrouter && go build -o /tmp/sleepyrouter-bin ./cmd/sleepyrouter)
-  SLEEPYROUTER_BIN=/tmp/sleepyrouter-bin scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q --tests '*RealSleepyrouterTest'
+  (cd ../sleepyrouter && go build -o /tmp/opencode/sleepyrouter-bin ./cmd/sleepyrouter)
+  SLEEPYROUTER_BIN=/tmp/opencode/sleepyrouter-bin scripts/gradlew-lowspec.sh :app:testDebugUnitTest -q --tests '*RealSleepyrouterTest'
   ```
-  Skipped when `SLEEPYROUTER_BIN` is unset (CI).
+  Skipped when `SLEEPYROUTER_BIN` is unset; CI always sets it.
 
 ## Build
 
@@ -408,6 +414,6 @@ Requires **JDK 21** to run Gradle/tests (the Markdown/LaTeX libraries ship Java 
 the app itself still targets Java 17 and D8 handles the rest).
 
 ```bash
-./gradlew :app:assembleDebug
-./gradlew :app:assembleRelease   # signed with app/release.keystore
+scripts/gradlew-lowspec.sh :app:assembleDebug
+scripts/gradlew-lowspec.sh :app:assembleRelease   # signed with app/release.keystore
 ```
