@@ -248,8 +248,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             runId?.let(scheduler::onRunStarted)
             val generate: suspend () -> Unit = {
                 engine.streamReply(skillRequest) { ev ->
+                    currentCoroutineContext().ensureActive()
+                    var stopped = false
                     val written = repo.updateMessage(sessionId, messageId) {
-                        it.copy(
+                        // cancelUniqueWork is asynchronous. The stop button marks the
+                        // bubble immediately; a late frame must never undo that mark.
+                        stopped = !it.isStreaming && it.errorText == USER_STOPPED
+                        if (stopped) it else it.copy(
                             text = ev.deltaText,
                             thinking = ev.thinking,
                             elapsedMs = ev.elapsedMs,
@@ -262,6 +267,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                             errorText = null
                         )
                     }
+                    if (stopped) throw CancellationException(USER_STOPPED)
                     // Session or bubble deleted mid-stream: stop generating.
                     if (!written) throw TargetGone()
                     if (!ev.done) promote("Hoard가 답변 중…")
@@ -269,6 +275,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             }
             try {
                 if (skillFork) withTimeout(10 * 60_000L) { generate() } else generate()
+                currentCoroutineContext().ensureActive()
             } catch (e: RouterException) {
                 // Observational error hooks cannot replace the original API failure or trigger replay.
                 try { runtime.hook("StopFailure", buildJsonObject { put("error", e.message.orEmpty()); put("error_type", "server_error") }) }
@@ -277,6 +284,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 throw e
             }
             val reply = repo.messagesOf(sessionId).firstOrNull { it.id == messageId }
+            if (reply?.errorText == USER_STOPPED) throw CancellationException(USER_STOPPED)
             if (skillFork) deliverSkillResult(sessionId, messageId)
             runId?.let { scheduler.onRunFinished(it, RunStatus.Succeeded, summary = reply?.text, tokens = reply?.totalTokens) }
             if (!skillFork) afterTurn(sessionId, messageId, mode, reply, goals, goalBefore, wakeups, cfg.routerUrl.isNotBlank())
@@ -298,7 +306,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             // Stopped by the user (stop button / regenerate) or the system: keep whatever
             // text arrived, never leave a spinner.
             repo.updateMessage(sessionId, messageId) {
-                it.copy(isStreaming = false, errorText = it.errorText ?: "사용자가 중지함")
+                it.copy(isStreaming = false, errorText = it.errorText ?: USER_STOPPED,
+                    thinking = it.thinking.map { step -> step.copy(running = false) })
             }
             if (skillFork) deliverSkillResult(sessionId, messageId)
             throw e
@@ -391,9 +400,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 raw = ev.deltaText
                 completed = completed || ev.done
                 incomplete = incomplete || ev.incomplete
+                var stopped = false
                 if (!repo.updateMessage(session.id, markerId) {
-                        it.copy(text = raw, routing = ev.routing ?: it.routing, modelId = ev.routing?.selectedModel ?: it.modelId)
+                        stopped = !it.isStreaming && it.errorText == USER_STOPPED
+                        if (stopped) it else it.copy(text = raw, routing = ev.routing ?: it.routing, modelId = ev.routing?.selectedModel ?: it.modelId)
                     }) throw TargetGone()
+                if (stopped) throw CancellationException(USER_STOPPED)
             }
             currentCoroutineContext().ensureActive()
             val summary = Compaction.clean(raw)
@@ -405,7 +417,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         } catch (_: TargetGone) {
             false
         } catch (e: CancellationException) {
-            repo.updateMessage(session.id, markerId) { it.copy(isStreaming = false, errorText = it.errorText ?: "사용자가 중지함") }
+            repo.updateMessage(session.id, markerId) { it.copy(isStreaming = false, errorText = it.errorText ?: USER_STOPPED) }
             throw e
         } catch (e: Exception) {
             repo.updateMessage(session.id, markerId) {
@@ -504,6 +516,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     private class TargetGone : Exception()
 
     companion object {
+        private const val USER_STOPPED = "사용자가 중지함"
         const val KEY_SESSION = "session_id"
         const val KEY_MODEL = "model_id"
         const val KEY_MESSAGE = "message_id"
@@ -581,6 +594,15 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         }
 
         fun cancel(ctx: Context, sessionId: String) {
+            // Show the stop immediately, even if a platform/tool call takes time to
+            // unwind. Preserve partial text and make the send button available again.
+            val repo = HoardRepository.get()
+            repo.messagesOf(sessionId).filter { it.isStreaming }.forEach { message ->
+                repo.updateMessage(sessionId, message.id) {
+                    if (!it.isStreaming) it else it.copy(isStreaming = false, errorText = USER_STOPPED,
+                        thinking = it.thinking.map { step -> step.copy(running = false) })
+                }
+            }
             WorkManager.getInstance(ctx).cancelUniqueWork(uniqueName(sessionId))
         }
 

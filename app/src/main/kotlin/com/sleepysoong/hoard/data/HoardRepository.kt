@@ -189,6 +189,9 @@ class HoardRepository(private val store: HoardStore? = null) {
             val list = map[sessionId] ?: return@update map
             val at = list.indexOfFirst { it.id == markerId }
             if (at < 0) return@update map
+            // A stop may race the final summary frame. Never publish over a
+            // marker already stopped (or otherwise finalized) by another writer.
+            if (!list[at].isStreaming) return@update map
             val unchanged = at == expectedPrefix.size && list.take(at) == expectedPrefix
             accepted = unchanged && problem == null
             val error = if (unchanged) problem else "요약 중 이전 대화가 바뀌어 쓰지 않았습니다"

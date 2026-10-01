@@ -33,9 +33,14 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import java.io.BufferedReader
 import java.io.IOException
-import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
-import java.net.URL
+import java.util.concurrent.TimeUnit
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
+import okio.BufferedSink
 
 /**
  * Real backend: sleepyrouter's `POST /hoard/v1/responses` — the OpenAI Responses
@@ -62,6 +67,11 @@ class RouterAiEngine(
     private val maxToolRounds: Int = MAX_TOOL_ROUNDS,
     private val maxParallelTools: Int = MAX_PARALLEL_TOOLS
 ) : AiEngine {
+    private val http = HTTP.newBuilder()
+        .connectTimeout(connectTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
+        .readTimeout(readTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
+        .writeTimeout(readTimeoutMs.toLong(), TimeUnit.MILLISECONDS)
+        .build()
 
     override suspend fun streamReply(request: ReplyRequest, onEvent: suspend (StreamEvent) -> Unit) =
         withContext(Dispatchers.IO) { stream(request, onEvent) }
@@ -217,91 +227,99 @@ class RouterAiEngine(
         acceptTools: Boolean,
         onEvent: suspend (StreamEvent) -> Unit
     ): StreamState {
-        val conn = openConnection(endpoint(baseUrl, "responses"))
-        // Blocking socket reads don't observe coroutine cancellation (and SSE keep-alives
-        // never surface as events), so a cancelled reply would keep the router — and the
-        // upstream model — generating until the read timeout. Close the socket from outside
-        // the moment this coroutine is cancelled; the blocked read then fails immediately.
-        val job = currentCoroutineContext()[Job]
-        val watcher = job?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
-            if (cause != null) runCatching { conn.disconnect() }
+        // Stream the JSON instead of allocating another complete UTF-8 byte array
+        // (attachment payloads can be large). Unknown length uses chunked transfer.
+        val payload = object : RequestBody() {
+            override fun contentType() = "application/json; charset=utf-8".toMediaType()
+            override fun writeTo(sink: BufferedSink) { sink.writeUtf8(body) }
         }
+        val httpRequest = routerRequest(endpoint(baseUrl, "responses"))
+            .header("Accept", "text/event-stream")
+            .post(payload)
+            .build()
         try {
-            conn.doOutput = true
-            conn.setRequestProperty("Content-Type", "application/json")
-            conn.setRequestProperty("Accept", "text/event-stream")
-            // Connecting happens lazily on the first write, so unreachable routers
-            // (refused, DNS, no route) surface here, not at responseCode.
-            // Stream the body: without a streaming mode HttpURLConnection buffers the whole
-            // request (base64 attachments included) in memory, on top of the String and its
-            // byte[] copy — ~5× the payload at once.
-            conn.setChunkedStreamingMode(64 * 1024)
-            val status = try {
-                conn.outputStream.bufferedWriter(Charsets.UTF_8).use { it.write(body) }
-                conn.responseCode
-            } catch (e: SocketTimeoutException) {
-                throw RouterException.Transient("라우터 응답 시간 초과", null, e)
-            } catch (e: IOException) {
-                throw RouterException.Transient(describeConnectError(e), null, e)
-            }
-            val contentType = conn.contentType.orEmpty()
-            if (status !in 200..299 || !contentType.startsWith("text/event-stream")) {
-                val errBody = (if (status in 200..299) conn.inputStream else conn.errorStream)
-                    ?.bufferedReader()?.use { it.readText() }.orEmpty()
-                throw errorFromJsonBody(status, errBody)
-            }
-
-            val state = StreamState(request, prior, acceptTools)
-            conn.inputStream.bufferedReader().use { reader ->
-                readSse(reader) { name, data ->
-                    currentCoroutineContext().ensureActive()
-                    val ev = state.consume(name, data, System.currentTimeMillis() - started)
-                    if (ev != null) onEvent(ev)
-                    state.done
+            return withResponse(httpRequest) { response ->
+                val responseBody = response.body
+                if (!response.isSuccessful || !response.header("Content-Type").orEmpty().startsWith("text/event-stream")) {
+                    throw errorFromJsonBody(response.code, responseBody?.string().orEmpty())
                 }
+                val state = StreamState(request, prior, acceptTools)
+                val reader = responseBody?.charStream()?.buffered()
+                    ?: throw RouterException.Transient("라우터가 빈 응답 스트림을 보냈습니다", null, null)
+                reader.use {
+                    readSse(it) { name, data ->
+                        currentCoroutineContext().ensureActive()
+                        val ev = state.consume(name, data, System.currentTimeMillis() - started)
+                        if (ev != null) onEvent(ev)
+                        state.done
+                    }
+                }
+                currentCoroutineContext().ensureActive()
+                if (!state.done) {
+                    throw RouterException.Transient("응답 스트림이 완료 전에 끊겼습니다", state.routing, null)
+                }
+                state
             }
-            if (!state.done) {
-                throw RouterException.Transient("응답 스트림이 완료 전에 끊겼습니다", state.routing, null)
-            }
-            return state
         } catch (e: SocketTimeoutException) {
             currentCoroutineContext().ensureActive()
             throw RouterException.Transient("응답이 멈췄습니다 (시간 초과)", null, e)
         } catch (e: IOException) {
-            // A socket closed by the watcher surfaces as an IOException: report the
+            // A cancelled call surfaces as an IOException: report the
             // cancellation, not a network error (which would schedule a retry).
             currentCoroutineContext().ensureActive()
             throw e
-        } finally {
-            watcher?.dispose()
-            conn.disconnect()
         }
     }
 
     /** Health + model list for Settings: `GET /v1/models` (groups first, then models). */
     suspend fun listModels(): List<RouterModel> = withContext(Dispatchers.IO) {
-        val conn = openConnection(endpoint(baseUrl, "models", hoard = false))
         try {
-            conn.requestMethod = "GET"
-            val status = conn.responseCode
-            val body = (if (status in 200..299) conn.inputStream else conn.errorStream)?.bufferedReader()?.use { it.readText() }.orEmpty()
-            if (status !in 200..299) throw errorFromJsonBody(status, body)
-            parseModelList(body)
+            withResponse(routerRequest(endpoint(baseUrl, "models", hoard = false)).get().build()) { response ->
+                val body = response.body?.string().orEmpty()
+                if (!response.isSuccessful) throw errorFromJsonBody(response.code, body)
+                parseModelList(body)
+            }
         } catch (e: IOException) {
             throw RouterException.Transient("라우터에 연결할 수 없습니다 (${e.message})", null, e)
-        } finally {
-            conn.disconnect()
         }
     }
 
-    private fun openConnection(url: String): HttpURLConnection =
-        (URL(url).openConnection() as HttpURLConnection).apply {
-            connectTimeout = connectTimeoutMs
-            readTimeout = readTimeoutMs
-            requestMethod = "POST"
-            useCaches = false
-            if (token.isNotBlank()) setRequestProperty("Authorization", "Bearer $token")
+    private fun routerRequest(url: String): Request.Builder = Request.Builder().url(url).apply {
+        if (token.isNotBlank()) header("Authorization", "Bearer $token")
+    }
+
+    /** HttpURLConnection.disconnect can wait for a blocked read on Android.
+     * Call.cancel closes the active exchange without acquiring the reader's lock,
+     * including while uploading, waiting for headers or receiving SSE keep-alives.
+     */
+    private suspend fun <T> withResponse(request: Request, block: suspend (Response) -> T): T {
+        currentCoroutineContext().ensureActive()
+        val call = http.newCall(request)
+        val watcher = currentCoroutineContext()[Job]?.invokeOnCompletion(onCancelling = true, invokeImmediately = true) { cause ->
+            if (cause != null) call.cancel()
         }
+        try {
+            val response = try {
+                call.execute()
+            } catch (e: SocketTimeoutException) {
+                currentCoroutineContext().ensureActive()
+                throw RouterException.Transient("라우터 응답 시간 초과", null, e)
+            } catch (e: IOException) {
+                currentCoroutineContext().ensureActive()
+                throw RouterException.Transient(describeConnectError(e), null, e)
+            }
+            return response.use {
+                currentCoroutineContext().ensureActive()
+                block(it)
+            }
+        } catch (e: IOException) {
+            currentCoroutineContext().ensureActive()
+            throw e
+        } finally {
+            watcher?.dispose()
+            call.cancel()
+        }
+    }
 
     /** Stateful mapping of the Responses SSE stream to UI events. */
     private class StreamState(val request: ReplyRequest, val prior: Prior, val acceptTools: Boolean) {
@@ -454,6 +472,9 @@ class RouterAiEngine(
     data class ToolCall(val callId: String, val name: String, val arguments: String)
 
     companion object {
+        // Engine instances share connection/thread pools, but never replay a failed
+        // generation automatically: only the worker's explicit retry policy may do so.
+        private val HTTP = OkHttpClient.Builder().retryOnConnectionFailure(false).build()
         internal val json = Json { ignoreUnknownKeys = true; isLenient = true }
 
         /**
