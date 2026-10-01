@@ -146,43 +146,6 @@ class HoardRepository(private val store: HoardStore? = null) {
         return found
     }
 
-    /**
-     * Inserts [message] right before [beforeId] (at the end when null). False when the session or
-     * [beforeId] is gone, so a late writer never lands in the wrong place.
-     */
-    fun insertMessageBefore(sessionId: String, beforeId: String?, message: ChatMessage, expectedPrefix: List<ChatMessage>): Boolean {
-        var inserted = false
-        _messages.update { map ->
-            val list = map[sessionId]
-            val at = when {
-                list == null -> -1
-                beforeId == null -> list.size
-                else -> list.indexOfFirst { it.id == beforeId }
-            }
-            // A send/edit/delete raced planning: never append the marker past unseen messages.
-            inserted = at == expectedPrefix.size && list?.take(at) == expectedPrefix
-            if (!inserted) map else map + (sessionId to list!!.toMutableList().apply { add(at, message) })
-        }
-        if (inserted) touch(sessionId)
-        return inserted
-    }
-
-    /** Publish only if the source history still matches what was summarized, atomically. */
-    fun finishCompaction(sessionId: String, markerId: String, expectedPrefix: List<ChatMessage>, summary: String, problem: String?): Boolean {
-        var accepted = false
-        _messages.update { map ->
-            val list = map[sessionId] ?: return@update map
-            val at = list.indexOfFirst { it.id == markerId }
-            if (at < 0) return@update map
-            val unchanged = at == expectedPrefix.size && list.take(at) == expectedPrefix
-            accepted = unchanged && problem == null
-            val error = if (unchanged) problem else "요약 중 이전 대화가 바뀌어 쓰지 않았습니다"
-            map + (sessionId to list.map { if (it.id == markerId) it.copy(text = summary, isStreaming = false, errorText = error) else it })
-        }
-        touch(sessionId)
-        return accepted
-    }
-
     // Regenerate in place: drop the target message and everything after,
     // then stream a new response at that same spot.
     fun replaceSessionTail(sessionId: String, fromIndex: Int) {
@@ -197,16 +160,7 @@ class HoardRepository(private val store: HoardStore? = null) {
     fun deleteMessage(sessionId: String, messageId: String) {
         _messages.update { map ->
             val list = map[sessionId] ?: return@update map
-            val deletedAt = list.indexOfFirst { it.id == messageId }
-            if (deletedAt < 0) return@update map
-            // A later checkpoint may quote the deleted message (or earlier checkpoint).
-            map + (sessionId to list.mapIndexedNotNull { index, message ->
-                when {
-                    index == deletedAt -> null
-                    index > deletedAt && message.isCompaction -> message.copy(isStreaming = false, errorText = "이전 대화가 삭제되어 요약을 해제했습니다")
-                    else -> message
-                }
-            })
+            map + (sessionId to list.filterNot { it.id == messageId })
         }
         touch(sessionId)
     }
@@ -227,11 +181,7 @@ class HoardRepository(private val store: HoardStore? = null) {
         )
         todos.forkSession(sessionId, branch.id)
         _sessions.update { listOf(branch) + it }
-        _messages.update { it + (branch.id to list.take(idx + 1).map { m ->
-            // The source session's worker cannot finish a checkpoint copied into a branch.
-            if (m.isCompaction && m.isStreaming) m.copy(branchedFromId = m.id, isStreaming = false, errorText = "진행 중인 요약은 브랜치에 적용하지 않았습니다")
-            else m.copy(branchedFromId = m.id)
-        }) }
+        _messages.update { it + (branch.id to list.take(idx + 1).map { m -> m.copy(branchedFromId = m.id) }) }
         flush()
         return branch
     }
@@ -293,10 +243,7 @@ class HoardRepository(private val store: HoardStore? = null) {
                 val msg = m.toModel()
                 // A reply that was streaming when the process died: its worker will either
                 // resume it (same bubble) or it's gone — never leave a spinner forever.
-                // (A compaction cut off this way is a failed marker: never sent, retried later.)
-                if (msg.isStreaming) {
-                    msg.copy(isStreaming = false, errorText = msg.errorText ?: if (msg.isCompaction) "앱이 종료되어 요약이 중단됐습니다." else "앱이 종료되어 답변이 중단됐습니다.")
-                } else msg
+                if (msg.isStreaming) msg.copy(isStreaming = false, errorText = msg.errorText ?: "앱이 종료되어 답변이 중단됐습니다.") else msg
             }
         }
     }

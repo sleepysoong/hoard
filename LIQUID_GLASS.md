@@ -312,14 +312,14 @@ Kyant 카탈로그 원본(`LiquidToggle.kt`, `LiquidBottomTabs.kt`, `LiquidSlide
 | 하단 바 | `GlassBottomBar` + `GlassTabItem` | 탭 |
 | 버튼 | `GlassButton` / `GlassSecondaryButton` / `GlassCapsuleButton` / `GlassIconButton` / `GlassPillButton` | |
 | 입력 | `GlassTextField`(filled), `GlassTokenField`(숫자·"토큰"·범위 검증) | 팝업, 설정 |
-| 리퀴드 컨트롤 | `GlassSwitch`, `IOSSegmentedControl`, `GlassSlider` | 도구, 설정 (`GlassSlider`: 설정 · 자동 압축) |
+| 리퀴드 컨트롤 | `GlassSwitch`, `IOSSegmentedControl` | 도구, 설정 |
 | 팝업 | `GlassAnchoredOverlay`(내부), `GlassPopup`, `GlassPopupRow`, `GlassPopupDivider`, `GlassAnchoredMenu` | 모든 팝업 |
 | 모션 | `GlassMotion`, `liquidPress`, `liquidClickable`, `HoardTransitions`, `screenCanvas` | 전체 |
 | 기타 | `IOSSectionHeader`, `IOSRowDivider`, `IOSTypingDots`, `GlassAnimatedVisibility`, `GlassEmptyState` | |
 
-현재 **호출하는 곳이 없는** 것: `GlassFilterChip`, `GlassBadge`, `GlassModalBottomSheet`/`GlassBottomSheetPanel`/`SheetGrabber`,
-`LargeTitle`/`CollapsingLargeTitle`. 되살릴 땐 11.4 수준으로 리퀴드화한 뒤 쓴다 — `GlassSlider`가 그렇게
-Material `Slider` 래퍼에서 Kyant `LiquidSlider` 구조로 다시 만들어졌다(11.4).
+현재 **호출하는 곳이 없는** 것: `GlassSlider`(컨텍스트가 숫자 입력으로 바뀜), `GlassFilterChip`,
+`GlassBadge`, `GlassModalBottomSheet`/`GlassBottomSheetPanel`/`SheetGrabber`, `LargeTitle`/`CollapsingLargeTitle`.
+되살릴 땐 11.4 수준으로 리퀴드화한 뒤 쓴다(`GlassSlider`는 Kyant `LiquidSlider` 참고).
 
 ### 11.2 상단 플로팅 바는 모든 탭이 같다
 
@@ -365,24 +365,6 @@ blur가 빠지고 lens·스페큘러·내부 그림자가 들어와 투명한 �
 **스위치** `GlassSwitch`: 트랙 64×28, 썸 40×24. 탭 토글(`toggleable`, Role.Switch) + 드래그
 (touchSlop 넘으면 소비해서 탭으로 안 셈, 놓으면 0.5 기준 스냅). 누르면 1.5배.
 꺼짐 트랙 아래에도 Thin 글래스를 깐다(평평한 회색 방지).
-
-**슬라이더** `GlassSlider`(Kyant `LiquidSlider` 구조, 스위치와 같은 문법): 주어진 폭을 채우고 높이 ≥ 44dp.
-트랙 6dp 캡슐(스위치의 `trackOff` / 강조색)을 자기 레이어에 기록하고, 썸 40×24는 스위치 썸 그대로
-(`liquidThumb`, `glassAtRest`) — 누르면 1.5배. 썸 중심은 [20dp, 폭−20dp]만 움직이고(오버슈트도 클램프)
-채움은 `폭 × f`에서 끝난다 → 항상 썸 밑이라 밖에서 보면 "썸까지 초록", 0이면 비고 끝이면 꽉 찬다
-(썸 중심까지 채우면 0에서도 유리 썸 너머로 초록 자투리가 비친다).
-- 드래그: 어디서든 손가락만큼. touchSlop을 넘으면 소비(부모 스크롤 안 됨), 그 전에 부모가 가져가면
-  Final 패스에서 보고 포기. 탭: 그 자리로 스프링(0.62, 520), 썸 자체를 탭하면 그대로.
-- `steps` > 0: 손가락은 연속으로 따르고(칸마다 점프시키지 않는다 — 누르는 동안은 손가락을 따른다, 17장)
-  칸이 바뀔 때만 `onValueChange` + 햅틱 틱, 놓으면 가까운 칸에 스프링으로 안착.
-  `onValueChangeFinished`는 드래그·탭마다 정확히 한 번 — 저장은 여기서.
-- RTL 대칭, 비활성 α .45. 접근성은 Material Slider와 같다(`progressBarRangeInfo` + `setProgress`).
-  TalkBack은 범위 대비 %를 읽는다(50–100의 70 → "40%") → 단위 있는 값이면 호출부가 `stateDescription`을 단다.
-- 규칙 1(스케일·늘어남은 layerBlock, 이동만 바깥 translationX) · 2(평소 1:1) · 3(평소에도 유리)을 그대로 따른다.
-- 드래그를 `snapTo`로 따라가면 속도가 0이라 놓을 때까지 안 늘어난다 → 썸이 임계 감쇠 스프링(1.0, 3000)으로
-  손가락을 쫓는다(2프레임쯤 늦음, 오버슈트 없음). 늘어남 = `0.18 × tanh(|v| / 750dp/s)`.
-- **layerBlock은 안에서 읽은 스냅샷 상태가 바뀔 때만 다시 돈다**(`drawBackdrop` = `graphicsLayer(layerBlock)` + …,
-  2.0.1 AAR에서 확인). `Animatable.velocity`는 상태가 아니라서 `value`를 같이 읽어야 매 프레임 늘어남이 갱신된다.
 
 **세그먼트** `IOSSegmentedControl`(높이 44dp) — 하단 탭 바와 같은 구조(Kyant LiquidBottomTabs):
 ```text
@@ -509,7 +491,7 @@ object GlassMotion {
 | 목록 | `animateItem(placementSpec = offsetSmooth())` — 추가·삭제·재생성 시 나머지가 미끄러짐 |
 | 생각 과정 | `expandVertically(sizeSmooth)` + bouncy scale |
 | 입력창 | 높이 `animateContentSize`, 첨부 칩 pop, 슬래시 메뉴 솟아오름, 보낼 수 있게 되면 전송 버튼 부풂 |
-| 스위치/세그먼트/슬라이더 | 11.4 |
+| 스위치/세그먼트 | 11.4 |
 
 ### 교훈 (모두 실제로 틀렸던 것)
 

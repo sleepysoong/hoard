@@ -313,10 +313,10 @@ class RouterAiEngine(
                     val full = resp?.let(::outputText)
                     if (!full.isNullOrEmpty()) { text.setLength(0); text.append(full) }
                     if (text.isEmpty()) throw RouterException.Permanent("응답이 완료되지 않았습니다 ($why)", routing, null)
-                    text.append("\n\n$INCOMPLETE_PREFIX$why)")
+                    text.append("\n\n(응답이 잘렸습니다: $why)")
                     routing = routing?.withSelectedOutcome("incomplete")
                     done = true
-                    return event(elapsed, done = true, incomplete = true)
+                    return event(elapsed, done = true)
                 }
                 "response.failed" -> {
                     val err = obj.obj("response")?.obj("error")
@@ -349,10 +349,9 @@ class RouterAiEngine(
         val ownCompletionTokens: Int get() =
             if (completionTokens > 0) completionTokens else com.sleepysoong.hoard.data.estimateTokens(text.toString())
 
-        private fun event(elapsed: Long, done: Boolean = false, incomplete: Boolean = false): StreamEvent {
+        private fun event(elapsed: Long, done: Boolean = false): StreamEvent {
             lastElapsed = elapsed
             return StreamEvent(
-                incomplete = incomplete,
                 thinking = prior.thinking + listOfNotNull(reasoningStep),
                 deltaText = prior.joinText(text.toString()),
                 done = done,
@@ -524,8 +523,6 @@ class RouterAiEngine(
                     "goal" -> "Goal: " + m.text
                     "wakeup" -> "[Wakeup you scheduled] " + m.text
                     "schedule" -> "[Scheduled run] " + m.text
-                    // A compaction summary: framed as the checkpoint it is (see Compaction).
-                    com.sleepysoong.hoard.data.TRIGGER_COMPACT -> Compaction.forModel(m.text)
                     else -> m.text
                 }
                 val attached = !assistant && m.attachments.isNotEmpty()
@@ -544,9 +541,6 @@ class RouterAiEngine(
 
         /** Concatenated output_text of a Responses object. */
         const val EMPTY_REPLY = "모델이 빈 응답을 보냈습니다 (추론만 하고 답을 쓰지 않음)"
-
-        /** Start of the note appended to a reply cut off by `response.incomplete` (followed by the reason and ")"). */
-        const val INCOMPLETE_PREFIX = "(응답이 잘렸습니다: "
 
         fun hasToolCall(resp: JsonObject): Boolean = functionCalls(resp).isNotEmpty()
 

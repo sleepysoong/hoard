@@ -10,7 +10,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -34,9 +33,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.GraphicsLayerScope
 import androidx.compose.ui.graphics.Shape
@@ -44,24 +40,17 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalHapticFeedback
-import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.ProgressBarRangeInfo
 import androidx.compose.ui.semantics.Role
-import androidx.compose.ui.semantics.disabled
 import androidx.compose.ui.semantics.onClick
-import androidx.compose.ui.semantics.progressBarRangeInfo
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.semantics.setProgress
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.DpOffset
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import com.kyant.backdrop.backdrops.LayerBackdrop
 import com.kyant.backdrop.backdrops.layerBackdrop
@@ -98,12 +87,6 @@ import kotlin.math.roundToInt
  */
 
 private val Capsule = RoundedCornerShape(50)
-
-/** Track colours shared by the switch and the slider: iOS system-fill grey, Hoard matcha when on / filled. */
-private fun liquidAccent(dark: Boolean): Color = if (dark) HoardMatchaLight else HoardMatcha
-
-private fun liquidTrackOff(dark: Boolean): Color =
-    if (dark) Color(0xFF787880).copy(alpha = 0.36f) else Color(0xFF787878).copy(alpha = 0.2f)
 
 /** 0 = solid thumb at rest, 1 = fully liquid (pressed). Read inside draw/layer blocks only. */
 @Composable
@@ -211,8 +194,8 @@ fun GlassSwitch(
     enabled: Boolean = true
 ) {
     val dark = LocalHoardDarkTheme.current
-    val accent = liquidAccent(dark)
-    val trackOff = liquidTrackOff(dark)
+    val accent = if (dark) HoardMatchaLight else HoardMatcha
+    val trackOff = if (dark) Color(0xFF787880).copy(alpha = 0.36f) else Color(0xFF787878).copy(alpha = 0.2f)
     val trackW = 64.dp
     val trackH = 28.dp
     val thumbW = 40.dp
@@ -306,253 +289,6 @@ fun GlassSwitch(
                     val v = (fraction.velocity / 12f).coerceIn(-0.2f, 0.2f)
                     scaleX = s * (1f + abs(v) * 0.75f)
                     scaleY = s * (1f - abs(v) * 0.25f)
-                }
-        )
-    }
-}
-
-// Tap jumps, settling into a stop, external changes: the switch's spring (small overshoot).
-private val SliderSettle = spring(dampingRatio = 0.62f, stiffness = 520f, visibilityThreshold = 0.001f)
-
-// While dragging, the thumb chases the finger through a stiff, critically damped spring
-// instead of snapping to it (Kyant's DampedDragAnimation idea, 3× stiffer): it trails by
-// ~2 frames and never overshoots, and — unlike snapTo, which zeroes the velocity — gives
-// the Animatable a real velocity, so the drop stretches while it's dragged, not only after.
-private val SliderFollow = spring(dampingRatio = 1f, stiffness = 3000f, visibilityThreshold = 0.001f)
-
-/** [v] inside [range]; the start for an empty range or NaN (ProgressBarRangeInfo rejects NaN). */
-private fun sliderClamp(v: Float, range: ClosedFloatingPointRange<Float>): Float =
-    if (!(range.endInclusive > range.start) || v.isNaN()) range.start
-    else v.coerceIn(range.start, range.endInclusive)
-
-/** [v] clamped and, with [steps] > 0, moved to the nearest of the steps + 2 stops. */
-private fun sliderSnap(v: Float, range: ClosedFloatingPointRange<Float>, steps: Int): Float {
-    val clamped = sliderClamp(v, range)
-    val start = range.start
-    val end = range.endInclusive
-    if (steps <= 0 || !(end > start)) return clamped
-    val i = ((clamped - start) / (end - start) * (steps + 1)).roundToInt()
-    return if (i >= steps + 1) end else start + (end - start) * i / (steps + 1)
-}
-
-/** Where [v] sits on the track: 0 = start … 1 = end. */
-private fun sliderFraction(v: Float, range: ClosedFloatingPointRange<Float>): Float {
-    val span = range.endInclusive - range.start
-    return if (span > 0f) (sliderClamp(v, range) - range.start) / span else 0f
-}
-
-private fun sliderValue(fraction: Float, range: ClosedFloatingPointRange<Float>): Float =
-    range.start + (range.endInclusive - range.start) * fraction
-
-/**
- * iOS 26 liquid slider in [GlassSwitch]'s grammar, modelled on Kyant's catalog LiquidSlider:
- *  - a 6dp capsule track (the switch's off grey, matcha fill) recorded into its own layer;
- *  - a 40×24dp thumb that is glass at rest and refracts it (`liquidThumb`), swells to 1.5×
- *    while the finger is down and stretches with speed.
- * Drag anywhere moves the value with the finger; a tap jumps there with a spring. With
- * [steps] > 0 the value snaps to the stops and [onValueChange] fires only when the stop
- * changes, with a haptic tick. Semantics match Material's Slider (range info + setProgress).
- */
-@Composable
-fun GlassSlider(
-    value: Float,
-    onValueChange: (Float) -> Unit,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
-    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
-    /** Discrete stops between the ends, like Material's Slider: 0 = continuous. */
-    steps: Int = 0,
-    /** Called once when a drag or tap ends (persist here, not in onValueChange). */
-    onValueChangeFinished: (() -> Unit)? = null
-) {
-    val dark = LocalHoardDarkTheme.current
-    val accent = liquidAccent(dark)
-    val trackOff = liquidTrackOff(dark)
-    val glass = LocalGlassBackdrop.current != null && LocalGlassMode.current != GlassMode.Off
-    val rtl = LocalLayoutDirection.current == LayoutDirection.Rtl
-    val stops = steps.coerceAtLeast(0)
-    val thumbW = 40.dp
-    val thumbH = 24.dp
-    val trackH = 6.dp
-
-    val haptics = LocalHapticFeedback.current
-    val scope = rememberCoroutineScope()
-    val target = sliderFraction(value, valueRange)
-    val fraction = remember { Animatable(target, visibilityThreshold = 0.001f) }
-    val press = remember { Animatable(0f, visibilityThreshold = 0.001f) }
-    var dragging by remember { mutableStateOf(false) }
-    val currentValue by rememberUpdatedState(value)
-    val currentOnValueChange by rememberUpdatedState(onValueChange)
-    val currentOnFinished by rememberUpdatedState(onValueChangeFinished)
-
-    // External changes (the stored setting arriving, setProgress, a value the caller didn't
-    // take) glide over when not dragging. A tap or release already animating to exactly this
-    // target is left alone rather than restarted with another spring.
-    LaunchedEffect(target, dragging) {
-        if (!dragging && fraction.targetValue != target) fraction.animateTo(target, SliderSettle)
-    }
-    val trackLayer = rememberLayerBackdrop()
-
-    BoxWithConstraints(
-        modifier
-            .fillMaxWidth()
-            .heightIn(min = GlassTokens.touchMin)
-            .alpha(if (enabled) 1f else 0.45f)
-            // Like Material's Slider: range info for TalkBack and tests; setProgress snaps and
-            // reports like a tap, so performSemanticsAction(SetProgress) { it(70f) } works.
-            .semantics(mergeDescendants = true) {
-                progressBarRangeInfo = ProgressBarRangeInfo(sliderClamp(value, valueRange), valueRange, stops)
-                if (!enabled) {
-                    disabled()
-                } else {
-                    setProgress { requested ->
-                        val v = sliderSnap(requested, valueRange, stops)
-                        if (v != currentValue) currentOnValueChange(v)
-                        currentOnFinished?.invoke()
-                        true
-                    }
-                }
-            }
-            .then(
-                if (!enabled) Modifier else Modifier.pointerInput(stops, valueRange, rtl) {
-                    awaitEachGesture {
-                        val down = awaitFirstDown()
-                        val thumbPx = thumbW.toPx()
-                        val travelPx = (size.width - thumbPx).coerceAtLeast(1f)
-                        val dir = if (rtl) -1f else 1f
-                        scope.launch { press.animateTo(1f, GlassMotion.exit()) }
-                        var drag = false
-                        var still = true  // hasn't moved past the slop: may still be a tap
-                        var tap = false
-                        var finger = 0f   // where the finger has taken the thumb, 0..1
-                        var lastX = 0f
-                        var reported = 0f // last value handed to onValueChange in this drag
-                        try {
-                            while (true) {
-                                val ev = awaitPointerEvent()
-                                val c = ev.changes.firstOrNull { it.id == down.id } ?: break
-                                if (!c.pressed) {
-                                    // A consumed up is a cancelled gesture, not a tap.
-                                    tap = still && !drag && !c.isConsumed
-                                    break
-                                }
-                                if (!drag) {
-                                    if (c.isConsumed) break
-                                    val dx = c.position.x - down.position.x
-                                    val slop = viewConfiguration.touchSlop
-                                    // Wandered off vertically: may still become a drag, but not a tap.
-                                    if (abs(c.position.y - down.position.y) > slop) still = false
-                                    if (abs(dx) <= slop) {
-                                        // Not a drag yet. If a parent (the settings list) claims
-                                        // this move to scroll, the gesture is its: no tap, no change.
-                                        awaitPointerEvent(PointerEventPass.Final)
-                                        if (c.isConsumed) break
-                                        continue
-                                    }
-                                    drag = true
-                                    dragging = true
-                                    finger = fraction.value.coerceIn(0f, 1f)
-                                    reported = currentValue
-                                    // Count from the slop boundary so the thumb doesn't jump by it.
-                                    lastX = down.position.x + if (dx > 0f) slop else -slop
-                                }
-                                c.consume() // a drag is ours: the list must never scroll from it
-                                finger = (finger + dir * (c.position.x - lastX) / travelPx).coerceIn(0f, 1f)
-                                lastX = c.position.x
-                                val to = finger
-                                scope.launch { fraction.animateTo(to, SliderFollow) }
-                                val v = sliderSnap(sliderValue(to, valueRange), valueRange, stops)
-                                if (v != reported) {
-                                    reported = v
-                                    if (stops > 0) haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    currentOnValueChange(v)
-                                }
-                            }
-                        } finally {
-                            // Up, cancel, or the input torn down mid-gesture: the thumb always
-                            // deflates, and a drag always settles and reports its end, once.
-                            scope.launch { press.animateTo(0f, GlassMotion.release()) }
-                            if (drag) {
-                                dragging = false
-                                val rest = sliderFraction(reported, valueRange)
-                                // Stops: the thumb followed the finger continuously (§17: while
-                                // pressed, follow the finger; the tick marks each stop) and now
-                                // clicks into the stop with the switch's spring, showing where it
-                                // landed. Hopping stop to stop mid-drag would read as notchy.
-                                // Continuous: just catch up, no overshoot past the committed value.
-                                scope.launch { fraction.animateTo(rest, if (stops > 0) SliderSettle else SliderFollow) }
-                                currentOnFinished?.invoke()
-                            }
-                        }
-                        if (tap) {
-                            val x = down.position.x
-                            val at = fraction.value.coerceIn(0f, 1f)
-                            val thumbCentre = thumbPx / 2f + travelPx * (if (rtl) 1f - at else at)
-                            // A tap on the thumb itself doesn't move it; anywhere else jumps there.
-                            if (abs(x - thumbCentre) > thumbPx / 2f) {
-                                val f = ((x - thumbPx / 2f) / travelPx).coerceIn(0f, 1f)
-                                val v = sliderSnap(sliderValue(if (rtl) 1f - f else f, valueRange), valueRange, stops)
-                                scope.launch { fraction.animateTo(sliderFraction(v, valueRange), SliderSettle) }
-                                if (v != currentValue) {
-                                    haptics.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    currentOnValueChange(v)
-                                }
-                            }
-                            currentOnFinished?.invoke()
-                        }
-                    }
-                }
-            ),
-        contentAlignment = Alignment.CenterStart
-    ) {
-        // The thumb's centre travels over [thumbW/2, width − thumbW/2], so it never leaves the
-        // component. The track spans the full width (lined up with the rest of the card) and the
-        // fill ends at width·f, which is always under the thumb (thumbW·f from its leading edge):
-        // outside the thumb it reads exactly like iOS — tint up to the thumb, grey after — and it
-        // is empty at the minimum and full at the maximum. Ending the fill at the thumb's centre
-        // instead would leave a tint stub showing through the glass thumb at 0.
-        val travel = if (constraints.hasBoundedWidth) (maxWidth - thumbW).coerceAtLeast(0.dp) else 0.dp
-        Box(
-            Modifier
-                .fillMaxWidth()
-                .height(trackH)
-                // Recorded for the thumb to refract (the thumb is a sibling and only reads it, §4).
-                // Without glass there is nothing to refract: the track just draws.
-                .then(if (glass) Modifier.layerBackdrop(trackLayer) else Modifier)
-                .drawBehind {
-                    val r = CornerRadius(size.height / 2f)
-                    drawRoundRect(trackOff, cornerRadius = r)
-                    val fill = size.width * fraction.value.coerceIn(0f, 1f)
-                    if (fill > 0f) {
-                        drawRoundRect(
-                            accent,
-                            topLeft = Offset(if (rtl) size.width - fill else 0f, 0f),
-                            size = Size(fill, size.height),
-                            cornerRadius = r
-                        )
-                    }
-                }
-        )
-        Box(
-            Modifier
-                // An outer translation is fine (the backdrop maps positions, unlike an outer scale).
-                // Clamped, so a spring overshoot at either end can't push the thumb outside.
-                .graphicsLayer {
-                    translationX = (if (rtl) -1f else 1f) * travel.toPx() * fraction.value.coerceIn(0f, 1f)
-                }
-                .testTag("slider-thumb")
-                .size(thumbW, thumbH)
-                .liquidThumb(trackLayer, press = { press.value }, restColor = Color.White, glassAtRest = true) {
-                    // Swell while pressed (1 → 1.5) and stretch along the travel with speed; tanh
-                    // saturates softly, like the tab bar and segmented pill (§17 lesson 6).
-                    // Animatable.velocity is not snapshot state: `value` is read here so this block
-                    // re-runs on every frame the thumb moves — otherwise the stretch freezes.
-                    val moving = fraction.value != fraction.targetValue
-                    val speed = if (moving) abs(fraction.velocity) * travel.toPx() else 0f
-                    val stretch = 0.18f * kotlin.math.tanh(speed / 750.dp.toPx())
-                    val s = 1f + 0.5f * press.value
-                    scaleX = s * (1f + stretch)
-                    scaleY = s * (1f - stretch * 0.3f)
                 }
         )
     }

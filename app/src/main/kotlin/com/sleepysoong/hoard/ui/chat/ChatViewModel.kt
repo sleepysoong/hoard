@@ -12,8 +12,6 @@ import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.data.UiAttachment
-import com.sleepysoong.hoard.data.isCompaction
-import com.sleepysoong.hoard.engine.Compaction
 import com.sleepysoong.hoard.engine.ReplyRequest
 import com.sleepysoong.hoard.work.ChatResponseWorker
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -54,7 +52,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private val goals = com.sleepysoong.hoard.goal.GoalService(repo)
 
-    /** Feedback for /goal and /compact commands (shown under the goal bar), cleared on the next command. */
+    /** Feedback for /goal commands (shown under the goal bar), cleared on the next command. */
     private val _goalNotice = MutableStateFlow<String?>(null)
     val goalNotice: StateFlow<String?> = _goalNotice
 
@@ -67,7 +65,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val id = activeId.ifBlank { sessions.firstOrNull()?.id.orEmpty() }
         val msgs = allMessages[id].orEmpty()
         val previews = allMessages.mapNotNull { (key, list) ->
-            list.lastOrNull { !it.isCompaction }?.let {
+            list.lastOrNull()?.let {
                 key to SessionPreview(it.text, it.role == MessageRole.User, it.createdAt)
             }
         }.toMap()
@@ -75,8 +73,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         ChatUiState(
             session = session,
             messages = msgs,
-            // The latest checkpoint replaces the older history only in model-facing context.
-            usedTokens = session?.let { ReplyRequest.contextTokens(it.systemPrompt, ReplyRequest.contextWindow(msgs)) } ?: 0,
+            // What the next request would carry: system prompt + every message.
+            usedTokens = session?.let { ReplyRequest.contextTokens(it.systemPrompt, msgs) } ?: 0,
             sessions = sessions,
             previews = previews,
             goal = allGoals.lastOrNull { it.sessionId == id && it.status != com.sleepysoong.hoard.data.GoalStatus.Cleared },
@@ -107,11 +105,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (attachments.isEmpty() && (clean == "/goal" || clean.startsWith("/goal "))) {
             input = ""
             goalCommand(clean.removePrefix("/goal").trim(), modelId)
-            return
-        }
-        if (attachments.isEmpty() && (clean == "/compact" || clean.startsWith("/compact "))) {
-            input = ""
-            compactCommand(clean.removePrefix("/compact").trim(), modelId)
             return
         }
         // The user said something: a spin-suppressed goal may continue again.
@@ -196,26 +189,6 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Queued behind replies so the checkpoint includes their completed output. */
-    fun compactCommand(focus: String, modelId: String) {
-        val session = uiState.value.session ?: return
-        _goalNotice.value = null
-        val messages = repo.messagesOf(session.id)
-        if (Compaction.plan(session, messages) == null) {
-            _goalNotice.value = "요약할 이전 대화가 없습니다"
-            return
-        }
-        if (!usesRouter()) {
-            _goalNotice.value = "대화 요약에는 라우터 연결이 필요합니다 · 설정에서 연결하세요"
-            return
-        }
-        ChatResponseWorker.enqueue(
-            getApplication(), session.id, modelId, "msg-" + UUID.randomUUID().toString().take(8),
-            parentId = messages.last().id, needsNetwork = true,
-            mode = ChatResponseWorker.MODE_COMPACT, focus = focus.take(Compaction.FOCUS_MAX_CHARS).ifBlank { null }
-        )
-    }
-
     /** UI buttons (goal sheet). */
     fun pauseGoal() = goalCommand("pause", uiState.value.session?.modelId.orEmpty())
     fun resumeGoal() = goalCommand("resume", uiState.value.session?.modelId.orEmpty())
@@ -243,7 +216,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         if (idx < 0) return
         // The reply answers the closest user message before it; everything after
         // the target is dropped below, so later prompts must never be used.
-        val parent = messages.subList(0, idx).lastOrNull { it.role == MessageRole.User && !it.isCompaction }
+        val parent = messages.subList(0, idx).lastOrNull { it.role == MessageRole.User }
             ?: return
         // Remove the old reply (same position) and everything after; then
         // regenerate at that same spot.

@@ -1,9 +1,14 @@
 package com.sleepysoong.hoard.ui.glass
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.sizeIn
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
@@ -11,6 +16,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
@@ -20,6 +26,8 @@ import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.TextField
 import androidx.compose.material3.TextFieldDefaults
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
@@ -27,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.text.TextStyle
@@ -265,5 +274,45 @@ fun GlassTokenField(
         singleLine = true,
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number, imeAction = imeAction),
         keyboardActions = KeyboardActions(onDone = { onDone?.invoke() })
+    )
+}
+
+/**
+ * iOS slider: 4dp track, white round thumb with shadow.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun GlassSlider(
+    value: Float,
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    valueRange: ClosedFloatingPointRange<Float> = 0f..1f,
+    steps: Int = 0,
+    onValueChangeFinished: (() -> Unit)? = null
+) {
+    val scheme = MaterialTheme.colorScheme
+    Slider(
+        value = value, onValueChange = onValueChange, modifier = modifier.heightIn(min = 44.dp),
+        enabled = enabled, valueRange = valueRange, steps = steps,
+        onValueChangeFinished = onValueChangeFinished,
+        thumb = {
+            Box(
+                Modifier
+                    .size(28.dp)
+                    .shadow(3.dp, CircleShape, clip = false)
+                    .background(Color.White, CircleShape)
+            )
+        },
+        track = { state ->
+            SliderDefaults.Track(
+                sliderState = state, enabled = enabled,
+                modifier = Modifier.height(4.dp),
+                colors = SliderDefaults.colors(
+                    activeTrackColor = scheme.primary,
+                    inactiveTrackColor = scheme.surfaceContainerHighest
+                )
+            )
+        }
     )
 }

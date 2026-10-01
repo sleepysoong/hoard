@@ -28,7 +28,6 @@ object SettingsStore {
     private val BROWSER_PUB = stringPreferencesKey("browser_ssh_pub")
     /** Pinned SSH host key ("type base64"), set when the user verifies the host in Settings. */
     private val BROWSER_HOST_KEY = stringPreferencesKey("browser_ssh_host_key")
-    private val AUTO_COMPACT = intPreferencesKey("auto_compact_percent")
 
     data class Settings(
         val theme: String = "system",
@@ -50,17 +49,14 @@ object SettingsStore {
         /** Public key line of that key (not secret). */
         val browserPublicKey: String = "",
         /** Pinned host key "type base64" (blank = not verified yet). */
-        val browserHostKey: String = "",
-        /** Compact a conversation before a reply once its context reaches this % of the session's limit. */
-        val autoCompactPercent: Int = Defaults.AUTO_COMPACT_PERCENT
+        val browserHostKey: String = ""
     ) {
         val browserConfigured: Boolean get() = browserHost.isNotBlank() && browserUser.isNotBlank() && browserKeyEncrypted.isNotBlank()
 
         override fun toString() = "Settings(theme=$theme, defaultModel=$defaultModel, defaultContext=$defaultContext, " +
             "routerUrl=$routerUrl, routerToken=${if (routerToken.isBlank()) "none" else "set"}, " +
             "braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, browser=${if (browserConfigured) "$browserUser@$browserHost:$browserPort" else "none"}, " +
-            "browserKey=${if (browserKeyEncrypted.isBlank()) "none" else "set"}, browserHostKey=${if (browserHostKey.isBlank()) "unverified" else "pinned"}, " +
-            "autoCompactPercent=$autoCompactPercent)"
+            "browserKey=${if (browserKeyEncrypted.isBlank()) "none" else "set"}, browserHostKey=${if (browserHostKey.isBlank()) "unverified" else "pinned"})"
     }
 
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
@@ -76,8 +72,7 @@ object SettingsStore {
             browserUser = p[BROWSER_USER] ?: "",
             browserKeyEncrypted = p[BROWSER_KEY_ENC] ?: "",
             browserPublicKey = p[BROWSER_PUB] ?: "",
-            browserHostKey = p[BROWSER_HOST_KEY] ?: "",
-            autoCompactPercent = (p[AUTO_COMPACT] ?: Defaults.AUTO_COMPACT_PERCENT).coerceIn(Defaults.AUTO_COMPACT_RANGE)
+            browserHostKey = p[BROWSER_HOST_KEY] ?: ""
         )
     }
 
@@ -87,9 +82,6 @@ object SettingsStore {
     suspend fun setRouterUrl(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_URL] = v.trim() } }
     suspend fun setRouterToken(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_TOKEN] = v.trim() } }
     suspend fun setBraveApiKey(ctx: Context, v: String) { ctx.prefs.edit { it[BRAVE_KEY] = v.trim() } }
-    suspend fun setAutoCompactPercent(ctx: Context, v: Int) {
-        ctx.prefs.edit { it[AUTO_COMPACT] = v.coerceIn(Defaults.AUTO_COMPACT_RANGE) }
-    }
 
     /** Saves the SSH target; another host or port un-pins the host key (it must be verified again). */
     suspend fun setBrowserTarget(ctx: Context, host: String, port: Int, user: String) {

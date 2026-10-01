@@ -12,9 +12,7 @@ data class StreamEvent(
     val promptTokens: Int = 0,
     val completionTokens: Int = 0,
     /** Router trace: tried models, why they failed, the model that answered. */
-    val routing: RoutingInfo? = null,
-    /** Terminal response.incomplete: partial text is not safe as a history replacement. */
-    val incomplete: Boolean = false
+    val routing: RoutingInfo? = null
 )
 
 /** Produces a reply for a [ReplyRequest]. Throws on failure (see [RouterException]). */
@@ -38,9 +36,6 @@ object Engines {
         tools: com.sleepysoong.hoard.tools.ToolRegistry? = null
     ): AiEngine =
         override ?: if (routerUrl.isBlank()) (offline ?: NoRouterEngine) else RouterAiEngine(routerUrl, attachments = attachments, token = token, tools = tools)
-
-    /** Whether [forRouter] can answer at all (a router is set, or a test engine stands in). */
-    fun canAnswer(routerUrl: String): Boolean = override != null || routerUrl.isNotBlank() || offline != null
 }
 
 /** No router configured: fail with what to do, never invent an answer. */

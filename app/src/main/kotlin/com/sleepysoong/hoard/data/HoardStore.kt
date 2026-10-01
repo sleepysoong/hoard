@@ -51,10 +51,8 @@ class HoardStore(private val file: File) {
         val promptTokens: Int = 0, val completionTokens: Int = 0,
         val attachments: List<SAttachment> = emptyList(), val createdAt: Long = 0,
         val branchedFromId: String? = null, val isStreaming: Boolean = false,
-        val routing: SRouting? = null, val errorText: String? = null, val trigger: String? = null,
-        val compaction: SCompaction? = null
+        val routing: SRouting? = null, val errorText: String? = null, val trigger: String? = null
     )
-    @Serializable data class SCompaction(val auto: Boolean = false, val summarized: Int = 0, val tokensBefore: Int = 0, val focus: String? = null)
 
     /** Null when there is no saved state yet (first launch) or it was unreadable. */
     fun load(): Snapshot? {
@@ -98,8 +96,7 @@ class HoardStore(private val file: File) {
                     SAttempt(it.index, it.model, it.provider, it.upstreamModel, it.outcome, it.errorClass, it.statusCode, it.reason, it.failedOver, it.durationMs)
                 })
             },
-            errorText = errorText, trigger = trigger,
-            compaction = compaction?.let { SCompaction(it.auto, it.summarized, it.tokensBefore, it.focus) }
+            errorText = errorText, trigger = trigger
         )
 
         fun SMessage.toModel(): ChatMessage = ChatMessage(
@@ -118,8 +115,7 @@ class HoardStore(private val file: File) {
                     RouteAttempt(it.index, it.model, it.provider, it.upstreamModel, it.outcome, it.errorClass, it.statusCode, it.reason, it.failedOver, it.durationMs)
                 })
             },
-            errorText = errorText, trigger = trigger,
-            compaction = compaction?.let { CompactionInfo(it.auto, it.summarized, it.tokensBefore, it.focus) }
+            errorText = errorText, trigger = trigger
         )
     }
 }
