@@ -114,7 +114,11 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
             if (denied(name, args)) throw ToolException("tool '$name' is disallowed for this skill turn")
             if (name in setOf("read_file", "write_file", "edit_file", "glob", "grep")) {
                 val previous = skillRuntime?.context()
-                args.string("path")?.let { onWorkspaceFile?.invoke(it) }
+                // Skill activation is best effort here: a skill that can't be prepared must
+                // never turn an ordinary read_file / glob into a tool error.
+                args.string("path")?.let { path ->
+                    try { onWorkspaceFile?.invoke(path) } catch (e: CancellationException) { throw e } catch (_: Exception) { Unit }
+                }
                 skillRuntime?.context()?.takeIf { it != previous && it.isNotBlank() }?.let { pathSkillContext = it }
             }
             val pre = skillRuntime?.hook("PreToolUse", hookInput(name, args))

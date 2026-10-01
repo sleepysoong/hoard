@@ -129,9 +129,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // Shared storage / Termux work once their Android permissions are granted (asked at
         // app start); until then the tool reports exactly what's missing.
         val scheduledPerms = runId?.let { scheduler.runOf(it) }?.let { r -> repo.schedules.value.firstOrNull { it.id == r.scheduleId }?.permissions }
-        val explicitPermissions = inputData.getString(KEY_PERMISSIONS)?.let {
-            runCatching { Json.decodeFromString<PermissionProfile>(it) }.getOrNull()
-        }
+        // A fork's permissions are a security boundary: never widen them on a decode failure.
+        val rawPermissions = inputData.getString(KEY_PERMISSIONS)
+        val explicitPermissions = if (rawPermissions == null) null
+            else runCatching { Json.decodeFromString<PermissionProfile>(rawPermissions) }.getOrNull() ?: return Result.failure()
         val allowed = explicitPermissions ?: scheduledPerms ?: PermissionProfile.ALL
         val forkReadOnly = inputData.getBoolean(KEY_READ_ONLY, false)
         return try {

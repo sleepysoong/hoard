@@ -84,12 +84,19 @@ object ToolKit {
 
 // ---------------------------------------------------------------- built-in modules
 
+/**
+ * `skill` (activate) + `skill_tasks` (background forks). Never inside a scheduled run:
+ * an unattended run must not create more future work (same rule as the schedule module).
+ */
 object SkillModule : ToolModule {
     override val id = "skills"
-    override fun tools(context: ToolContext) = listOfNotNull(
-        context.services.skills?.let(::SkillTool),
-        context.services.skillTasks?.takeUnless { context.scheduledRun }?.let { SkillTaskTool(it, context.sessionId) }
-    )
+    override fun tools(context: ToolContext): List<Tool> {
+        if (context.scheduledRun) return emptyList()
+        return listOfNotNull(
+            context.services.skills?.let(::SkillTool),
+            context.services.skillTasks?.let { SkillTaskTool(it, context.sessionId) }
+        )
+    }
 }
 
 /** `todo`: the session's task list (always offered). */

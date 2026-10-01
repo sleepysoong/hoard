@@ -47,16 +47,33 @@ class SkillStore(
     private val mutableErrors = MutableStateFlow<List<String>>(emptyList())
     val refreshErrors: StateFlow<List<String>> = mutableErrors.asStateFlow()
 
+    /** Set when the registry file was unreadable; kept aside, never overwritten. */
+    private var registryProblem: String? = null
+
     init {
         require(workspaceRoot.mkdirs() || workspaceRoot.isDirectory) { "Cannot create skills workspace" }
         require(stateRoot.mkdirs() || stateRoot.isDirectory) { "Cannot create skills registry" }
-        readRegistry()
+        // A corrupt registry must never take the whole app down (every chat turn reads it):
+        // keep the file aside and continue with no skills until one is reinstalled.
+        runCatching { readRegistry() }.onFailure { quarantineRegistry(it) }
         refresh()
+    }
+
+    /** Moves an unreadable registry aside (it is never silently overwritten) and reports it. */
+    private fun quarantineRegistry(error: Throwable?) {
+        val base = registryFile.baseFile
+        val kept = File(base.parentFile, "registry.corrupt-${System.currentTimeMillis()}.json")
+        if (!base.exists() || !base.renameTo(kept)) {
+            registryProblem = "스킬 목록(reg)을 읽지 못해 스킬을 비활성화했습니다: ${error?.message}"
+            return
+        }
+        registryProblem = "스킬 목록(reg)이 손상되어 비활성화했습니다 · 보관: ${kept.name}"
     }
 
     fun refresh(): List<InstalledSkill> = synchronized(lock) {
         val found = mutableListOf<InstalledSkill>()
         val errors = mutableListOf<String>()
+        registryProblem?.let { errors += it }
         var flagsChanged = false
         val digestCache = mutableMapOf<String, String>()
         fun revoke(id: String) {
