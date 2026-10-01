@@ -52,6 +52,7 @@ import androidx.compose.material.icons.rounded.ArrowUpward
 import androidx.compose.material.icons.rounded.Stop
 import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.Close
+import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalTextStyle
@@ -61,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
@@ -101,7 +103,9 @@ fun ChatInputBar(
     modifier: Modifier = Modifier,
     skills: List<InstalledSkill> = emptyList(),
     /** Offline: retain the editable draft, but disable every send entry point. */
-    sendEnabled: Boolean = true
+    sendEnabled: Boolean = true,
+    editing: Boolean = false,
+    onCancelEdit: () -> Unit = {}
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
@@ -122,6 +126,12 @@ fun ChatInputBar(
     }
     val canSend = sendEnabled && (value.isNotBlank() || attachments.isNotEmpty())
     val slash = SlashCommands.matching(value, goal, skills)
+    val focusRequester = remember { androidx.compose.ui.focus.FocusRequester() }
+    val keyboard = androidx.compose.ui.platform.LocalSoftwareKeyboardController.current
+    LaunchedEffect(editing) {
+        if (editing) { focusRequester.requestFocus(); keyboard?.show() }
+    }
+    androidx.activity.compose.BackHandler(enabled = editing) { onCancelEdit() }
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {
         // The bar grows/shrinks on a spring as attachment chips come and go.
@@ -129,6 +139,15 @@ fun ChatInputBar(
             Modifier.animateContentSize(GlassMotion.sizeSmooth()).padding(8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
+            if (editing) {
+                Row(Modifier.fillMaxWidth().testTag("composer-editing"), verticalAlignment = Alignment.CenterVertically) {
+                    Text("메시지 수정", modifier = Modifier.weight(1f).padding(start = 12.dp),
+                        style = MaterialTheme.typography.labelLarge, color = scheme.primary)
+                    com.sleepysoong.hoard.ui.glass.GlassIconButton(onClick = onCancelEdit) {
+                        Icon(Icons.Rounded.Close, contentDescription = "메시지 수정 취소")
+                    }
+                }
+            }
             if (attachments.isNotEmpty()) {
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                     attachments.forEach { a ->
@@ -174,7 +193,7 @@ fun ChatInputBar(
 
             // "/" menu: the commands that apply right now; tapping fills the field (send runs it).
             GlassAnimatedVisibility(
-                visible = slash.isNotEmpty(),
+                visible = !editing && slash.isNotEmpty(),
                 enter = fadeIn(GlassMotion.fade()) + expandVertically(GlassMotion.sizeSmooth(), expandFrom = Alignment.Bottom),
                 exit = fadeOut(GlassMotion.fade()) + shrinkVertically(GlassMotion.sizeSmooth(), shrinkTowards = Alignment.Bottom)
             ) {
@@ -218,7 +237,7 @@ fun ChatInputBar(
 
             Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                 // Liquid-glass attach buttons, same footprint as the send button.
-                GlassAttachButton(
+                if (!editing) GlassAttachButton(
                     onClick = {
                         photoPicker.launch(
                             PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
@@ -227,7 +246,7 @@ fun ChatInputBar(
                 ) {
                     Icon(Icons.Rounded.Add, contentDescription = "사진 첨부", modifier = Modifier.size(22.dp))
                 }
-                GlassAttachButton(
+                if (!editing) GlassAttachButton(
                     onClick = { filePicker.launch(arrayOf("*/*")) }
                 ) {
                     Icon(Icons.Rounded.AttachFile, contentDescription = "파일 첨부", modifier = Modifier.size(20.dp))
@@ -258,6 +277,7 @@ fun ChatInputBar(
                         onValueChange = { field = it; if (it.text != value) onValueChange(it.text) },
                         modifier = Modifier
                             .fillMaxWidth()
+                            .then(Modifier.focusRequester(focusRequester))
                             .onPreviewKeyEvent { ev ->
                                 val isSend = ev.type == KeyEventType.KeyDown &&
                                     ev.key == Key.Enter &&
@@ -301,8 +321,8 @@ fun ChatInputBar(
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
-                        if (replying) Icons.Rounded.Stop else Icons.Rounded.ArrowUpward,
-                        contentDescription = if (replying) "답변 중지" else "보내기",
+                        if (replying) Icons.Rounded.Stop else if (editing) Icons.Rounded.Check else Icons.Rounded.ArrowUpward,
+                        contentDescription = if (replying) "답변 중지" else if (editing) "수정 완료" else "보내기",
                         tint = if (active) scheme.onPrimary else scheme.onSurfaceVariant.copy(alpha = 0.5f),
                         modifier = Modifier.size(20.dp)
                     )

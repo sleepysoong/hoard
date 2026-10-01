@@ -182,4 +182,26 @@ class ChatLifecycleFlowTest {
         assertEquals(0, router.requests.count { it.path == "/hoard/v1/responses" })
         shot("offline-draft-kept")
     }
+
+    @Test fun editUsesComposerAndCancelRestoresDraftBeforeSavingRegenerates() {
+        router.enqueue(FakeRouter.Reply.Sse(listOf(FakeRouter.created(), FakeRouter.delta("수정된 질문의 답", 1), FakeRouter.completed("수정된 질문의 답"))))
+        openChat()
+        compose.onNode(hasSetTextAction()).performTextInput("임시 초안")
+        compose.onNodeWithText("원래 질문").performTouchInput { longClick() }
+        compose.onNodeWithText("수정").performClick()
+        compose.onNodeWithTag("composer-editing").assertExists()
+        compose.onNode(hasSetTextAction()).assertTextContains("원래 질문")
+        compose.onNodeWithContentDescription("메시지 수정 취소").performClick()
+        compose.onNode(hasSetTextAction()).assertTextContains("임시 초안")
+        compose.onNodeWithText("원래 질문").performTouchInput { longClick() }
+        compose.onNodeWithText("수정").performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("고친 질문")
+        shot("composer-edit")
+        compose.onNodeWithContentDescription("수정 완료").performClick()
+        waitFor { repo.messagesOf(TestData.SESSION_ID).any { it.text == "수정된 질문의 답" } }
+        assertEquals("고친 질문", repo.messagesOf(TestData.SESSION_ID).first().text)
+        compose.onNodeWithTag("composer-editing").assertDoesNotExist()
+        compose.onNode(hasSetTextAction()).assertTextContains("임시 초안")
+        assertEquals(1, router.requests.count { it.path == "/hoard/v1/responses" })
+    }
 }

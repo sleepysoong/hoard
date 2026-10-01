@@ -118,8 +118,6 @@ fun ChatScreen(
     }
     var showModels by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
-    var editTarget by rememberSaveable { mutableStateOf<String?>(null) }
-    var editText by rememberSaveable { mutableStateOf("") }
     var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var compactionTarget by rememberSaveable { mutableStateOf<String?>(null) }
@@ -339,11 +337,13 @@ fun ChatScreen(
                 attachments = vm.attachments,
                 onAttachmentsChange = { vm.attachments = it },
                 onSend = { if (session != null) sendReply(vm.input, session.modelId) },
-                replying = replying,
+                replying = replying && vm.editingMessageId == null,
                 onStop = { vm.stopReply() },
                 goal = state.goal,
                 skills = skills,
-                sendEnabled = routerReady && retiringReply == null
+                sendEnabled = routerReady && retiringReply == null,
+                editing = vm.editingMessageId != null,
+                onCancelEdit = vm::cancelEditing
             )
         }
 
@@ -372,8 +372,8 @@ fun ChatScreen(
                             add(
                                 GlassSheetAction(
                                     icon = Icons.Rounded.Edit,
-                                    label = "수정 후 다시 생성",
-                                    onClick = { editTarget = menuTarget.id; editText = menuTarget.text }
+                                    label = "수정",
+                                    onClick = { vm.beginEditing(menuTarget.id) }
                                 )
                             )
                         } else {
@@ -452,13 +452,6 @@ fun ChatScreen(
             onSystemPrompt = { vm.setSystemPrompt(it) },
             onContextLimit = { vm.setContextLimit(it) },
             onDismiss = { showSettings = false; settingsAnchor = null }
-        )
-    }
-    if (editTarget != null) {
-        EditMessageDialog(
-            initial = editText,
-            onConfirm = { vm.editUserMessage(editTarget!!, it); editTarget = null },
-            onDismiss = { editTarget = null }
         )
     }
     if (branchTarget != null) {

@@ -58,6 +58,45 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Draft + attachments live in the ViewModel so folding/unfolding never loses them. */
     var input by mutableStateOf("")
     var attachments by mutableStateOf<List<UiAttachment>>(emptyList())
+    var editingMessageId by mutableStateOf<String?>(null)
+        private set
+    private var editingSessionId: String? = null
+    private var savedDraft = ""
+    private var savedAttachments = emptyList<UiAttachment>()
+
+    fun beginEditing(messageId: String) {
+        val sessionId = uiState.value.session?.id ?: return
+        val message = repo.messagesOf(sessionId).firstOrNull { it.id == messageId && it.role == MessageRole.User } ?: return
+        if (editingMessageId == null) {
+            savedDraft = input
+            savedAttachments = attachments
+        }
+        editingSessionId = sessionId
+        editingMessageId = messageId
+        input = message.text
+        attachments = emptyList()
+    }
+
+    fun cancelEditing() {
+        if (editingMessageId == null) return
+        input = savedDraft
+        attachments = savedAttachments
+        editingMessageId = null
+        editingSessionId = null
+        savedDraft = ""
+        savedAttachments = emptyList()
+    }
+
+    fun finishEditing() {
+        val id = editingMessageId ?: return
+        if (input.isBlank() || !requireRouter()) return
+        if (editingSessionId != uiState.value.session?.id || repo.messagesOf(editingSessionId.orEmpty()).none { it.id == id }) {
+            cancelEditing()
+            return
+        }
+        editUserMessage(id, input)
+        cancelEditing()
+    }
 
     private val goals = com.sleepysoong.hoard.goal.GoalService(repo)
 
@@ -113,10 +152,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         return false
     }
 
-    fun selectSession(id: String) { _activeSessionId.value = id }
+    fun selectSession(id: String) { if (id != _activeSessionId.value) cancelEditing(); _activeSessionId.value = id }
 
     /** New sessions start from the defaults chosen in Settings. */
     fun newSession(name: String = "새 세션"): String {
+        cancelEditing()
         val s = createDefaultSession(name)
         _activeSessionId.value = s.id
         return s.id
@@ -130,6 +170,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun send(text: String, attachments: List<UiAttachment>, modelId: String) {
+        if (editingMessageId != null) { finishEditing(); return }
         val session = uiState.value.session ?: return
         val clean = text.trim()
         if (clean.isEmpty() && attachments.isEmpty()) return
@@ -271,6 +312,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteMessage(messageId: String) {
         val session = uiState.value.session ?: return
         repo.deleteMessage(session.id, messageId)
+        if (editingMessageId == messageId) cancelEditing()
     }
 
     fun retryFrom(messageId: String, sessionId: String? = uiState.value.session?.id) {
@@ -296,6 +338,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun branchFrom(messageId: String, branchName: String): String? {
+        cancelEditing()
         val session = uiState.value.session ?: return null
         val branch = repo.branchFrom(session.id, messageId, branchName) ?: return null
         // The branch gets an independent snapshot of the open goal (parent_goal_id → original).
@@ -310,6 +353,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun deleteSession(id: String) {
+        if (editingSessionId == id) cancelEditing()
         ChatResponseWorker.cancel(getApplication(), id)
         SkillRuntime.clearSession(SkillStore.get(getApplication()), id)
         repo.deleteSession(id)
