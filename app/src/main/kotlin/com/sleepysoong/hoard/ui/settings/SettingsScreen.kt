@@ -212,7 +212,7 @@ private fun LogSection(onOpen: () -> Unit) {
     LocalContext.current
     val scheme = MaterialTheme.colorScheme
     val tail by com.sleepysoong.hoard.diagnostics.AppLog.tail.collectAsState()
-    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    Column(Modifier.padding(12.dp).testTag("log-section"), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("앱이 기록한 상세 로그입니다. 문제가 생기면 여기 내용을 복사해 공유하세요. 토큰·키·메시지 내용은 저장되지 않습니다.",
             style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
         GlassPillButton("로그 보기 (${tail.size}줄)", onClick = onOpen,

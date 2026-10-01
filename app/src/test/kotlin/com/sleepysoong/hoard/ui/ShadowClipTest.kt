@@ -43,7 +43,7 @@ class ShadowClipTest {
 
     private fun luminance(c: Int) = 0.299 * ((c shr 16) and 0xFF) + 0.587 * ((c shr 8) and 0xFF) + 0.114 * (c and 0xFF)
 
-    /** Largest brightness step between neighbouring pixel rows in the 40dp below [cardBottomPx]. */
+    /** Largest brightness step between neighbouring pixel rows in the 24dp (shadow bleed) below [cardBottomPx]. */
     private fun maxStepBelow(name: String, cardBottomPx: Int, xPx: Int): Double {
         compose.waitForIdle()
         compose.mainClock.advanceTimeBy(600)
@@ -52,7 +52,8 @@ class ShadowClipTest {
             .let { File(it, "$name.png") }.outputStream().use { bmp.compress(Bitmap.CompressFormat.PNG, 100, it) }
         val density = compose.activity.resources.displayMetrics.density
         val from = cardBottomPx + (2 * density).toInt() // skip the anti-aliased rim
-        val to = (cardBottomPx + 40 * density).toInt().coerceAtMost(bmp.height - 1)
+        // shadowBleed (24dp) is the fade zone; below it sits the next surface (tab bar).
+        val to = (cardBottomPx + 24 * density).toInt().coerceAtMost(bmp.height - 1)
         return (from until to).maxOf { y -> abs(luminance(bmp.getPixel(xPx, y + 1)) - luminance(bmp.getPixel(xPx, y))) }
     }
 
@@ -73,12 +74,12 @@ class ShadowClipTest {
         compose.waitForIdle()
         // Taller than the screen: check the last card at the scroll end, where the bottom
         // padding (shadow bleed) must leave its shadow uncut.
-        repeat(4) {
+        repeat(6) {
             compose.onAllNodes(androidx.compose.ui.test.hasScrollAction()).onFirst()
                 .performTouchInput { swipeUp() }
             compose.waitForIdle()
         }
-        // Last card (자동 압축): its supporting line sits 12dp above the card edge (row padding).
-        assertNoCut("settings", "세션 컨텍스트의", belowTextDp = 12f)
+        // Last card (로그): the button label sits ~20dp above the card edge (pill 36dp + card pad).
+        assertNoCut("settings", "로그 보기", belowTextDp = 20f)
     }
 }
