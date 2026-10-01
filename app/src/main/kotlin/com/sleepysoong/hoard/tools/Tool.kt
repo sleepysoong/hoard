@@ -50,6 +50,13 @@ interface Tool {
 
     /** Short human summary of a result (card body, after the subject). */
     fun summarize(output: JsonObject): String = ""
+
+    /**
+     * What an earlier result of this tool becomes once a later call of it returned in the
+     * same turn (null = keep it). For snapshots that go stale — a browser page state whose
+     * element ids are no longer valid — so the turn's context doesn't grow with every step.
+     */
+    fun supersede(output: JsonObject): JsonObject? = null
 }
 
 /** A failure reported back to the model as `{"error": message}` (it can adapt or answer anyway). */
@@ -189,14 +196,24 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
     /** System guidance of every registered tool, in registration order, without duplicates. */
     fun guidance(): List<String> = tools.mapNotNull { it.guidance?.trim()?.takeIf { g -> g.isNotEmpty() } }.distinct()
 
+    /** [Tool.supersede] of an earlier output (JSON string), or null to keep it unchanged. */
+    fun supersede(name: String, outputJson: String): String? {
+        val tool = synchronized(byName) { byName[name] } ?: return null
+        val out = runCatching { json.parseToJsonElement(outputJson).jsonObject }.getOrNull() ?: return null
+        return runCatching { tool.supersede(out) }.getOrNull()?.toString()
+    }
+
+    /**
+     * Skill hooks run in call order and path activation is a state change, so while
+     * either is live the file tools stay serial too.
+     */
     fun isParallelSafe(name: String): Boolean =
         !hasHooks() &&
             !(onWorkspaceFile != null && name in setOf("read_file", "write_file", "edit_file", "glob", "grep")) &&
             (synchronized(byName) { byName[name] }?.parallelSafe ?: true)
 
-    /** Whether any skill hook is live this turn: hooks run in order, so calls cannot interleave. */
+    /** Whether any skill hook is live this turn. */
     fun hasHooks(): Boolean = skillRuntime?.hasHooks() == true
-
     /** Card title/body for a call before it runs. */
     fun preview(name: String, argumentsJson: String): Pair<String, String> {
         val tool = synchronized(byName) { byName[name] } ?: return name to ""

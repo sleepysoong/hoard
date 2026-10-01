@@ -110,6 +110,12 @@ class BrowserService {
     // ---------------------------------------------------------------- actions
 
     private suspend fun open(a: BrowserAction.Open): BrowserResult {
+        val url = if (a.url.startsWith("/") && !a.url.startsWith("//")) {
+            val here = (eval(page(), "location.href") as? JsonPrimitive)?.content.orEmpty()
+            val base = runCatching { URI(here) }.getOrNull()?.takeIf { it.scheme == "http" || it.scheme == "https" }
+                ?: throw BrowserException("${a.url} is a path, but the current tab has no web page to resolve it against: give a full URL")
+            checkUrl(base.resolve(a.url).toString())
+        } else a.url
         val s = if (a.newTab) {
             val id = cdp.send("Target.createTarget", buildJsonObject { put("url", "about:blank") }).str("targetId")
                 ?: throw BrowserException("새 탭을 만들 수 없습니다")
@@ -118,8 +124,8 @@ class BrowserService {
             session(id)
         } else page()
         activate(s.targetId)
-        val nav = cdp.send("Page.navigate", buildJsonObject { put("url", a.url) }, s.sessionId, timeoutMs = 45_000)
-        nav.str("errorText")?.takeIf { it.isNotBlank() }?.let { throw BrowserException("페이지를 열 수 없습니다: $it (${a.url})") }
+        val nav = cdp.send("Page.navigate", buildJsonObject { put("url", url) }, s.sessionId, timeoutMs = 45_000)
+        nav.str("errorText")?.takeIf { it.isNotBlank() }?.let { throw BrowserException("페이지를 열 수 없습니다: $it ($url)") }
         settle(s, maxMs = 20_000)
         return BrowserResult(state(s, "open", note = if (a.newTab) "opened in a new tab" else null))
     }

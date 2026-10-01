@@ -14,6 +14,7 @@ object SlashCommands {
     /**
      * Goal commands that make sense right now: set/show always; pause only while
      * active; resume when paused, blocked or out of budget; clear when there is a goal.
+     * Then /compact (summarize the conversation now), plain or with what to focus on.
      */
     fun available(goal: Goal?, skills: List<InstalledSkill> = emptyList()): List<SlashCommand> = buildList {
         add(SlashCommand("/goal", "/goal <목표>", "목표를 정하고 달성할 때까지 이어서 작업", "/goal "))
@@ -32,6 +33,8 @@ object SlashCommands {
                 val hint = skill.document.argumentHint.takeIf { it.isNotBlank() }
                 add(SlashCommand(command, if (hint == null) command else "$command $hint", skill.document.description, "$command "))
             }
+        add(SlashCommand("/compact", "/compact", "지금까지의 대화를 요약해 컨텍스트 비우기", "/compact"))
+        add(SlashCommand("/compact", "/compact <지시>", "요약에 꼭 남길 내용을 정해서 압축", "/compact "))
     }
 
     /**

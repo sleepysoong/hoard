@@ -24,10 +24,15 @@ object SettingsStore {
     private val BROWSER_USER = stringPreferencesKey("browser_ssh_user")
     /** The SSH private key, encrypted with an Android Keystore key (never stored in plain text). */
     private val BROWSER_KEY_ENC = stringPreferencesKey("browser_ssh_key_enc")
+    /** The SSH password, encrypted with the same Keystore key (never stored in plain text). */
+    private val BROWSER_PASSWORD_ENC = stringPreferencesKey("browser_ssh_password_enc")
+    /** Which SSH login is used: "key" (default) or "password". */
+    private val BROWSER_AUTH = stringPreferencesKey("browser_ssh_auth")
     /** Its public half ("type base64 comment"), shown so the user can add it to authorized_keys. */
     private val BROWSER_PUB = stringPreferencesKey("browser_ssh_pub")
     /** Pinned SSH host key ("type base64"), set when the user verifies the host in Settings. */
     private val BROWSER_HOST_KEY = stringPreferencesKey("browser_ssh_host_key")
+    private val AUTO_COMPACT = intPreferencesKey("auto_compact_percent")
 
     data class Settings(
         val theme: String = "system",
@@ -46,17 +51,28 @@ object SettingsStore {
         val browserUser: String = "",
         /** Keystore-encrypted private key blob ([com.sleepysoong.hoard.browser.SecretStore]). */
         val browserKeyEncrypted: String = "",
+        /** Keystore-encrypted SSH password blob ([com.sleepysoong.hoard.browser.SecretStore]). */
+        val browserPasswordEncrypted: String = "",
+        /** SSH login method: "key" (default) or "password". */
+        val browserAuthMethod: String = "key",
         /** Public key line of that key (not secret). */
         val browserPublicKey: String = "",
         /** Pinned host key "type base64" (blank = not verified yet). */
-        val browserHostKey: String = ""
+        val browserHostKey: String = "",
+        /** Compact a conversation before a reply once its context reaches this % of the session's limit. */
+        val autoCompactPercent: Int = Defaults.AUTO_COMPACT_PERCENT
     ) {
-        val browserConfigured: Boolean get() = browserHost.isNotBlank() && browserUser.isNotBlank() && browserKeyEncrypted.isNotBlank()
+        /** All SSH fields for the chosen login method are in place (the host key may still be unpinned). */
+        val browserConfigured: Boolean
+            get() = browserHost.isNotBlank() && browserUser.isNotBlank() &&
+                (if (browserAuthMethod == "password") browserPasswordEncrypted else browserKeyEncrypted).isNotBlank()
 
         override fun toString() = "Settings(theme=$theme, defaultModel=$defaultModel, defaultContext=$defaultContext, " +
             "routerUrl=$routerUrl, routerToken=${if (routerToken.isBlank()) "none" else "set"}, " +
             "braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, browser=${if (browserConfigured) "$browserUser@$browserHost:$browserPort" else "none"}, " +
-            "browserKey=${if (browserKeyEncrypted.isBlank()) "none" else "set"}, browserHostKey=${if (browserHostKey.isBlank()) "unverified" else "pinned"})"
+            "browserAuth=$browserAuthMethod, browserKey=${if (browserKeyEncrypted.isBlank()) "none" else "set"}, " +
+            "browserPassword=${if (browserPasswordEncrypted.isBlank()) "none" else "set"}, browserHostKey=${if (browserHostKey.isBlank()) "unverified" else "pinned"}, " +
+            "autoCompactPercent=$autoCompactPercent)"
     }
 
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
@@ -71,8 +87,11 @@ object SettingsStore {
             browserPort = p[BROWSER_PORT] ?: 22,
             browserUser = p[BROWSER_USER] ?: "",
             browserKeyEncrypted = p[BROWSER_KEY_ENC] ?: "",
+            browserPasswordEncrypted = p[BROWSER_PASSWORD_ENC] ?: "",
+            browserAuthMethod = p[BROWSER_AUTH]?.takeIf { it == "key" || it == "password" } ?: "key",
             browserPublicKey = p[BROWSER_PUB] ?: "",
-            browserHostKey = p[BROWSER_HOST_KEY] ?: ""
+            browserHostKey = p[BROWSER_HOST_KEY] ?: "",
+            autoCompactPercent = (p[AUTO_COMPACT] ?: Defaults.AUTO_COMPACT_PERCENT).coerceIn(Defaults.AUTO_COMPACT_RANGE)
         )
     }
 
@@ -82,6 +101,9 @@ object SettingsStore {
     suspend fun setRouterUrl(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_URL] = v.trim() } }
     suspend fun setRouterToken(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_TOKEN] = v.trim() } }
     suspend fun setBraveApiKey(ctx: Context, v: String) { ctx.prefs.edit { it[BRAVE_KEY] = v.trim() } }
+    suspend fun setAutoCompactPercent(ctx: Context, v: Int) {
+        ctx.prefs.edit { it[AUTO_COMPACT] = v.coerceIn(Defaults.AUTO_COMPACT_RANGE) }
+    }
 
     /** Saves the SSH target; another host or port un-pins the host key (it must be verified again). */
     suspend fun setBrowserTarget(ctx: Context, host: String, port: Int, user: String) {
@@ -91,6 +113,16 @@ object SettingsStore {
             if (moved) it.remove(BROWSER_HOST_KEY)
         }
     }
+    /** The SSH login method. The unused method's stored secret is kept (both are Keystore-encrypted). */
+    suspend fun setBrowserAuthMethod(ctx: Context, method: String) {
+        require(method == "key" || method == "password") { "unknown SSH login method: $method" }
+        ctx.prefs.edit { it[BROWSER_AUTH] = method }
+    }
+    /** The Keystore-encrypted SSH password; blank removes it. */
+    suspend fun setBrowserPasswordEncrypted(ctx: Context, v: String) {
+        ctx.prefs.edit { if (v.isBlank()) it.remove(BROWSER_PASSWORD_ENC) else it[BROWSER_PASSWORD_ENC] = v }
+    }
+
     /** The Keystore-encrypted private key and its public line; blank [encrypted] removes both. */
     suspend fun setBrowserKey(ctx: Context, encrypted: String, publicKey: String) {
         ctx.prefs.edit {

@@ -38,6 +38,15 @@ Still no gradients: every colour is solid.
 - Conversations persist across restarts (`data/HoardStore.kt`: one JSON file in app storage, atomic writes,
   debounced + flushed when the app leaves the screen; a corrupt file is kept aside, not overwritten)
 - System prompt editing, per-session context limit, session rename/delete
+- **Conversation compaction**: `/compact [지시]` manually summarizes older history; automatic
+  compaction starts at 90% of the session context limit (설정 → 자동 압축 slider, 50–100% in 5% steps).
+  The full visible transcript is retained. Model requests start from the latest successful checkpoint
+  plus newer messages; a recent turn is kept verbatim when it fits. Repeated compaction merges the
+  earlier summary, while failed or incomplete summaries fall back to ordinary history trimming.
+  Tap a checkpoint to read/copy/remove it. Removing the latest checkpoint restores the preceding
+  checkpoint (or original history) for subsequent requests, subject to trimming/automatic compaction.
+  Context usage reflects this model-facing window. Limits below 4,000 tokens use trimming instead
+  of automatic compaction. Design and prompt research: [`docs/COMPACTION.md`](docs/COMPACTION.md).
 - Edit my message (save & regenerate), branch from a message, delete message, retry
 - Model replies render as Markdown (`ui/chat/MarkdownText.kt`, [huarangmeng/Markdown](https://github.com/huarangmeng/Markdown)):
   headings, **bold**/*italic*/~~strike~~, lists, task lists, GFM tables, quotes, code blocks with
@@ -49,12 +58,18 @@ Still no gradients: every colour is solid.
     (run in parallel, max 5) → answer from the fetched text. Read-only tools of a round run concurrently;
     side-effect tools (write/edit, termux) run alone in call order.
   - `web_search` — discover pages via the Brave Search API with **the user's own key**
-    (none is bundled). Fixed params `count=10, extra_snippets=false, text_decorations=false, operators=true,
-    result_filter=web`; `country` / `search_lang` only when the model sets them for a clearly local / single-language
-    query (never from the device locale). The description teaches query refinement (specific / English terms,
-    `site:`, `"exact"`, `-exclude`, AND/OR/NOT, `filetype:`). Output is normalized (`search_1…` ids, title/url/snippet, `correctedQuery`,
-    `hasMore`), never Brave's raw JSON; 429 is retried with backoff honouring `X-RateLimit-Reset`.
-    The description tells the model that snippets are not page contents.
+    (none is bundled). Fixed params `text_decorations=false, operators=true,
+    result_filter=web,news,faq,discussions` (Q&A cards and forum threads included, not just links);
+    `extra_snippets` on, bounded by the normalizer (3 per result, ≤320 chars). Over-fetches
+    (shown count + 8, ≤20) and **re-ranks** by query relevance on top of the engine's rank,
+    then returns at most 10. `country` / `search_lang` only when the model sets them for a clearly
+    local / single-language query (never from the device locale). The description teaches query
+    refinement (specific / English terms, `site:`, `"exact"`, `-exclude`, AND/OR/NOT, `filetype:`).
+    Output is normalized (`search_1…` ids, `type` web/news/faq/discussion, title/url/source/snippet,
+    `extraSnippets`, FAQ `question`/`answer`, `pageAge`, `relatedQueries`, `correctedQuery`, `hasMore`),
+    never Brave's raw JSON: URLs deduped across sections (www/host case/trailing slash, `utm_*`/click
+    trackers stripped), markup and entities cleaned. 429 retried with backoff honouring `X-RateLimit-Reset`.
+    The description tells the model that snippets are not page contents and FAQ answers are unverified.
   - `web_fetch` — read a page: public http(s) only (loopback/LAN/metadata/CGNAT/ULA refused, checked
     on every redirect), `finalUrl` on redirects, size/length caps, main content → Markdown (jsoup).
   - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without
@@ -120,7 +135,7 @@ Still no gradients: every colour is solid.
   `PermissionGate` asks for what's missing: notifications + Termux RUN_COMMAND (if Termux is installed) in one
   dialog, then Android's "All files access" screen (shared storage for the file tools).
 - Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key,
-  remote browser (VPS host / SSH port / user / SSH key / host key check), default context.
+  remote browser (VPS host / SSH port / user / SSH key / host key check), default context, auto-compaction threshold.
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
   foreground notification, so leaving the app after send still finishes the reply.
@@ -270,8 +285,10 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 
    Chrome is started as `DISPLAY=:0 google-chrome --remote-debugging-address=127.0.0.1
    --remote-debugging-port=9222 --user-data-dir=$HOME/.browser-agent-profile --no-first-run
-   --no-default-browser-check` (`--no-sandbox` only when running as root). **CDP is bound to 127.0.0.1 and
-   must never be exposed**; the app reaches it through the SSH tunnel.
+   --no-default-browser-check` plus a maximized window (`--no-sandbox` only when running as root). As root
+   with systemd it runs as its own unit, `hoard-browser.service` (`journalctl -u hoard-browser`), so the SSH
+   session that started it ending — or being killed for memory — never takes Chrome along. **CDP is bound to
+   127.0.0.1 and must never be exposed**; the app reaches it through the SSH tunnel.
 3. Optional `/etc/ensure-browser-runtime.conf` (shell syntax) for your setup, e.g.:
 
    ```bash
@@ -287,9 +304,11 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 ### App setup (설정 → 원격 브라우저)
 
 1. Host, SSH port (22), user.
-2. SSH key: paste a private key (OpenSSH/PEM, no passphrase) or tap **새 키 만들기** (Ed25519, made on the
-   phone). The private key is stored only encrypted with an Android Keystore AES-GCM key (`browser/SecretStore.kt`);
-   the public key is shown — add it to `~/.ssh/authorized_keys` on the VPS.
+2. Login: SSH key (recommended) or password, picked with the SSH 키 / 비밀번호 selector. Key: paste a private
+   key (OpenSSH/PEM, no passphrase) or tap **새 키 만들기** (Ed25519, made on the phone) — its public key is
+   shown, add it to `~/.ssh/authorized_keys` on the VPS. Password: the VPS's sshd must allow
+   `PasswordAuthentication yes`. Both are stored only encrypted with an Android Keystore AES-GCM key
+   (`browser/SecretStore.kt`).
 3. **연결 확인**: the first time, the app only reads the server's host key and shows its SHA256 fingerprint.
    Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VPS, then **신뢰하고 연결** pins it
    and runs `ensure-browser-runtime`. Every later connection must present exactly that key (another key
@@ -321,6 +340,9 @@ Every action except `tabs`/`screenshot` returns a fresh state, so the model alwa
   ("the page changed…") instead of hitting another page's element. The same element keeps its id across
   states of one document.
 - `text` is the visible text around the viewport (scroll to read more); passwords are never echoed.
+  Same-site link hrefs are paths (`/wiki/Foo`), and `open` accepts such a path for the current site.
+- Only the newest page state of a turn stays in full: earlier ones lose their element list
+  (`Tool.supersede`), so a multi-step task doesn't resend every old snapshot each round.
 - Clicks are real mouse events at the element's center (a DOM click if something covers it); a link that
   opens a new tab switches to it. JavaScript dialogs are accepted and reported; downloads go to the VPS
   Chrome's download folder and are reported. `screenshot` saves a JPEG in the workspace (`browser/…`, the

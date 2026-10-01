@@ -38,6 +38,7 @@ class BrowserUseTool(
             "close_tab (tab_id?), screenshot. Every action except tabs/screenshot returns the page state: url, title, " +
             "visible text, and interactive elements with numeric ids — act on those ids (never CSS selectors or XPath). " +
             "Ids are only valid for the latest state: after a navigation or page update use the ids from the newest result. " +
+            "Same-site link hrefs are paths (/about); open accepts such a path for the current site. " +
             "type on a <select> chooses the option with that text. screenshot saves an image on the device (you only get its path)."
 
     override val guidance =
@@ -50,7 +51,7 @@ class BrowserUseTool(
 
     override val parameters: JsonObject = toolParameters {
         string("action", "What to do.", required = true, enum = ACTIONS)
-        string("url", "open: the page to open (http/https).")
+        string("url", "open: the page to open (http/https URL, or a /path on the current site).")
         boolean("new_tab", "open: open in a new tab instead of the current one.")
         integer("element_id", "click / type / scroll: an element id from the latest state.", minimum = 1)
         string("text", "type: the text to enter (for a <select>: the option to choose).")
@@ -76,6 +77,17 @@ class BrowserUseTool(
             else -> ""
         }
         return listOf(label, detail).filter { it.isNotBlank() }.joinToString(" ")
+    }
+
+    /**
+     * An older page state once a newer browser_use result exists: its element ids are no
+     * longer valid, so the (large) element list goes; url, title, text and events stay.
+     */
+    override fun supersede(output: JsonObject): JsonObject? {
+        if (output["elements"] !is JsonArray) return null
+        return JsonObject(output.filterKeys { it != "elements" && it != "more_elements" } + buildJsonObject {
+            put("elements", "outdated (a later browser_use result has the current ids)")
+        })
     }
 
     override fun summarize(output: JsonObject): String {
@@ -109,7 +121,11 @@ class BrowserUseTool(
         fun id(key: String = "element_id") = args.number(key)?.takeIf { it >= 1 } ?: throw ToolException("$key is required for $action")
         return try {
             when (action) {
-                "open" -> BrowserAction.Open(BrowserService.checkUrl(args.string("url").orEmpty()), newTab = args.bool("new_tab") == true)
+                "open" -> {
+                    val url = args.string("url")?.trim().orEmpty()
+                    // A same-site path is resolved (and checked) against the current page by the service.
+                    BrowserAction.Open(if (url.startsWith("/") && !url.startsWith("//")) url else BrowserService.checkUrl(url), newTab = args.bool("new_tab") == true)
+                }
                 "state" -> BrowserAction.State
                 "click" -> BrowserAction.Click(id())
                 "type" -> BrowserAction.Type(

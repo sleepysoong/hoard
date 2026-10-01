@@ -38,6 +38,7 @@ import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassTextField
 import com.sleepysoong.hoard.ui.glass.IOSRowDivider
+import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -64,6 +65,7 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
     var port by rememberSaveable(settings.browserPort) { mutableStateOf(settings.browserPort.toString()) }
     var user by rememberSaveable(settings.browserUser) { mutableStateOf(settings.browserUser) }
     var pastedKey by remember { mutableStateOf("") }
+    var typedPassword by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // text, isError
     // A host key read from the server, waiting for the user to trust it.
@@ -119,8 +121,56 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
         )
 
         IOSRowDivider()
-        // ---- SSH key
-        if (hasKey) {
+        // ---- how to log in: an SSH key (recommended) or a password
+        val passwordMode = settings.browserAuthMethod == "password"
+        IOSSegmentedControl(
+            options = listOf("SSH 키", "비밀번호"),
+            selectedIndex = if (passwordMode) 1 else 0,
+            onSelect = { i ->
+                scope.launch {
+                    SettingsStore.setBrowserAuthMethod(ctx, if (i == 1) "password" else "key")
+                    RemoteBrowsers.reset()
+                    offered = null
+                    message = null
+                }
+            },
+            modifier = Modifier.fillMaxWidth().testTag("browser-auth-method")
+        )
+        if (passwordMode) {
+            if (settings.browserPasswordEncrypted.isNotBlank()) {
+                Text("비밀번호 저장됨 (Keystore로 암호화)", style = MaterialTheme.typography.labelLarge)
+                GlassPillButton(label = "비밀번호 지우기", tint = GlassPillTint.Destructive, enabled = busy == null, onClick = {
+                    scope.launch {
+                        SettingsStore.setBrowserPasswordEncrypted(ctx, "")
+                        RemoteBrowsers.reset()
+                        message = "비밀번호를 지웠습니다" to false
+                    }
+                })
+            } else {
+                GlassTextField(
+                    value = typedPassword, onValueChange = { typedPassword = it },
+                    label = { Text("SSH 비밀번호") }, singleLine = true,
+                    // Never shown in the clear; stored only encrypted.
+                    visualTransformation = PasswordVisualTransformation(),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password, imeAction = ImeAction.Done),
+                    supportingText = { Text("이 기기에만 Keystore 암호화로 저장 · VPS의 sshd에서 PasswordAuthentication yes 필요") },
+                    modifier = Modifier.testTag("browser-password")
+                )
+                GlassPillButton(
+                    label = "비밀번호 저장", tint = GlassPillTint.Accent,
+                    enabled = busy == null && typedPassword.isNotEmpty(),
+                    onClick = {
+                        run("저장 중…") {
+                            val blob = withContext(Dispatchers.IO) { SecretStore.encrypt(typedPassword) }
+                            SettingsStore.setBrowserPasswordEncrypted(ctx, blob)
+                            typedPassword = ""
+                            RemoteBrowsers.reset()
+                            message = "비밀번호를 저장했습니다" to false
+                        }
+                    }
+                )
+            }
+        } else if (hasKey) {
             Text("SSH 키 저장됨 (Keystore로 암호화)", style = MaterialTheme.typography.labelLarge)
             if (settings.browserPublicKey.isNotBlank()) {
                 Text(
@@ -186,12 +236,15 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
 
         IOSRowDivider()
         // ---- host key + connection check
+        val loginWhat = if (settings.browserAuthMethod == "password") "비밀번호" else "SSH 키"
+        val loginHint = if (settings.browserAuthMethod == "password") "비밀번호를 먼저 저장하세요" else "SSH 키를 먼저 저장하거나 만드세요"
         val hostKeyLine = when {
             offered != null -> "서버 지문: ${offered!!.fingerprint}"
             pinned != null -> "호스트 키 확인됨: ${pinned.fingerprint}"
             else -> "호스트 키: 아직 확인하지 않음"
         }
         Text(hostKeyLine, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant, modifier = Modifier.testTag("browser-host-key"))
+
         if (offered != null) {
             Text(
                 "VPS에서 ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub 결과와 같을 때만 신뢰하세요.",
@@ -205,7 +258,7 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
                     run("연결 중…") {
                         SettingsStore.setBrowserHostKey(ctx, key.toString())
                         offered = null
-                        val cfg = RemoteBrowserConfig.from(SettingsStore.current(ctx)) ?: throw IllegalStateException("SSH 키를 먼저 저장하세요")
+                        val cfg = RemoteBrowserConfig.from(SettingsStore.current(ctx)) ?: throw IllegalStateException(loginHint)
                         message = describe(RemoteBrowsers.check(cfg)) to false
                     }
                 })
@@ -223,7 +276,7 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
                                 // First contact: only read the host key; the user decides.
                                 offered = withContext(Dispatchers.IO) { SshClient.probeHostKey(now.browserHost, now.browserPort, now.browserUser) }
                             } else {
-                                val cfg = RemoteBrowserConfig.from(now) ?: throw IllegalStateException("SSH 키를 먼저 저장하거나 만드세요")
+                                val cfg = RemoteBrowserConfig.from(now) ?: throw IllegalStateException(loginHint)
                                 message = describe(RemoteBrowsers.check(cfg)) to false
                             }
                         }
@@ -250,7 +303,7 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
         }
         if (busy == null && message == null) {
             Text(
-                if (RemoteBrowserConfig.from(settings) != null) "설정 완료 · browser_use 사용 가능" else "호스트, 사용자, 키, 호스트 키 확인이 모두 필요합니다",
+                if (RemoteBrowserConfig.from(settings) != null) "설정 완료 · browser_use 사용 가능" else "호스트, 사용자, $loginWhat, 호스트 키 확인이 모두 필요합니다",
                 style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant
             )
         }

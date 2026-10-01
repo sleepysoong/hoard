@@ -53,7 +53,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.skills.SkillStore
-import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
+import com.sleepysoong.hoard.data.isCompactionimport com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
 import com.sleepysoong.hoard.ui.glass.GlassAnimatedVisibility
@@ -106,6 +106,7 @@ fun ChatScreen(
     var editText by rememberSaveable { mutableStateOf("") }
     var branchTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var deleteTarget by rememberSaveable { mutableStateOf<String?>(null) }
+    var compactionTarget by rememberSaveable { mutableStateOf<String?>(null) }
     var menuTargetId by rememberSaveable { mutableStateOf<String?>(null) }
     // Save the bubble anchor across configuration change; Rect has no built-in
     // Saver, so persist the four plain floats.
@@ -234,12 +235,15 @@ fun ChatScreen(
                         itemsIndexed(state.messages, key = { _, m -> m.id }) { index, msg ->
                             val prev = state.messages.getOrNull(index - 1)
                             val next = state.messages.getOrNull(index + 1)
-                            val grouped = prev != null &&
+                            val grouped = prev != null && prev.trigger == null && msg.trigger == null &&
                                 prev.role == msg.role &&
                                 msg.createdAt - prev.createdAt < GROUP_WINDOW_MS
-                            val footer = !grouped || next == null || next.role != msg.role ||
+                            val footer = !grouped || next == null || next.role != msg.role || next.trigger != null ||
                                 next.createdAt - msg.createdAt >= GROUP_WINDOW_MS
-                            if (msg.trigger != null) {
+                            if (msg.isCompaction) {
+                                CompactionNotice(msg, onOpen = { compactionTarget = msg.id },
+                                    modifier = Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = GlassMotion.fade()).padding(top = 10.dp))
+                            } else if (msg.trigger != null) {
                                 TriggerNotice(msg, Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = GlassMotion.fade()).padding(top = 10.dp))
                             } else MessageBubble(
                                 message = msg,
@@ -371,6 +375,16 @@ fun ChatScreen(
             goal = state.goal,
             onPause = vm::pauseGoal, onResume = vm::resumeGoal, onClear = vm::clearGoal,
             onDismiss = { vm.goalSheetOpen = false }
+        )
+    }
+    state.messages.firstOrNull { it.id == compactionTarget && it.isCompaction }?.let { target ->
+        CompactionSheet(
+            message = target,
+            onCopy = {
+                scope.launch { clipboard.setClipEntry(android.content.ClipData.newPlainText("Hoard", target.text).toClipEntry()) }
+            },
+            onRemove = { vm.deleteMessage(target.id) },
+            onDismiss = { compactionTarget = null }
         )
     }
     if (showModels && session != null) {
