@@ -53,6 +53,12 @@ lives in sleepyrouter's `docs/protocol-openai.md` ("Hoard endpoint"); Hoard's si
   real bug (stream-path status codes lost in the router).
 - Commit and push each repository separately, one logical change at a time.
 - Tools are assembled only through `ToolKit` (modules + `ToolContext`/`ToolServices`); follow README "Tool API" when adding one.
+- Agent Skills (`skills/`, `docs/AGENT_SKILLS.md`) are third-party code: importing is data-only, automatic
+  `!` commands and hooks need the per-bundle code-trust switch, and trust is bound to the code tree digest so
+  any edit revokes it. Termux cannot read Hoard's private files, so bundles are mirrored to a fresh
+  digest-named Termux tree and never reuse one. Keep `allowed-tools` advisory (preapproval, not an allowlist),
+  keep `disallowed-tools`/`model`/`effort` turn-scoped, and never rerun `!` commands or create a second fork on a
+  worker retry. Unsupported fields and hook events are reported, not approximated.
 - Tools (`tools/`) execute on the device; the router only relays `function_call` / `function_call_output`.
 - `browser_use` drives the VPS Chrome only over SSH (exec + local port forward to CDP 127.0.0.1:9222); never expose CDP,
   never add a Chrome extension or HTTP proxy. The SSH secret (key or password, per the login method) is stored only

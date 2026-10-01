@@ -7,6 +7,7 @@ import com.sleepysoong.hoard.goal.GoalService
 import com.sleepysoong.hoard.schedule.ScheduleService
 import com.sleepysoong.hoard.schedule.WakeupService
 import com.sleepysoong.hoard.termux.TermuxExecutor
+import com.sleepysoong.hoard.skills.SkillRuntime
 import com.sleepysoong.hoard.tools.fetch.PageFetcher
 import com.sleepysoong.hoard.tools.files.Workspace
 import com.sleepysoong.hoard.tools.search.SearchProvider
@@ -53,6 +54,9 @@ interface ToolServices {
     val wakeups: WakeupService?
     /** The VPS Chrome (browser_use), or null until Settings → 원격 브라우저 is set up and verified. */
     val browser: RemoteBrowser? get() = null
+    /** Per-turn skill activation and session context. Null in clients without skills. */
+    val skills: SkillRuntime? get() = null
+    val skillTasks: SkillTaskService? get() = null
 }
 
 /** A group of related tools, offered together when the context allows it. */
@@ -64,7 +68,7 @@ interface ToolModule {
 
 object ToolKit {
     /** Built-in modules in the order their tools are offered to the model. */
-    val modules: List<ToolModule> = listOf(TodoModule, WebModule, BrowserModule, TermuxModule, FileModule, GoalModule, ScheduleModule)
+    val modules: List<ToolModule> = listOf(SkillModule, TodoModule, WebModule, BrowserModule, TermuxModule, FileModule, GoalModule, ScheduleModule)
 
     /** Tests: replaces the whole registry the app would build. */
     @Volatile var override: ToolRegistry? = null
@@ -72,12 +76,28 @@ object ToolKit {
     fun registry(context: ToolContext, modules: List<ToolModule> = this.modules): ToolRegistry {
         override?.let { return it }
         val registry = ToolRegistry()
+        registry.skillRuntime = context.services.skills
         for (module in modules) module.tools(context).forEach(registry::register)
         return registry
     }
 }
 
 // ---------------------------------------------------------------- built-in modules
+
+/**
+ * `skill` (activate) + `skill_tasks` (background forks). Never inside a scheduled run:
+ * an unattended run must not create more future work (same rule as the schedule module).
+ */
+object SkillModule : ToolModule {
+    override val id = "skills"
+    override fun tools(context: ToolContext): List<Tool> {
+        if (context.scheduledRun) return emptyList()
+        return listOfNotNull(
+            context.services.skills?.let(::SkillTool),
+            context.services.skillTasks?.let { SkillTaskTool(it, context.sessionId) }
+        )
+    }
+}
 
 /** `todo`: the session's task list (always offered). */
 object TodoModule : ToolModule {
@@ -152,7 +172,9 @@ class SimpleToolServices(
     override val schedules: ScheduleService? = null,
     override val wakeups: WakeupService? = null,
     override val pageFetcher: PageFetcher = PageFetcher(),
-    override val browser: RemoteBrowser? = null
+    override val browser: RemoteBrowser? = null,
+    override val skills: SkillRuntime? = null,
+    override val skillTasks: SkillTaskService? = null
 ) : ToolServices {
     override fun workspace(fullStorage: Boolean) = workspace
 }

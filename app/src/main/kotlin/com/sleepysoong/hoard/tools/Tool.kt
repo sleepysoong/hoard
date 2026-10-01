@@ -5,6 +5,9 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.contentOrNull
+import com.sleepysoong.hoard.skills.SkillRuntime
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
@@ -67,6 +70,16 @@ data class ToolOutcome(val output: String, val title: String, val body: String, 
 
 class ToolRegistry(initial: List<Tool> = emptyList()) {
     private val byName = LinkedHashMap<String, Tool>()
+    /** Per-turn runtime; populated only by ToolKit, never by individual tools. */
+    var skillRuntime: SkillRuntime? = null
+    var readOnly: Boolean = false
+    var onWorkspaceFile: (suspend (String) -> Unit)? = null
+    var stopRequested: String? = null
+        private set
+
+    private fun denied(name: String, args: JsonObject? = null): Boolean =
+        (readOnly && name !in SkillToolPolicy.readOnlyTools) ||
+            skillRuntime?.disallowedTools().orEmpty().any { SkillToolPolicy.matches(it, name, args) }
 
     init { initial.forEach(::register) }
 
@@ -83,7 +96,7 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
     val isEmpty: Boolean get() = tools.isEmpty()
 
     /** Responses API function tool definitions. */
-    fun schemas(): List<JsonObject> = tools.map { t ->
+    fun schemas(): List<JsonObject> = tools.filterNot { denied(it.name) }.map { t ->
         buildJsonObject {
             put("type", "function")
             put("name", t.name)
@@ -98,18 +111,85 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
      */
     suspend fun execute(name: String, argumentsJson: String): ToolOutcome {
         val tool = synchronized(byName) { byName[name] } ?: return error(name, "", "unknown tool \"$name\"; available: ${byName.keys.joinToString()}")
-        val args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull()
+        var args = runCatching { json.parseToJsonElement(argumentsJson.ifBlank { "{}" }).jsonObject }.getOrNull()
             ?: return error(tool.title, "", "arguments must be a JSON object")
         val subject = runCatching { tool.subject(args) }.getOrDefault("")
+        var invoked = false
+        var pathSkillContext: String? = null
         return try {
-            val out = tool.execute(args)
-            ToolOutcome(out.toString(), tool.title, body(subject, runCatching { tool.summarize(out) }.getOrDefault("")), isError = false)
+            stopRequested?.let { throw ToolException("skill hook stopped this turn: $it") }
+            if (denied(name, args)) throw ToolException("tool '$name' is disallowed for this skill turn")
+            if (name in setOf("read_file", "write_file", "edit_file", "glob", "grep")) {
+                val previous = skillRuntime?.context()
+                // Skill activation is best effort here: a skill that can't be prepared must
+                // never turn an ordinary read_file / glob into a tool error.
+                args.string("path")?.let { path ->
+                    try { onWorkspaceFile?.invoke(path) } catch (e: CancellationException) { throw e } catch (_: Exception) { Unit }
+                }
+                skillRuntime?.context()?.takeIf { it != previous && it.isNotBlank() }?.let { pathSkillContext = it }
+            }
+            val pre = skillRuntime?.hook("PreToolUse", hookInput(name, args))
+            val specific = pre?.get("hookSpecificOutput") as? JsonObject
+            if ((specific?.get("permissionDecision") as? JsonPrimitive)?.contentOrNull == "deny") {
+                throw ToolException((specific["permissionDecisionReason"] as? JsonPrimitive)?.contentOrNull ?: "blocked by skill hook")
+            }
+            if ((pre?.get("continue") as? JsonPrimitive)?.contentOrNull == "false") {
+                stopRequested = (pre["stopReason"] as? JsonPrimitive)?.contentOrNull ?: "blocked by skill hook"
+                throw ToolException(stopRequested!!)
+            }
+            (specific?.get("updatedInput") as? JsonObject)?.let { args = it }
+            // Hook rewrites never bypass a disallowed-tools pattern.
+            if (denied(name, args)) throw ToolException("rewritten tool call is disallowed")
+            invoked = true
+            val result = tool.execute(args)
+            val activated = pathSkillContext
+            val out = if (activated == null) result else buildJsonObject {
+                result.forEach { (key, value) -> put(key, value) }
+                put("activated_skill_context", activated)
+            }
+            // Post hooks must not turn a completed side effect into a retry of that effect.
+            val post = try {
+                skillRuntime?.hook("PostToolUse", hookInput(name, args, out))
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                buildJsonObject { put("warning", "PostToolUse hook: ${e.message}") }
+            }
+            if ((post?.get("continue") as? JsonPrimitive)?.contentOrNull == "false") {
+                stopRequested = (post["stopReason"] as? JsonPrimitive)?.contentOrNull ?: "stopped by skill hook"
+            }
+            val replacement = (post?.get("hookSpecificOutput") as? JsonObject)?.get("updatedToolOutput")
+            val output = replacement ?: if (post == null) out else buildJsonObject {
+                out.forEach { (key, value) -> put(key, value) }
+                put("skill_hook", post)
+            }
+            ToolOutcome(output.toString(), tool.title, body(subject, runCatching { tool.summarize(out) }.getOrDefault("")), isError = false)
         } catch (e: CancellationException) {
             throw e
         } catch (e: ToolException) {
+            if (invoked) failureHook(name, args, e.message.orEmpty())
             error(tool.title, subject, e.message ?: "failed")
         } catch (e: Exception) {
+            if (invoked) failureHook(name, args, e.message.orEmpty())
             error(tool.title, subject, "${e::class.simpleName}: ${e.message}")
+        }
+    }
+
+    private fun hookInput(name: String, args: JsonObject, output: JsonObject? = null) = buildJsonObject {
+        put("tool_name", name)
+        put("tool_input", args)
+        output?.let { put("tool_response", it) }
+    }
+
+    private suspend fun failureHook(name: String, args: JsonObject, reason: String) {
+        try {
+            skillRuntime?.hook("PostToolUseFailure", buildJsonObject {
+                put("tool_name", name); put("tool_input", args); put("error", reason)
+            })
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            // Preserve the original tool failure, not a secondary notification hook failure.
         }
     }
 
@@ -123,8 +203,17 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
         return runCatching { tool.supersede(out) }.getOrNull()?.toString()
     }
 
-    fun isParallelSafe(name: String): Boolean = synchronized(byName) { byName[name] }?.parallelSafe ?: true
+    /**
+     * Skill hooks run in call order and path activation is a state change, so while
+     * either is live the file tools stay serial too.
+     */
+    fun isParallelSafe(name: String): Boolean =
+        !hasHooks() &&
+            !(onWorkspaceFile != null && name in setOf("read_file", "write_file", "edit_file", "glob", "grep")) &&
+            (synchronized(byName) { byName[name] }?.parallelSafe ?: true)
 
+    /** Whether any skill hook is live this turn. */
+    fun hasHooks(): Boolean = skillRuntime?.hasHooks() == true
     /** Card title/body for a call before it runs. */
     fun preview(name: String, argumentsJson: String): Pair<String, String> {
         val tool = synchronized(byName) { byName[name] } ?: return name to ""
@@ -143,4 +232,3 @@ class ToolRegistry(initial: List<Tool> = emptyList()) {
         internal val json = Json { ignoreUnknownKeys = true; isLenient = true }
     }
 }
-

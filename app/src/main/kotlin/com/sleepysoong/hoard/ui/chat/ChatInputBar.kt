@@ -24,6 +24,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -66,6 +68,7 @@ import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.data.UiAttachment
+import com.sleepysoong.hoard.skills.InstalledSkill
 import com.sleepysoong.hoard.engine.AttachmentEncoder
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassTone
@@ -95,7 +98,8 @@ fun ChatInputBar(
     onStop: () -> Unit = {},
     /** The session's goal: decides which /goal commands the "/" menu offers. */
     goal: com.sleepysoong.hoard.data.Goal? = null,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    skills: List<InstalledSkill> = emptyList()
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
@@ -115,7 +119,7 @@ fun ChatInputBar(
         }
     }
     val canSend = value.isNotBlank() || attachments.isNotEmpty()
-    val slash = SlashCommands.matching(value, goal)
+    val slash = SlashCommands.matching(value, goal, skills)
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {
         // The bar grows/shrinks on a spring as attachment chips come and go.
@@ -177,6 +181,8 @@ fun ChatInputBar(
                         .fillMaxWidth()
                         .glassMaterial(RoundedCornerShape(20.dp), scheme.surface, tone = GlassTone.Regular, lifted = false)
                         .testTag("slash-menu")
+                        .heightIn(max = 240.dp)
+                        .verticalScroll(rememberScrollState())
                         .padding(vertical = 4.dp)
                 ) {
                     // Keep the last non-empty list while the menu animates out.
@@ -186,7 +192,7 @@ fun ChatInputBar(
                         if (i > 0) {
                             HorizontalDivider(modifier = Modifier.padding(start = 12.dp), thickness = 0.5.dp, color = scheme.onSurface.copy(alpha = 0.08f))
                         }
-                        Row(
+                        Column(
                             Modifier
                                 .fillMaxWidth()
                                 .liquidClickable {
@@ -195,13 +201,13 @@ fun ChatInputBar(
                                 }
                                 .padding(horizontal = 12.dp, vertical = 9.dp)
                                 .testTag("slash-item"),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
                         ) {
-                            Text(cmd.label, style = MaterialTheme.typography.bodyMedium, color = scheme.primary, maxLines = 1)
+                            Text(cmd.label, style = MaterialTheme.typography.bodyMedium, color = scheme.primary,
+                                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                             Text(
                                 cmd.description, style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant,
-                                maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.weight(1f)
+                                maxLines = 2, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                             )
                         }
                     }

@@ -117,7 +117,21 @@ Still no gradients: every colour is solid.
   in progress; app restart restores tasks, branches copy unfinished work with new IDs, and a new turn gets
   one temporary reminder when unfinished tasks exist. A collapsible glass panel shows committed progress.
   Contract, lifecycle and E2E artifacts: [`docs/TODO_TOOL.md`](docs/TODO_TOOL.md).
-- No tool toggles: every tool is always on (the 도구 tab is empty for now). At every app launch
+- **Agent skills** (`skills/`): Claude Code compatible skill bundles with any router model that supports
+  tools. **도구 → 스킬** installs from a GitHub repository or folder URL, or imports a `.zip` / `.skill`
+  archive; bundled scripts/references/assets, plugin bundles (`plugin:skill`) and legacy
+  `.claude/commands` are kept. Real safe YAML frontmatter, `/name args` and model `skill` invocation,
+  `$ARGUMENTS`/`$0`/`${CLAUDE_*}` substitution, `!`command`` dynamic context, saved per-session activations
+  that survive restarts, `paths`-scoped activation, and per-turn `disallowed-tools` / `model` / `effort`.
+  `context: fork` runs the skill in its own isolated session (`background: true` by default, results
+  delivered back and readable with `skill_task`), and skill `hooks` run `PreToolUse`/`PostToolUse`/
+  `PostToolBatch`/`Stop`-style bash handlers. Bundled scripts need a trusted-code switch (off by default,
+  revoked on any edit) and a digest-verified Termux mirror; Termux cannot read Hoard's private files.
+  Model-independent; importing a skill is not installing the Claude Code plugin runtime.
+  Installation examples (Ponytail and Binance), prerequisites, security, and the per-field
+  compatibility matrix: [`docs/AGENT_SKILLS.md`](docs/AGENT_SKILLS.md).
+- No general tool toggles: normal device tools remain offered under their existing permission rules;
+  the skill manager does not replace them. At every app launch
   `PermissionGate` asks for what's missing: notifications + Termux RUN_COMMAND (if Termux is installed) in one
   dialog, then Android's "All files access" screen (shared storage for the file tools).
 - Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key,
@@ -152,9 +166,9 @@ ChatResponseWorker
 | `Tool` | One function: `name`, `description`, `parameters` (JSON Schema), `execute(args): JsonObject`. Optional: `guidance` (system text while offered), `parallelSafe` (read-only → may run concurrently), `title` / `subject(args)` / `summarize(output)` (the reply's 작업 card). |
 | `ToolModule` | A group of related tools: `id` + `tools(context)`. Decides from the context whether its tools are offered this turn. |
 | `ToolContext` | One turn's facts: `sessionId`, `modelId`, `services`, `permissions` (a scheduled run's snapshot, else everything), `scheduledRun`. |
-| `ToolServices` | Dependencies, lazily created: `searchProvider`, `pageFetcher`, `workspace(fullStorage)`, `termux`, `todos`, `goals`, `schedules`, `wakeups`, `browser`. `AndroidToolServices` in the app; `SimpleToolServices(…)` for tests/partial setups. A missing (null) service = its tools aren't offered. |
+| `ToolServices` | Dependencies, lazily created: `searchProvider`, `pageFetcher`, `workspace(fullStorage)`, `termux`, `todos`, `goals`, `schedules`, `wakeups`, `browser`, `skills` (per-turn `SkillRuntime`), `skillTasks` (background fork results). `AndroidToolServices` in the app; `SimpleToolServices(…)` for partial setups. A missing (null) service = its tools aren't offered. |
 | `ToolKit` | `modules` (built-in, in offer order) and `registry(context, modules = …)`. `ToolKit.override` replaces the whole registry in tests. |
-| `ToolRegistry` | `register(tool)`, `tools`, `schemas()`, `guidance()`, `execute(name, argumentsJson): ToolOutcome` (never throws except cancellation), `preview`, `isParallelSafe`. |
+| `ToolRegistry` | `register(tool)`, `tools`, `schemas()`, `guidance()`, `execute(name, argumentsJson): ToolOutcome` (never throws except cancellation), `preview`, `isParallelSafe`. Skills wire `skillRuntime`, `readOnly` (fork agent policy) and `onWorkspaceFile` (`paths` activation) into it; a skill's `hooks` run inside `execute`. |
 | `toolParameters { … }` | Schema DSL: `string(name, description, required, enum, minLength, maxLength)`, `integer(name, description, required, minimum, maximum)`, `boolean(…)`; `additionalProperties = false` by default (`null` omits it). |
 | Argument helpers | `args.string(k)`, `args.requireString(k)`, `args.number(k)` / `long(k)` (accept `5`, `5.0`, `"5"`), `args.bool(k)`. |
 
@@ -162,6 +176,7 @@ Built-in modules (`ToolKit.modules`, in this order):
 
 | Module | Tools | Offered when |
 |--|--|--|
+| `skills` (`SkillModule`) | `skill`, `skill_task` | a `skills: SkillRuntime` service is present; `skill_task` only outside a scheduled run. User slash invocation uses the same runtime |
 | `todo` | `todo` | always (session task list) |
 | `web` | `web_search`, `web_fetch` | `web_search` only with a search provider (Brave key in Settings) |
 | `browser` | `browser_use` | a verified VPS in Settings → 원격 브라우저 (and `permissions.browser`) |
@@ -169,6 +184,13 @@ Built-in modules (`ToolKit.modules`, in this order):
 | `files` | `read_file`, `write_file`, `edit_file`, `glob`, `grep` | always; shared storage needs "All files access" |
 | `goal` | `goal` | always |
 | `schedule` | `schedule`, `schedule_wakeup` | not inside a scheduled run |
+
+The skills service owns bundle installation, safe YAML parsing, trust, path mapping and saved
+activations; it never executes repository installer metadata. Rendered skill content persists per
+session, but tool denials / model / effort overrides are turn-scoped engine state. Isolated forks run
+as their own sessions through `ChatResponseWorker`, and hooks run at the worker/engine boundaries.
+See [`docs/AGENT_SKILLS.md`](docs/AGENT_SKILLS.md) for the compatibility matrix and the features that
+remain unavailable on mobile.
 
 ### Contract every tool follows
 

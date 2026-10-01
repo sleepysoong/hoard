@@ -43,15 +43,31 @@ import com.sleepysoong.hoard.engine.Compaction
 import com.sleepysoong.hoard.engine.Engines
 import com.sleepysoong.hoard.engine.RouterException
 import com.sleepysoong.hoard.engine.ReplyRequest
+import com.sleepysoong.hoard.engine.RouterConnection
 import com.sleepysoong.hoard.tools.AndroidToolServices
 import com.sleepysoong.hoard.browser.RemoteBrowserConfig
 import com.sleepysoong.hoard.tools.ToolContext
 import com.sleepysoong.hoard.tools.ToolKit
+import com.sleepysoong.hoard.tools.ToolException
+import com.sleepysoong.hoard.skills.SkillStore
+import com.sleepysoong.hoard.skills.SkillRuntime
+import com.sleepysoong.hoard.skills.SkillForkExecutor
+import com.sleepysoong.hoard.skills.SkillPathActivation
+import com.sleepysoong.hoard.skills.SkillForkDelivery
+import com.sleepysoong.hoard.termux.TermuxBridge
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.put
+import com.sleepysoong.hoard.tools.string
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
+import kotlinx.coroutines.withTimeout
 
 /**
  * Produces a reply from sleepyrouter in the background
@@ -66,6 +82,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
         val mode = inputData.getString(KEY_MODE) ?: MODE_REPLY
         val runId = inputData.getString(KEY_RUN)
+        val skillFork = inputData.getBoolean(KEY_SKILL_FORK, false)
         val focus = inputData.getString(KEY_FOCUS)?.takeIf { it.isNotBlank() }
         val repo = HoardRepository.get()
         val goals = GoalService(repo)
@@ -147,52 +164,133 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // Shared storage / Termux work once their Android permissions are granted (asked at
         // app start); until then the tool reports exactly what's missing.
         val scheduledPerms = runId?.let { scheduler.runOf(it) }?.let { r -> repo.schedules.value.firstOrNull { it.id == r.scheduleId }?.permissions }
-        val allowed = scheduledPerms ?: PermissionProfile.ALL
-        val engine = Engines.forRouter(
-            cfg.routerUrl,
-            AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
-            token = cfg.routerToken,
-            // Every tool comes from ToolKit's modules; the context decides what's offered.
-            tools = ToolKit.registry(
+        // A fork's permissions are a security boundary: never widen them on a decode failure.
+        val rawPermissions = inputData.getString(KEY_PERMISSIONS)
+        val explicitPermissions = if (rawPermissions == null) null
+            else runCatching { Json.decodeFromString<PermissionProfile>(rawPermissions) }.getOrNull() ?: return Result.failure()
+        val allowed = explicitPermissions ?: scheduledPerms ?: PermissionProfile.ALL
+        val forkReadOnly = inputData.getBoolean(KEY_READ_ONLY, false)
+        return try {
+            promote("Hoard가 생각 중…")
+            val skillStore = SkillStore.get(applicationContext)
+            withContext(Dispatchers.IO) { skillStore.refresh() }
+            val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
+            // A skill `model:` must be resolved against the real catalog before anything runs.
+            val needsCatalog = skillFork || skillStore.skills.value.any { it.enabled && it.document.model?.let { it != "inherit" } == true }
+            val skillModels = if (needsCatalog && repo.modelCatalog().isEmpty() && cfg.routerUrl.isNotBlank()) {
+                runCatching { RouterConnection.clientFactory(cfg.routerUrl, cfg.routerToken).listModels().map { it.id } }
+                    .getOrDefault(emptyList())
+            } else repo.modelCatalog().map { it.id }
+            runtime.resolveModel = { requested -> resolveSkillModel(requested, skillModels) }
+            if (skillFork) runtime.resumeTurn()
+            // A fork is a new context, not a recursive worker chain inheriting the parent's history.
+            if (!skillFork) runtime.fork = SkillForkExecutor(applicationContext, cfg, session, allowed, repo)::execute
+            var directSkillResult: JsonObject? = null
+            val promptHookContext = mutableListOf<String>()
+            if (mode == MODE_REPLY && !skillFork) {
+                val parent = before[parentIdx]
+                val typedPrompt = runId == null && parent.role == MessageRole.User && parent.trigger !in setOf("schedule", "wakeup", "skill")
+                if (typedPrompt) {
+                    runtime.hook("UserPromptSubmit", buildJsonObject { put("prompt", parent.text) })?.let { result ->
+                        checkPromptHook(result)
+                        promptHookContext += "[Skill UserPromptSubmit hook result]\n$result"
+                    }
+                }
+                val slash = Regex("^/([^\\s]+)(?:\\s+([\\s\\S]*))?$").matchEntire(parent.text.trim())
+                if (parent.role == MessageRole.User && slash != null && skillStore.find(slash.groupValues[1]) != null) {
+                    if (typedPrompt) runtime.hook("UserPromptExpansion", buildJsonObject {
+                        put("command_name", slash.groupValues[1]); put("command_args", slash.groupValues[2]); put("prompt", parent.text)
+                    })?.let { result ->
+                        checkPromptHook(result)
+                        promptHookContext += "[Skill UserPromptExpansion hook result]\n$result"
+                    }
+                    runtime.invocationKey = parent.id
+                    try {
+                        directSkillResult = runtime.activate(
+                            slash.groupValues[1], slash.groupValues[2],
+                            userInvoked = runId == null && parent.trigger != "schedule"
+                        )
+                    } finally {
+                        runtime.invocationKey = null
+                    }
+                }
+            }
+            val completionContext = withContext(Dispatchers.IO) { SkillForkDelivery.context(applicationContext, sessionId) }
+            val directContext = directSkillResult?.takeIf { it.string("context") == "fork" }?.let {
+                "[The user's slash skill has already been invoked. Do not invoke it again for this request. " +
+                    "Report its actual task/result status, and use skill_task to read a queued background task.]\n$it"
+            }.orEmpty()
+            val skillRequest = turnRequest.withSkillContext(
+                listOf(runtime.context(), completionContext, directContext, promptHookContext.joinToString("\n\n"))
+                    .filter { it.isNotBlank() }.joinToString("\n\n").takeIf { it.isNotBlank() }
+            )
+            val registry = ToolKit.registry(
                 ToolContext(
                     sessionId = sessionId,
                     modelId = session.modelId,
-                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo, RemoteBrowserConfig.from(cfg)),
+                    services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo, RemoteBrowserConfig.from(cfg), skills = runtime),
                     permissions = allowed,
-                    scheduledRun = runId != null
+                    scheduledRun = runId != null || skillFork
                 )
+            ).let { built ->
+                built.readOnly = forkReadOnly
+                if (skillFork) SkillForkExecutor.restrictRegistry(built, forkReadOnly)
+                else built.onWorkspaceFile = SkillPathActivation(skillStore, runtime)::onFile
+                built
+            }
+            val engine = Engines.forRouter(
+                cfg.routerUrl,
+                AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
+                token = cfg.routerToken,
+                // Every tool comes from ToolKit's modules; the context decides what's offered.
+                tools = registry
             )
-        )
-        runId?.let(scheduler::onRunStarted)
-        return try {
-            promote("Hoard가 생각 중…")
-            engine.streamReply(turnRequest) { ev ->
-                val written = repo.updateMessage(sessionId, messageId) {
-                    it.copy(
-                        text = ev.deltaText,
-                        thinking = ev.thinking,
-                        elapsedMs = ev.elapsedMs,
-                        promptTokens = ev.promptTokens,
-                        completionTokens = ev.completionTokens,
-                        isStreaming = !ev.done,
-                        routing = ev.routing ?: it.routing,
-                        // The model that actually answered, not just the one requested.
-                        modelId = ev.routing?.selectedModel ?: it.modelId,
-                        errorText = null
-                    )
+            runId?.let(scheduler::onRunStarted)
+            val generate: suspend () -> Unit = {
+                engine.streamReply(skillRequest) { ev ->
+                    val written = repo.updateMessage(sessionId, messageId) {
+                        it.copy(
+                            text = ev.deltaText,
+                            thinking = ev.thinking,
+                            elapsedMs = ev.elapsedMs,
+                            promptTokens = ev.promptTokens,
+                            completionTokens = ev.completionTokens,
+                            isStreaming = !ev.done,
+                            routing = ev.routing ?: it.routing,
+                            // The model that actually answered, not just the one requested.
+                            modelId = ev.routing?.selectedModel ?: it.modelId,
+                            errorText = null
+                        )
+                    }
+                    // Session or bubble deleted mid-stream: stop generating.
+                    if (!written) throw TargetGone()
+                    if (!ev.done) promote("Hoard가 답변 중…")
                 }
-                // Session or bubble deleted mid-stream: stop generating.
-                if (!written) throw TargetGone()
-                if (!ev.done) promote("Hoard가 답변 중…")
+            }
+            try {
+                if (skillFork) withTimeout(10 * 60_000L) { generate() } else generate()
+            } catch (e: RouterException) {
+                // Observational error hooks cannot replace the original API failure or trigger replay.
+                try { runtime.hook("StopFailure", buildJsonObject { put("error", e.message.orEmpty()); put("error_type", "server_error") }) }
+                catch (cancelled: CancellationException) { throw cancelled }
+                catch (_: Exception) { /* Preserve the router error. */ }
+                throw e
             }
             val reply = repo.messagesOf(sessionId).firstOrNull { it.id == messageId }
+            if (skillFork) deliverSkillResult(sessionId, messageId)
             runId?.let { scheduler.onRunFinished(it, RunStatus.Succeeded, summary = reply?.text, tokens = reply?.totalTokens) }
-            afterTurn(sessionId, messageId, mode, reply, goals, goalBefore, wakeups, cfg.routerUrl.isNotBlank())
+            if (!skillFork) afterTurn(sessionId, messageId, mode, reply, goals, goalBefore, wakeups, cfg.routerUrl.isNotBlank())
             notifyDone(sessionId)
             Result.success()
         } catch (_: TargetGone) {
+            if (skillFork) deliverSkillResult(sessionId, messageId)
             runId?.let { scheduler.onRunFinished(it, RunStatus.Cancelled, error = "run session deleted") }
             Result.success()
+        } catch (e: TimeoutCancellationException) {
+            currentCoroutineContext().ensureActive() // A cancelled parent is still cancellation, not timeout.
+            repo.updateMessage(sessionId, messageId) { it.copy(isStreaming = false, errorText = "스킬 작업이 10분 실행 한도를 초과했습니다") }
+            if (skillFork) deliverSkillResult(sessionId, messageId)
+            Result.failure()
         } catch (e: CancellationException) {
             runId?.let { scheduler.onRunFinished(it, RunStatus.Cancelled, error = "stopped") }
             // Cancelled or stopped by the system: never leave a spinning bubble,
@@ -202,6 +300,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             repo.updateMessage(sessionId, messageId) {
                 it.copy(isStreaming = false, errorText = it.errorText ?: "사용자가 중지함")
             }
+            if (skillFork) deliverSkillResult(sessionId, messageId)
             throw e
         } catch (e: RouterException.Permanent) {
             // The router rejected the request itself: retrying sends the same thing again.
@@ -209,6 +308,13 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 it.copy(isStreaming = false, errorText = e.message, routing = e.routing ?: it.routing)
             }
             runId?.let { scheduler.onRunFinished(it, RunStatus.Failed, error = e.message) }
+            if (skillFork) deliverSkillResult(sessionId, messageId)
+            Result.failure()
+        } catch (e: ToolException) {
+            // Invalid/untrusted skill preprocessing is not a transient network error.
+            repo.updateMessage(sessionId, messageId) { it.copy(isStreaming = false, errorText = e.message) }
+            runId?.let { scheduler.onRunFinished(it, RunStatus.Failed, error = e.message) }
+            if (skillFork) deliverSkillResult(sessionId, messageId)
             Result.failure()
         } catch (e: Exception) {
             val willRetry = runAttemptCount + 1 < MAX_ATTEMPTS
@@ -222,8 +328,26 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 )
             }
             if (!willRetry) runId?.let { scheduler.onRunFinished(it, RunStatus.Failed, error = reason) }
+            if (skillFork && !willRetry) deliverSkillResult(sessionId, messageId)
             if (willRetry) Result.retry() else Result.failure()
         }
+    }
+
+    private fun checkPromptHook(output: JsonObject) {
+        if (output.string("decision") == "block" || output["continue"] == JsonPrimitive(false)) {
+            throw ToolException(output.string("reason") ?: output.string("stopReason") ?: "스킬 훅이 프롬프트 처리를 중지했습니다")
+        }
+    }
+
+    private fun deliverSkillResult(sessionId: String, messageId: String) {
+        val repo = HoardRepository.get()
+        try {
+            SkillForkDelivery.completed(applicationContext, sessionId, repo.messagesOf(sessionId).firstOrNull { it.id == messageId })
+        } catch (e: Exception) {
+            // Never retry already-finished tool side effects because result delivery failed.
+            repo.updateMessage(sessionId, messageId) { it.copy(isStreaming = false, errorText = "스킬 결과 전달 실패: ${e.message}") }
+        }
+        repo.flush()
     }
 
     /**
@@ -387,6 +511,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_PARENT = "parent_id"
         const val KEY_MODE = "mode"
         const val KEY_RUN = "schedule_run_id"
+        const val KEY_SKILL_FORK = "skill_fork"
+        const val KEY_PERMISSIONS = "permission_override"
+        const val KEY_READ_ONLY = "read_only"
         /** [MODE_COMPACT]: the user's `/compact <focus>` note (blank = none). */
         const val KEY_FOCUS = "focus"
         const val MODE_REPLY = "reply"
@@ -411,6 +538,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             mode: String = MODE_REPLY,
             /** Set when this reply is a scheduled run. */
             scheduleRunId: String? = null,
+            /** Skill fork: run a skill's background agent instead of answering in this session. */
+            skillFork: Boolean = false,
+            /** The fork's own permission snapshot (never widened on decode failure). */
+            permissionOverride: PermissionProfile? = null,
+            /** A read-only fork agent (Explore/Plan style): no writes, no Termux, no browser. */
+            readOnly: Boolean = false,
             /** [MODE_COMPACT] only: the `/compact <focus>` the user typed (capped in [Compaction]). */
             focus: String? = null
         ) {
@@ -423,6 +556,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         KEY_PARENT to parentId,
                         KEY_MODE to mode,
                         KEY_RUN to scheduleRunId,
+                        KEY_SKILL_FORK to skillFork,
+                        KEY_PERMISSIONS to permissionOverride?.let { Json.encodeToString(PermissionProfile.serializer(), it) },
+                        KEY_READ_ONLY to readOnly,
                         KEY_FOCUS to focus?.take(Compaction.FOCUS_MAX_CHARS)
                     )
                 )
@@ -449,5 +585,23 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         }
 
         internal fun uniqueName(sessionId: String) = "hoard-reply-$sessionId"
+
+        /** Claude aliases map to an actual configured model; never silently fall back to another group. */
+        fun resolveSkillModel(requested: String, models: List<String>): String {
+            if (models.isEmpty()) {
+                throw ToolException("스킬 모델 '$requested' · 라우터 모델 목록을 먼저 연결하세요")
+            }
+            models.firstOrNull { it == requested }?.let { return it }
+            if (requested in setOf("sonnet", "opus", "haiku")) {
+                val family = Regex("(^|[-_])${Regex.escape(requested)}([-_]|$)")
+                val matches = models.filter {
+                    val id = it.substringAfterLast('/').substringAfterLast(':').lowercase()
+                    id.startsWith("claude-") && family.containsMatchIn(id)
+                }
+                if (matches.size == 1) return matches.single()
+                if (matches.size > 1) throw ToolException("스킬 모델 '$requested'이 여러 모델과 일치합니다 · 정확한 라우터 모델 ID를 지정하세요")
+            }
+            throw ToolException("스킬 모델 '$requested'은 라우터 목록에 없습니다")
+        }
     }
 }

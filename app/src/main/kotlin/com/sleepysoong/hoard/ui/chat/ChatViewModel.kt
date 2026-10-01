@@ -15,6 +15,8 @@ import com.sleepysoong.hoard.data.UiAttachment
 import com.sleepysoong.hoard.data.isCompaction
 import com.sleepysoong.hoard.engine.Compaction
 import com.sleepysoong.hoard.engine.ReplyRequest
+import com.sleepysoong.hoard.skills.SkillRuntime
+import com.sleepysoong.hoard.skills.SkillStore
 import com.sleepysoong.hoard.work.ChatResponseWorker
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -260,6 +262,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val branch = repo.branchFrom(session.id, messageId, branchName) ?: return null
         // The branch gets an independent snapshot of the open goal (parent_goal_id → original).
         goals.forkInto(session.id, branch.id)
+        SkillRuntime.forkSession(SkillStore.get(getApplication()), session.id, branch.id)
         _activeSessionId.value = branch.id
         return branch.id
     }
@@ -271,6 +274,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     fun deleteSession(id: String) {
         ChatResponseWorker.cancel(getApplication(), id)
+        SkillRuntime.clearSession(SkillStore.get(getApplication()), id)
         repo.deleteSession(id)
         viewModelScope.launch {
             val remaining = repo.sessions.value
