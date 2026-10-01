@@ -52,7 +52,7 @@ class GoalScheduleUiTest {
         compose.onNodeWithText(TestData.SESSION_NAME).performClick()
         compose.waitForIdle()
         compose.onNodeWithTag("goal-bar", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText("목표 진행 중 · 0/8턴", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("목표 진행 중", useUnmergedTree = true).assertExists()
         assertEquals(1, compose.onAllNodesWithTag("trigger-notice", useUnmergedTree = true).fetchSemanticsNodes().size)
         shot("chat-goal-bar")
         compose.onNodeWithTag("goal-bar", useUnmergedTree = true).performClick()

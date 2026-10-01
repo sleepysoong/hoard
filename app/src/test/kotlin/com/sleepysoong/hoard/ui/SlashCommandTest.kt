@@ -83,7 +83,15 @@ class SlashCommandTest {
         val deadline = System.currentTimeMillis() + 15_000
         while (compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("보내기")).fetchSemanticsNodes().isEmpty()) {
             compose.mainClock.advanceTimeBy(200); compose.waitForIdle(); Thread.sleep(20)
-            check(System.currentTimeMillis() < deadline) { "replies never finished" }
+            if (System.currentTimeMillis() >= deadline) {
+                val app = androidx.test.core.app.ApplicationProvider.getApplicationContext<android.app.Application>()
+                val wm = androidx.work.WorkManager.getInstance(app)
+                val states = wm.getWorkInfos(androidx.work.WorkQuery.fromStates(*androidx.work.WorkInfo.State.entries.toTypedArray())).get()
+                    .map { "${it.state}:${it.tags.filter { t -> t.startsWith("hoard") }}" }
+                val msgs = com.sleepysoong.hoard.data.HoardRepository.get().messagesOf(TestData.SESSION_ID)
+                    .map { "${it.role}:${it.text.take(30)}:streaming=${it.isStreaming}:err=${it.errorText}" }
+                check(false) { "replies never finished; work=$states msgs=$msgs" }
+            }
         }
         // A goal exists now, so "clear" is offered; pick it and send.
         field.performTextReplacement("/goal c")
