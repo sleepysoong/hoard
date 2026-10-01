@@ -23,13 +23,16 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -40,6 +43,8 @@ import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -51,21 +56,33 @@ import com.sleepysoong.hoard.browser.BrowserPreviewTarget
 import com.sleepysoong.hoard.browser.BrowserPreviews
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSurface
+import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
+import kotlin.math.roundToInt
+
+private val PREVIEW_JPEG_QUALITIES = listOf(20, 35, 55, 75, 90)
+private val PREVIEW_QUALITY_LABELS = listOf("매우 낮음", "낮음", "보통", "높음", "매우 높음")
 
 /** One bounded live frame shared by the compact view and its full-window viewer. */
 @Composable
-internal fun BrowserLivePreview(target: BrowserPreviewTarget, modifier: Modifier = Modifier) {
+internal fun BrowserLivePreview(
+    target: BrowserPreviewTarget,
+    qualityLevel: Int,
+    onQualityChange: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val keyboard = LocalSoftwareKeyboardController.current
     var image by remember(target) { mutableStateOf<ImageBitmap?>(null) }
     var problem by remember(target) { mutableStateOf<String?>(null) }
     var expanded by rememberSaveable(target) { mutableStateOf(false) }
+    var quality by remember(target, qualityLevel) { mutableIntStateOf(qualityLevel.coerceIn(1, 5)) }
+    val currentQuality by rememberUpdatedState(quality)
 
     LaunchedEffect(target, lifecycle) {
         // Hidden chats, a dismissed preview and background activities have no
@@ -74,8 +91,9 @@ internal fun BrowserLivePreview(target: BrowserPreviewTarget, modifier: Modifier
             try {
                 while (isActive) {
                     try {
+                        val jpegQuality = PREVIEW_JPEG_QUALITIES[currentQuality - 1]
                         image = withContext(Dispatchers.IO) {
-                            target.browser.previewFrame()?.let(::decodePreview)
+                            target.browser.previewFrame(jpegQuality)?.let(::decodePreview)
                         }
                         problem = null
                     } catch (cancelled: CancellationException) {
@@ -84,9 +102,9 @@ internal fun BrowserLivePreview(target: BrowserPreviewTarget, modifier: Modifier
                         image = null
                         problem = "미리보기 연결을 기다리는 중"
                     }
-                    // At most two updates a second; capture latency naturally lowers
-                    // this on slow links. No backlog of frames/bitmaps is retained.
-                    delay(500)
+                    // At most ten updates a second. Keep one request in flight:
+                    // slow links lower the rate rather than building a frame backlog.
+                    delay(100)
                 }
             } finally {
                 image = null
@@ -95,29 +113,32 @@ internal fun BrowserLivePreview(target: BrowserPreviewTarget, modifier: Modifier
     }
 
     GlassSurface(
-        modifier = modifier.fillMaxWidth().testTag("browser-live-preview").liquidClickable {
-            keyboard?.hide()
-            expanded = true
-        },
+        modifier = modifier.fillMaxWidth().testTag("browser-live-preview"),
         shape = RoundedCornerShape(18.dp)
     ) {
-        BoxWithConstraints(Modifier.padding(10.dp)) {
-            val thumbnailWidth = (maxWidth * 0.36f).coerceAtMost(160.dp)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                PreviewImage(image, Modifier.width(thumbnailWidth).height(78.dp).clip(RoundedCornerShape(10.dp)), compact = true)
-                Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("브라우저 실시간", style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    Text(if (image != null) "누르면 전체화면" else problem ?: "화면 연결 중",
-                        style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2, overflow = TextOverflow.Ellipsis)
-                    Icon(Icons.Rounded.Fullscreen, contentDescription = "전체화면 열기",
-                        tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
-                }
-                GlassIconButton(onClick = { BrowserPreviews.dismiss(target) }, modifier = Modifier.testTag("browser-preview-close")) {
-                    Icon(Icons.Rounded.Close, contentDescription = "브라우저 미리보기 닫기")
+        Column(Modifier.padding(10.dp)) {
+            BoxWithConstraints {
+                val thumbnailWidth = (maxWidth * 0.36f).coerceAtMost(160.dp)
+                Row(modifier = Modifier.fillMaxWidth().liquidClickable {
+                    keyboard?.hide()
+                    expanded = true
+                }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    PreviewImage(image, Modifier.width(thumbnailWidth).height(78.dp).clip(RoundedCornerShape(10.dp)), compact = true)
+                    Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text("브라우저 실시간", style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(if (image != null) "누르면 전체화면" else problem ?: "화면 연결 중",
+                            style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2, overflow = TextOverflow.Ellipsis)
+                        Icon(Icons.Rounded.Fullscreen, contentDescription = "전체화면 열기",
+                            tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(18.dp))
+                    }
+                    GlassIconButton(onClick = { BrowserPreviews.dismiss(target) }, modifier = Modifier.testTag("browser-preview-close")) {
+                        Icon(Icons.Rounded.Close, contentDescription = "브라우저 미리보기 닫기")
+                    }
                 }
             }
+            PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) }, glass = true)
         }
     }
 
@@ -143,9 +164,42 @@ internal fun BrowserLivePreview(target: BrowserPreviewTarget, modifier: Modifier
                     }
                     PreviewImage(image, Modifier.weight(1f).fillMaxWidth(), compact = false,
                         waiting = problem ?: "브라우저 화면을 기다리는 중")
+                    PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) }, glass = false,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PreviewQualityControl(
+    level: Int,
+    onLevelChange: (Int) -> Unit,
+    onFinished: () -> Unit,
+    glass: Boolean,
+    modifier: Modifier = Modifier
+) {
+    Column(modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+            Text("화질 · ${PREVIEW_QUALITY_LABELS[level - 1]}", style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("$level/5", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
+        }
+        val sliderModifier = Modifier.fillMaxWidth().testTag("browser-preview-quality")
+            .semantics { contentDescription = "브라우저 미리보기 화질, 5단계" }
+        val change: (Float) -> Unit = { onLevelChange(it.roundToInt().coerceIn(1, 5)) }
+        // Three intermediate stops + both endpoints = exactly five quality levels.
+        if (glass) {
+            GlassSlider(value = level.toFloat(), onValueChange = change, valueRange = 1f..5f, steps = 3,
+                onValueChangeFinished = onFinished, modifier = sliderModifier)
+        } else {
+            // The full-screen dialog cannot use the activity's glass backdrop.
+            Slider(value = level.toFloat(), onValueChange = change, valueRange = 1f..5f, steps = 3,
+                onValueChangeFinished = onFinished, modifier = sliderModifier)
+        }
+        Text("낮출수록 전송량 감소", style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

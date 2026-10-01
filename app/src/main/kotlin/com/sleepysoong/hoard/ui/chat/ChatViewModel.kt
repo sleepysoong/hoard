@@ -156,6 +156,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun usesRouter() = settings.value.routerUrl.isNotBlank()
 
+    fun setBrowserPreviewQuality(level: Int) {
+        viewModelScope.launch { SettingsStore.setBrowserPreviewQuality(getApplication(), level) }
+    }
+
     /** Stop the reply being generated in the open session (keeps what arrived so far). An active goal is paused. */
     fun stopReply() {
         val session = uiState.value.session ?: return

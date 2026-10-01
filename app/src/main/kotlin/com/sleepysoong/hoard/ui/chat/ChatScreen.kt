@@ -82,6 +82,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val state by vm.uiState.collectAsState()
+    val settings by vm.settings.collectAsState()
     val browserPreview by BrowserPreviews.target.collectAsState()
     val context = LocalContext.current
     var skillStore by remember(context) { mutableStateOf<SkillStore?>(null) }
@@ -301,7 +302,7 @@ fun ChatScreen(
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
             browserPreview?.takeIf { it.sessionId == session?.id }?.let { preview ->
-                BrowserLivePreview(preview)
+                BrowserLivePreview(preview, settings.browserPreviewQuality, vm::setBrowserPreviewQuality)
             }
             ChatInputBar(
                 value = vm.input,

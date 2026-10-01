@@ -15,7 +15,7 @@ interface RemoteBrowser {
     suspend fun execute(action: BrowserAction): BrowserResult
     val supportsPreview: Boolean get() = false
     /** Read-only JPEG of the current tab; null until a real connection/page is ready. */
-    suspend fun previewFrame(): ByteArray? = null
+    suspend fun previewFrame(quality: Int = 55): ByteArray? = null
 }
 
 /**
@@ -98,11 +98,11 @@ class RemoteBrowserManager(
 
     override val supportsPreview = true
 
-    override suspend fun previewFrame(): ByteArray? = withContext(Dispatchers.IO) {
+    override suspend fun previewFrame(quality: Int): ByteArray? = withContext(Dispatchers.IO) {
         if (cdp?.isOpen != true) return@withContext null
         // Deliberately outside the action lock: long navigation/settling must not
         // freeze the view. Never reconnect, restart Chrome or create a tab here.
-        browser.previewFrame()
+        browser.previewFrame(quality)
     }
 
     override suspend fun execute(action: BrowserAction): BrowserResult = lock.withLock {

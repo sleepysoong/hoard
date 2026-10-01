@@ -92,7 +92,7 @@ class BrowserService {
     }
 
     /** Observe the already attached current tab without changing focus or element ids. */
-    suspend fun previewFrame(): ByteArray? {
+    suspend fun previewFrame(quality: Int = 55): ByteArray? {
         if (!::cdp.isInitialized) return null
         val connection = cdp
         if (!connection.isOpen) return null
@@ -100,7 +100,7 @@ class BrowserService {
         val page = sessions[target] ?: return null
         val result = connection.send("Page.captureScreenshot", buildJsonObject {
             put("format", "jpeg")
-            put("quality", 55)
+            put("quality", quality.coerceIn(1, 100))
             put("captureBeyondViewport", false)
         }, page.sessionId, timeoutMs = 3_000)
         // A switch/reconnect can race capture. Never label the previous tab's frame

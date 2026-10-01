@@ -323,8 +323,12 @@ Tap it to open a full-screen, read-only viewer; close the full-screen viewer to 
 the compact view to stop previewing. The current tab continues updating while the preview is visible,
 including during navigation and between tool calls.
 
-- JPEG frames refresh at most twice per second over the **existing SSH/CDP connection**. There is no
+- JPEG frames refresh at most ten times per second over the **existing SSH/CDP connection**. Slow links
+  lower the rate naturally; only one frame request runs at a time, with no queued stale frames. There is no
   extension, exposed CDP port, new HTTP relay, or separate login.
+- A five-level quality slider is available in both the compact preview and full-screen viewer. It changes
+  Chrome's actual JPEG compression (20 / 35 / 55 / 75 / 90), not just the displayed image. Default: level 3
+  (55); lower levels reduce transmission size. The selected level is saved across sessions/app restarts.
 - Observation never creates tabs, changes focus, runs page scripts, restarts Chrome, or blocks the
   browser action queue. Until a connected tab is ready, the UI shows a connection/waiting state.
 - Capture and image decoding stop when the chat is hidden, the app is backgrounded, or the preview is

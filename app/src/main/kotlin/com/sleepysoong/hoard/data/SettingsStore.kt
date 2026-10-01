@@ -32,6 +32,7 @@ object SettingsStore {
     private val BROWSER_PUB = stringPreferencesKey("browser_ssh_pub")
     /** Pinned SSH host key ("type base64"), set when the user verifies the host in Settings. */
     private val BROWSER_HOST_KEY = stringPreferencesKey("browser_ssh_host_key")
+    private val BROWSER_PREVIEW_QUALITY = intPreferencesKey("browser_preview_quality")
     private val AUTO_COMPACT = intPreferencesKey("auto_compact_percent")
 
     data class Settings(
@@ -59,6 +60,8 @@ object SettingsStore {
         val browserPublicKey: String = "",
         /** Pinned host key "type base64" (blank = not verified yet). */
         val browserHostKey: String = "",
+        /** Live preview quality: five levels (1 = smallest JPEG, 5 = highest quality). */
+        val browserPreviewQuality: Int = 3,
         /** Compact a conversation before a reply once its context reaches this % of the session's limit. */
         val autoCompactPercent: Int = Defaults.AUTO_COMPACT_PERCENT
     ) {
@@ -72,7 +75,7 @@ object SettingsStore {
             "braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, browser=${if (browserConfigured) "$browserUser@$browserHost:$browserPort" else "none"}, " +
             "browserAuth=$browserAuthMethod, browserKey=${if (browserKeyEncrypted.isBlank()) "none" else "set"}, " +
             "browserPassword=${if (browserPasswordEncrypted.isBlank()) "none" else "set"}, browserHostKey=${if (browserHostKey.isBlank()) "unverified" else "pinned"}, " +
-            "autoCompactPercent=$autoCompactPercent)"
+            "browserPreviewQuality=$browserPreviewQuality, autoCompactPercent=$autoCompactPercent)"
     }
 
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
@@ -91,6 +94,7 @@ object SettingsStore {
             browserAuthMethod = p[BROWSER_AUTH]?.takeIf { it == "key" || it == "password" } ?: "key",
             browserPublicKey = p[BROWSER_PUB] ?: "",
             browserHostKey = p[BROWSER_HOST_KEY] ?: "",
+            browserPreviewQuality = (p[BROWSER_PREVIEW_QUALITY] ?: 3).coerceIn(1, 5),
             autoCompactPercent = (p[AUTO_COMPACT] ?: Defaults.AUTO_COMPACT_PERCENT).coerceIn(Defaults.AUTO_COMPACT_RANGE)
         )
     }
@@ -101,6 +105,9 @@ object SettingsStore {
     suspend fun setRouterUrl(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_URL] = v.trim() } }
     suspend fun setRouterToken(ctx: Context, v: String) { ctx.prefs.edit { it[ROUTER_TOKEN] = v.trim() } }
     suspend fun setBraveApiKey(ctx: Context, v: String) { ctx.prefs.edit { it[BRAVE_KEY] = v.trim() } }
+    suspend fun setBrowserPreviewQuality(ctx: Context, level: Int) {
+        ctx.prefs.edit { it[BROWSER_PREVIEW_QUALITY] = level.coerceIn(1, 5) }
+    }
     suspend fun setAutoCompactPercent(ctx: Context, v: Int) {
         ctx.prefs.edit { it[AUTO_COMPACT] = v.coerceIn(Defaults.AUTO_COMPACT_RANGE) }
     }
