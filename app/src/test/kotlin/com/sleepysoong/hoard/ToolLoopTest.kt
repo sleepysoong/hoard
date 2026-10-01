@@ -274,9 +274,9 @@ class ToolLoopTest {
         router.enqueue(FakeRouter.Reply.Sse(listOf(routingFrame(), created(), completed("ok"))))
         h.vm.send("안녕", emptyList(), "coding")
         h.awaitReplies()
-        // The skills module leads (skill, skill_tasks); browser_use needs a configured VPS.
+        // The skills module leads (skill, skill_task); browser_use needs a configured VPS.
         assertEquals(
-            listOf("skill", "skill_tasks", "todo", "web_fetch", "termux_exec", "read_file", "write_file", "edit_file", "glob", "grep", "goal", "schedule", "schedule_wakeup"),
+            listOf("skill", "skill_task", "todo", "web_fetch", "termux_exec", "read_file", "write_file", "edit_file", "glob", "grep", "goal", "schedule", "schedule_wakeup"),
             body(0)["tools"]!!.jsonArray.map { it.jsonObject["name"]!!.jsonPrimitive.content }
         )
     }

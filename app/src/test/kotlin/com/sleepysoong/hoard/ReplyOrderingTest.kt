@@ -2,7 +2,11 @@ package com.sleepysoong.hoard
 
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.data.SettingsStore
+import com.sleepysoong.hoard.engine.Engines
+import com.sleepysoong.hoard.engine.MockAiEngine
 import com.sleepysoong.hoard.testing.ChatHarness
+import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -61,12 +65,24 @@ class ReplyOrderingTest {
     @Test
     fun regenerateWhileNextReplyIsQueuedDoesNotAnswerRemovedPrompt() {
         h = ChatHarness(pace = 0.5f, greeting = true)
+        // Hold both sends offline so the second prompt is definitely stored before
+        // the first worker starts. Only the engine is replaced; the queue is real.
+        Engines.override = MockAiEngine
+        runBlocking { SettingsStore.setRouterUrl(h.app, "http://127.0.0.1:1") }
+        h.networkUp = false
+        waitUntil("router settings applied") { h.vm.settings.value.routerUrl == "http://127.0.0.1:1" }
         val sid = h.vm.uiState.value.session!!.id
         h.vm.send("첫 질문 A", emptyList(), "hoard-1-pro")
         h.vm.send("곧 지워질 둘째 질문 B", emptyList(), "hoard-1-pro")
+        h.idle()
+        assertEquals(listOf(MessageRole.User, MessageRole.User), h.repo.messagesOf(sid).drop(1).map { it.role })
+        h.networkUp = true
         waitUntil("first reply streaming") { h.repo.messagesOf(sid).any { it.role == MessageRole.Assistant && it.isStreaming } }
         val firstReply = h.repo.messagesOf(sid).first { it.role == MessageRole.Assistant && it.isStreaming }
         h.snapshot("A streaming, B queued", sid)
+        assertEquals("reply belongs immediately after A, before queued B",
+            listOf(MessageRole.User, MessageRole.Assistant, MessageRole.User),
+            h.repo.messagesOf(sid).drop(1).map { it.role })
 
         h.vm.retryFrom(firstReply.id)
         h.snapshot("right after retryFrom", sid)

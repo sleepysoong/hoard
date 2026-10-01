@@ -134,6 +134,21 @@ class HoardRepository(private val store: HoardStore? = null) {
         return appended
     }
 
+    /** Insert a reply beside the message it answers, ahead of later queued prompts.
+     * The parent is looked up in the atomic update: deletion never resurrects it.
+     */
+    fun insertMessageAfter(sessionId: String, parentId: String, message: ChatMessage): Boolean {
+        var inserted = false
+        _messages.update { map ->
+            val list = map[sessionId]
+            val parent = list?.indexOfFirst { it.id == parentId } ?: -1
+            inserted = parent >= 0
+            if (!inserted) map else map + (sessionId to list!!.toMutableList().apply { add(parent + 1, message) })
+        }
+        if (inserted) touch(sessionId)
+        return inserted
+    }
+
     /** Returns false when the session or the message no longer exists. */
     fun updateMessage(sessionId: String, messageId: String, transform: (ChatMessage) -> ChatMessage): Boolean {
         var found = false

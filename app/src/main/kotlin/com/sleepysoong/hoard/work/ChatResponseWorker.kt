@@ -150,7 +150,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val hasTarget = if (runAttemptCount == 0) {
             // Placeholder streaming bubble owned by the worker. Fails when the session
             // is gone — e.g. a job WorkManager restored after the in-memory store died.
-            repo.appendMessage(sessionId, placeholder)
+            repo.insertMessageAfter(sessionId, parentId, placeholder)
         } else {
             // Retry streams into the same bubble instead of appending a duplicate.
             // Fails when the bubble was deleted/regenerated during backoff.
