@@ -59,8 +59,9 @@ data class ReplyRequest(
             kept.addFirst(message)
             budget -= cost
         }
+        val dropped = body.size - kept.size
         summary?.let(kept::addFirst)
-        return copy(skillContext = content, history = kept.toList(), droppedCount = droppedCount + body.size - kept.size)
+        return copy(skillContext = content, history = kept.toList(), droppedCount = droppedCount + dropped)
     }
 
     companion object {
