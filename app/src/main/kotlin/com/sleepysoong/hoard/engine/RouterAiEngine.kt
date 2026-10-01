@@ -238,6 +238,7 @@ class RouterAiEngine(
             .header("Accept", "text/event-stream")
             .post(payload)
             .build()
+        AppLog.i("RouterAiEngine", "POST start model=${request.modelId} body=${body.length}b")
         try {
             return withResponse(httpRequest) { response ->
                 val responseBody = response.body

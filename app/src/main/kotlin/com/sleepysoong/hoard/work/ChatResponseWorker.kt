@@ -201,6 +201,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val forkReadOnly = inputData.getBoolean(KEY_READ_ONLY, false)
         return try {
             promote("Hoard가 생각 중…")
+            AppLog.i(TAG, "placeholders ok session=${sessionId.takeLast(6)} model=$model")
             val skillStore = SkillStore.get(applicationContext)
             withContext(Dispatchers.IO) { skillStore.refresh() }
             val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
@@ -274,6 +275,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 // Every tool comes from ToolKit's modules; the context decides what's offered.
                 tools = registry
             )
+            AppLog.i(TAG, "engine start session=${sessionId.takeLast(6)} url=${cfg.routerUrl}")
             runId?.let(scheduler::onRunStarted)
             val generate: suspend () -> Unit = {
                 engine.streamReply(skillRequest) { ev ->
