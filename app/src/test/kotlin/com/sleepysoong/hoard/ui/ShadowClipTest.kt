@@ -73,12 +73,12 @@ class ShadowClipTest {
         compose.waitForIdle()
         // Taller than the screen: check the last card at the scroll end, where the bottom
         // padding (shadow bleed) must leave its shadow uncut.
-        repeat(3) {
+        repeat(4) {
             compose.onAllNodes(androidx.compose.ui.test.hasScrollAction()).onFirst()
                 .performTouchInput { swipeUp() }
             compose.waitForIdle()
         }
-        // Last card (기본 컨텍스트): the (merged) field node ends 12dp above the card edge.
-        assertNoCut("settings", "새 세션의 컨텍스트", belowTextDp = 14f)
+        // Last card (자동 압축): its supporting line sits 12dp above the card edge (row padding).
+        assertNoCut("settings", "세션 컨텍스트의", belowTextDp = 12f)
     }
 }
