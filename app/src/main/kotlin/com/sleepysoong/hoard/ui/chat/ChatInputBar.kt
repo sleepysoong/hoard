@@ -168,7 +168,9 @@ fun ChatInputBar(
                                 .testTag("attachment-chip")
                                 .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
                         ) {
-                            Text("📎 ${a.name}", style = MaterialTheme.typography.labelMedium)
+                            Icon(Icons.Rounded.AttachFile, contentDescription = null,
+                                modifier = Modifier.size(14.dp))
+                            Text(a.name, style = MaterialTheme.typography.labelMedium)
                             Box(
                                 Modifier
                                     .size(28.dp)

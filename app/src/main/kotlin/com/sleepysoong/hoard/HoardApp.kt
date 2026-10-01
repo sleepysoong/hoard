@@ -15,6 +15,8 @@ class HoardApp : Application(), Configuration.Provider {
 
     override fun onCreate() {
         super.onCreate()
+        com.sleepysoong.hoard.diagnostics.AppLog.init(this)
+        com.sleepysoong.hoard.diagnostics.AppLog.i("HoardApp", "app start")
         com.sleepysoong.hoard.data.HoardRepository.init(java.io.File(filesDir, "hoard-store.json"))
         // Scheduler recovery off the main thread: re-arm active schedules (catch-up policy
         // for anything due while Hoard wasn't running) and fail runs a killed process left "running".

@@ -208,6 +208,23 @@ class ChatLifecycleFlowTest {
         }
     }
 
+    @Test fun branchingAMidStreamReplyNeverLeavesASpinningCopyInTheBranch() {
+        router.enqueue(FakeRouter.Reply.Sse(listOf(FakeRouter.created(), FakeRouter.delta("스트리밍 중 답변", 1)), stallMs = 20_000))
+        openChat()
+        compose.onNode(hasSetTextAction()).performTextInput("스트리밍 질문")
+        compose.onNodeWithContentDescription("보내기").performClick()
+        waitFor { repo.messagesOf(TestData.SESSION_ID).any { it.text == "스트리밍 중 답변" && it.isStreaming } }
+        val streamingId = repo.messagesOf(TestData.SESSION_ID).first { it.isStreaming }.id
+        var branch: com.sleepysoong.hoard.data.ChatSession? = null
+        compose.runOnUiThread { branch = vm.branchFrom(streamingId, "중간 브랜치")?.let(repo::sessionOf) }
+        compose.waitForIdle()
+        val copied = repo.messagesOf(branch!!.id).first { it.branchedFromId == streamingId }
+        assertFalse("copied reply is not streaming in the branch", copied.isStreaming)
+        assertTrue(copied.errorText != null)
+        assertTrue("original stays streaming in the parent session",
+            repo.messagesOf(TestData.SESSION_ID).first { it.id == streamingId }.isStreaming)
+    }
+
     @Test fun emptyChatHasNoHeroOrSuggestionsAndComposerStillSends() {
         router.enqueue(FakeRouter.Reply.Sse(listOf(FakeRouter.created(), FakeRouter.delta("첫 답변", 1), FakeRouter.completed("첫 답변"))))
         compose.onNodeWithContentDescription("새 세션").performClick()

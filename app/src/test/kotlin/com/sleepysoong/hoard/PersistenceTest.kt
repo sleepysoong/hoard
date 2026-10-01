@@ -133,6 +133,21 @@ class PersistenceTest {
         assertTrue(r.messages.value[gone] == null)
     }
 
+    /** A failed save is surfaced (and the old file is kept), never silently swallowed. */
+    @Test fun saveFailureIsVisibleAndKeepsThePreviousStore() {
+        // The store target is a directory: the atomic replace must fail loudly, not delete data.
+        val blockedFile = File(tmp.root, "as-directory.json").apply { mkdirs() }
+        HoardRepository.resetForTests()
+        HoardRepository.initForTests(blockedFile)
+        val broken = HoardRepository.get()
+        broken.createSession("저장 안 되는 세션")
+        broken.flush()
+        assertTrue("save failure is observable", broken.saveError.value != null)
+        assertTrue("target directory untouched", blockedFile.isDirectory)
+        assertTrue(broken.sessions.value.isNotEmpty()) // in-memory state keeps working
+        HoardRepository.resetForTests(); HoardRepository.initForTests(null)
+    }
+
     @Test fun replyStreamingAtDeathIsNotAnEternalSpinner() {
         val h = ChatHarness(pace = 50f, storeFile = file)
         val sid = h.vm.uiState.value.session!!.id

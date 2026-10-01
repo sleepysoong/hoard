@@ -58,7 +58,8 @@ class HoardStore(private val file: File) {
 
     /** Null when there is no saved state yet (first launch) or it was unreadable. */
     fun load(): Snapshot? {
-        if (!file.exists()) return null
+        // A non-regular target (e.g. a directory) is never renamed away by recovery.
+        if (!file.isFile) return null
         return try {
             json.decodeFromString(Snapshot.serializer(), file.readText())
         } catch (e: Exception) {
@@ -72,12 +73,13 @@ class HoardStore(private val file: File) {
     fun save(snapshot: Snapshot) {
         file.parentFile?.mkdirs()
         val tmp = File(file.parentFile, file.name + ".tmp")
-        tmp.writeText(json.encodeToString(Snapshot.serializer(), snapshot))
-        if (!tmp.renameTo(file)) {
-            // renameTo can fail across some filesystems when the target exists.
-            file.delete()
-            check(tmp.renameTo(file)) { "could not replace ${file.name}" }
-        }
+        tmp.outputStream().use { it.write(json.encodeToString(Snapshot.serializer(), snapshot).toByteArray()); it.fd.sync() }
+        // Atomic replace keeps the last good snapshot on disk when a write fails;
+        // the old delete-then-rename path could lose it.
+        java.nio.file.Files.move(
+            tmp.toPath(), file.toPath(),
+            java.nio.file.StandardCopyOption.ATOMIC_MOVE, java.nio.file.StandardCopyOption.REPLACE_EXISTING
+        )
     }
 
     companion object {

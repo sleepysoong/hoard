@@ -8,6 +8,7 @@ import android.net.Uri
 import android.provider.OpenableColumns
 import android.util.Base64
 import com.sleepysoong.hoard.data.UiAttachment
+import com.sleepysoong.hoard.tools.readCapped
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -123,8 +124,19 @@ class AttachmentEncoder(private val read: (UiAttachment) -> ByteArray?) {
         }
 
         /** Reads through the ContentResolver (photo picker / SAF / file URIs). */
-        fun contentReader(cr: ContentResolver): (UiAttachment) -> ByteArray? = { a ->
-            a.uri?.let { uri -> cr.openInputStream(uri)?.use { it.readBytes() } }
+        fun contentReader(cr: ContentResolver): (UiAttachment) -> ByteArray? =
+            contentReader { uri -> cr.openInputStream(uri) }
+
+        /**
+         * Bounded read: never loads more than [MAX_IMAGE_BYTES] + 1 byte, so a huge or
+         * misbehaving provider stream is rejected by [encode]'s size note instead of OOMing.
+         */
+        internal fun contentReader(open: (Uri) -> java.io.InputStream?): (UiAttachment) -> ByteArray? = { a ->
+            a.uri?.let { uri ->
+                open(uri)?.use { stream ->
+                    stream.readCapped(MAX_IMAGE_BYTES + 1).first
+                }
+            }
         }
 
         /**

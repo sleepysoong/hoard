@@ -23,26 +23,39 @@ object RouterConnection {
     private val _status = MutableStateFlow<RouterStatus>(RouterStatus.Offline)
     val status: StateFlow<RouterStatus> = _status.asStateFlow()
 
+    /** Only the newest probe may publish; overlapping checks (launch + edits) race otherwise. */
+    private val refreshSeq = java.util.concurrent.atomic.AtomicLong(0)
+
     /** Test hook: build the client for a URL (defaults to the real HTTP client). */
     @Volatile var clientFactory: (url: String, token: String) -> RouterAiEngine =
         { url, token -> RouterAiEngine(url, connectTimeoutMs = 5_000, readTimeoutMs = 10_000, token = token) }
 
     suspend fun refresh(url: String, repo: HoardRepository = HoardRepository.get(), token: String = ""): RouterStatus {
+        val seq = refreshSeq.incrementAndGet()
+        com.sleepysoong.hoard.diagnostics.AppLog.i("RouterConnection", "check start url=$url")
         if (url.isBlank()) {
-            repo.setRouterModels(emptyList())
-            return RouterStatus.Offline.also { _status.value = it }
+            if (refreshSeq.get() == seq) {
+                repo.setRouterModels(emptyList())
+                _status.value = RouterStatus.Offline
+            }
+            return RouterStatus.Offline
         }
-        _status.value = RouterStatus.Checking
+        if (refreshSeq.get() == seq) _status.value = RouterStatus.Checking
         val result = try {
             val list = clientFactory(url, token).listModels()
-            repo.setRouterModels(list.map(::toAiModel))
-            RouterStatus.Connected(url, groups = list.count { it.isGroup }, models = list.count { !it.isGroup })
+            if (refreshSeq.get() == seq) {
+                repo.setRouterModels(list.map(::toAiModel))
+                RouterStatus.Connected(url, groups = list.count { it.isGroup }, models = list.count { !it.isGroup })
+                    .also { _status.value = it }
+            } else RouterStatus.Checking // superseded; state belongs to the newer probe
         } catch (e: Exception) {
             if (e is kotlinx.coroutines.CancellationException) throw e
             // Keep the previous catalog: a flaky check shouldn't wipe the picker.
-            RouterStatus.Failed(url, e.message ?: "연결 실패")
+            if (refreshSeq.get() == seq) RouterStatus.Failed(url, e.message ?: "연결 실패").also { _status.value = it }
+            else RouterConnection.status.value
         }
-        _status.value = result
+        com.sleepysoong.hoard.diagnostics.AppLog.i("RouterConnection",
+            "check done url=$url -> $result" + if (refreshSeq.get() != seq) " (superseded)" else "")
         return result
     }
 

@@ -246,9 +246,13 @@ class HoardRepository(private val store: HoardStore? = null) {
         todos.forkSession(sessionId, branch.id)
         _sessions.update { listOf(branch) + it }
         _messages.update { it + (branch.id to list.take(idx + 1).map { m ->
-            // The source session's worker cannot finish a checkpoint copied into a branch.
-            if (m.isCompaction && m.isStreaming) m.copy(branchedFromId = m.id, isStreaming = false, errorText = "진행 중인 요약은 브랜치에 적용하지 않았습니다")
-            else m.copy(branchedFromId = m.id)
+            // The source session's worker cannot finish a reply copied into a branch:
+            // any in-flight message is left visibly stopped there, never a phantom spinner.
+            if (m.isStreaming) m.copy(
+                branchedFromId = m.id, isStreaming = false,
+                errorText = if (m.isCompaction) "진행 중인 요약은 브랜치에 적용하지 않았습니다"
+                    else "브랜치 시점에 진행 중이던 답변입니다 · 원래 세션에서 이어집니다"
+            ) else m.copy(branchedFromId = m.id)
         }) }
         flush()
         return branch
@@ -280,10 +284,21 @@ class HoardRepository(private val store: HoardStore? = null) {
         }
     }
 
+    /** Last persistence failure (null = healthy). Surfaced in settings; writes keep retrying. */
+    private val _saveError = MutableStateFlow<String?>(null)
+    val saveError: StateFlow<String?> = _saveError.asStateFlow()
+
     /** Write the current state now (also called on app background by HoardApp). */
     fun flush() {
         val s = store ?: return
-        runCatching { s.save(snapshot()) }
+        try {
+            s.save(snapshot())
+            if (_saveError.value != null) _saveError.value = null
+        } catch (e: Exception) {
+            val msg = e.message ?: "저장 실패"
+            android.util.Log.e("HoardStore", "persist failed: $msg", e)
+            if (_saveError.value != msg) _saveError.value = msg
+        }
     }
 
     private fun snapshot() = with(HoardStore) {

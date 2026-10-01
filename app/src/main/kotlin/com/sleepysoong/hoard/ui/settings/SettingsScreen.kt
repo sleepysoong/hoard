@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -42,6 +43,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.toClipEntry
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.semantics.stateDescription
 import androidx.compose.ui.semantics.contentDescription
@@ -70,8 +72,12 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
     val settings by SettingsStore.flow(ctx).collectAsState(SettingsStore.Settings())
     val scheme = MaterialTheme.colorScheme
     val themeIndex = listOf("system", "light", "dark").indexOf(settings.theme).coerceAtLeast(0)
+    var logOpen by rememberSaveable { mutableStateOf(false) }
 
-    Column(modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    // Root Box: the log viewer popup must overlay the whole screen, not sit inside the
+    // scrollable section (an overlay inside scroll content gets clipped/never anchored).
+    androidx.compose.foundation.layout.Box(modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(10.dp)) {
     // Same floating top bar as 세션; stays put while the settings scroll beneath it.
     GlassFloatingBar(title = "설정")
     Column(
@@ -188,7 +194,65 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
             }
         }
+        IOSSectionHeader("로그")
+        IOSGroupedSection {
+            LogSection(onOpen = { logOpen = true })
+        }
     }
+    }
+    if (logOpen) {
+        LogViewerPopup(onDismiss = { logOpen = false })
+    }
+    }
+}
+
+/** In-app diagnostics: the on-device log tail (no adb needed), copy and clear. */
+@Composable
+private fun LogSection(onOpen: () -> Unit) {
+    LocalContext.current
+    val scheme = MaterialTheme.colorScheme
+    val tail by com.sleepysoong.hoard.diagnostics.AppLog.tail.collectAsState()
+    Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text("앱이 기록한 상세 로그입니다. 문제가 생기면 여기 내용을 복사해 공유하세요. 토큰·키·메시지 내용은 저장되지 않습니다.",
+            style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant)
+        GlassPillButton("로그 보기 (${tail.size}줄)", onClick = onOpen,
+            tint = GlassPillTint.Accent, modifier = Modifier.testTag("open-logs"))
+    }
+}
+
+/** Screen-root overlay (settings content scrolls; an overlay must anchor to the window). */
+@Composable
+private fun LogViewerPopup(onDismiss: () -> Unit) {
+    val tail by com.sleepysoong.hoard.diagnostics.AppLog.tail.collectAsState()
+    val clipboard = androidx.compose.ui.platform.LocalClipboard.current
+    val scope = rememberCoroutineScope()
+    com.sleepysoong.hoard.ui.glass.GlassPopup(
+        title = "앱 로그",
+        message = "최근 ${tail.size}줄 · 이 기기에만 저장",
+        onDismiss = onDismiss,
+        dismissLabel = "닫기",
+        bodyPadding = PaddingValues(12.dp)
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            GlassPillButton("복사", onClick = {
+                scope.launch {
+                    clipboard.setClipEntry(android.content.ClipData.newPlainText("Hoard logs", tail.joinToString("\n")).toClipEntry())
+                }
+                onDismiss()
+            }, modifier = Modifier.testTag("copy-logs"))
+            GlassPillButton("지우기", tint = GlassPillTint.Destructive, onClick = {
+                com.sleepysoong.hoard.diagnostics.AppLog.clear()
+            }, modifier = Modifier.testTag("clear-logs"))
+        }
+        androidx.compose.foundation.text.selection.SelectionContainer(
+            modifier = Modifier.heightIn(max = 420.dp).verticalScroll(rememberScrollState()).padding(top = 10.dp)
+        ) {
+            Text(
+                tail.ifEmpty { listOf("(로그 없음)") }.joinToString("\n"),
+                style = MaterialTheme.typography.labelSmall.copy(fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace),
+                modifier = Modifier.testTag("log-text")
+            )
+        }
     }
 }
 

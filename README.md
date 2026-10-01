@@ -50,6 +50,9 @@ Still no gradients: every colour is solid.
 - Edit my message (save & regenerate), branch from a message, delete message, retry
   - Long-press → **수정** edits in the bottom composer, not a popup. Check saves and regenerates;
     X/Back cancels. Both restore the draft and attachments that were present before editing.
+  - Branching while a reply streams marks the copied bubble stopped there — the branch never shows
+    a phantom spinner; the original keeps streaming in its own session.
+  - Stopping a skill fork's child session cancels the parent turn that owns the fork.
   - Regeneration finishes the old bubble's short exit before inserting the replacement; removed lazy-list
     items are never retained as fading ghosts over the new bubble.
   - Session menu actions retain the selected session ID after closing the menu. Deleting the last session
@@ -143,7 +146,10 @@ Still no gradients: every colour is solid.
   the skill manager does not replace them. At every app launch
   `PermissionGate` asks for what's missing: notifications + Termux RUN_COMMAND (if Termux is installed) in one
   dialog, then Android's "All files access" screen (shared storage for the file tools).
+- **Logs**: 설정 → 로그 shows an on-device ring-buffer log (connect checks, reply start/finish,
+  failures, cancellations) with copy/clear — secrets (tokens, keys, message contents) are redacted.
 - Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key,
+  **로그 보기** (in-app diagnostic log: 목표/응답/연결 이벤트와 오류, 토큰·키는 자동 마스킹; 복사/지우기),
   remote browser (VPS host / SSH port / user / SSH key / host key check), default context, auto-compaction threshold.
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
@@ -429,7 +435,10 @@ stack. Each test writes a conversation transcript to `app/build/test-artifacts/`
 Run only one or two classes at a time on the low-spec dev machine (see `AGENTS.md`).
 GitHub Actions runs the full suite, including a freshly built sleepyrouter, on every push.
 
-- `RouterIntegrationTest`, `RouterUiTest`: against `FakeRouter`, which speaks sleepyrouter's exact wire format.
+- `RouterIntegrationTest`, `RouterUiTest`, `RouterRefreshRaceTest` (stale/overlapping connection probes):
+  against fake sleepyrouter servers.
+- `AttachmentTest`: attachment encoding including bounded reads (oversize streams are rejected
+  before being read to the end).
 - `ChatLifecycleFlowTest`: real chat/session menus and composer → WorkManager → HTTP; covers inactive-session
   deletion/rename, sequential regeneration, stop before the first delta/while network queued, immediate resend,
   and offline draft/history preservation. Screenshots and transcripts: `app/build/test-artifacts/chat-lifecycle/`.

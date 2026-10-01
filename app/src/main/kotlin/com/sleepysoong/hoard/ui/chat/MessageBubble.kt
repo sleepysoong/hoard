@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.rounded.AttachFile
 import androidx.compose.material.icons.rounded.ExpandLess
 import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Icon
@@ -177,7 +178,8 @@ fun MessageBubble(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                Text("📎", style = MaterialTheme.typography.labelSmall)
+                                Icon(Icons.Rounded.AttachFile, contentDescription = null,
+                                    tint = textColor, modifier = Modifier.size(12.dp))
                                 Text(a.name, style = MaterialTheme.typography.labelSmall, color = textColor)
                             }
                         }

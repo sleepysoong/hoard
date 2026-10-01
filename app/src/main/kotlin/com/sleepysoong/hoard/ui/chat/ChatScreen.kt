@@ -49,6 +49,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.browser.BrowserPreviews
 import com.sleepysoong.hoard.skills.SkillStore
 import com.sleepysoong.hoard.data.isCompaction
@@ -276,6 +277,11 @@ fun ChatScreen(
 
             skillRefreshError?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            val saveError by remember { HoardRepository.get().saveError }.collectAsState()
+            saveError?.let {
+                Text("저장 실패: $it", style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error)
             }
             browserPreview?.takeIf { it.sessionId == session?.id }?.let { preview ->
                 BrowserLivePreview(preview, settings.browserPreviewQuality, vm::setBrowserPreviewQuality)

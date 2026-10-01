@@ -92,6 +92,48 @@ class SkillFlowTest {
         assertTrue(router.requests.filter { it.path.endsWith("/responses") }.last().body.contains("REVIEW_REFERENCE"))
     }
 
+    /** Stopping the fork's child session must cancel the parent turn that owns the fork. */
+    @Test fun stoppingAForkedChildSessionCancelsTheInlineForkPromptly() {
+        h = ChatHarness()
+        router = FakeRouter()
+        runBlocking { SettingsStore.setRouterUrl(h.app, router.url) }
+        val deadline = System.currentTimeMillis() + 5_000
+        while (h.vm.settings.value.routerUrl != router.url) {
+            h.idle(); Thread.sleep(5); check(System.currentTimeMillis() < deadline)
+        }
+        liveBundle = bundle(SkillStore.get(h.app), "forkx", "포크 본문 \$ARGUMENTS", "context: fork\nbackground: false")
+        router.enqueue(
+            FakeRouter.Reply.Sse(listOf(created(), FakeRouter.delta("자식의 부분 답변", 1)), stallMs = 120_000))
+        val sid = h.vm.uiState.value.session!!.id
+        h.vm.send("/forkx 지금 작업", emptyList(), "coding")
+        // The fork spawns an isolated child session whose reply then stalls.
+        // Wait until its partial text arrived (the request is definitely in flight,
+        // and the child→parent stop mapping is registered by then).
+        val waitStart = System.currentTimeMillis()
+        var child: com.sleepysoong.hoard.data.ChatSession? = null
+        while (child == null) {
+            h.idle(); Thread.sleep(20)
+            child = h.repo.sessions.value.firstOrNull { it.id != sid }
+                ?.takeIf { c -> h.repo.messagesOf(c.id).any { it.isStreaming && it.text == "자식의 부분 답변" } }
+            check(System.currentTimeMillis() - waitStart < 10_000) { "fork child never streamed" }
+        }
+        val childId = child!!.id
+        val stopAt = System.currentTimeMillis()
+        com.sleepysoong.hoard.work.ChatResponseWorker.cancel(h.app, childId)
+        h.awaitReplies(timeoutMs = 12_000)
+        h.snapshot("parent", sid); h.snapshot("child", childId)
+        val childReply = h.repo.messagesOf(childId).last()
+        assertFalse("child bubble stopped", childReply.isStreaming)
+        assertEquals("사용자가 중지함", childReply.errorText)
+        assertTrue("partial child text kept", childReply.text.startsWith("자식의 부분 답변"))
+        assertTrue(
+            "parent turn cancelled quickly, not after the 120 s stall: ${System.currentTimeMillis() - stopAt}ms",
+            System.currentTimeMillis() - stopAt < 8_000
+        )
+        assertTrue("parent reply is not left streaming",
+            h.repo.messagesOf(sid).none { it.isStreaming })
+    }
+
     @Test fun userOnlySkillRejectsModelButAcceptsExplicitInvocation() = runBlocking {
         val store = store()
         bundle(store, "manual", "사용자가 직접 요청한 작업", "disable-model-invocation: true")

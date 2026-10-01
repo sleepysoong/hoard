@@ -35,6 +35,7 @@ import kotlinx.coroutines.withTimeout
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.concurrent.ConcurrentHashMap
 
 /** context:fork is a fresh conversation, not a branch containing the caller's history. */
 class SkillForkExecutor(
@@ -139,22 +140,32 @@ class SkillForkExecutor(
                 val request = ReplyRequest.build(session, listOf(userMessage), modelId = model)
                     .withSkillContext(runtime.context())
                 var completed = false
-                engine.streamReply(request) { event ->
-                    completed = event.done
-                    val written = repo.updateMessage(session.id, messageId) {
-                        it.copy(
-                            text = event.deltaText,
-                            thinking = event.thinking,
-                            elapsedMs = event.elapsedMs,
-                            promptTokens = event.promptTokens,
-                            completionTokens = event.completionTokens,
-                            isStreaming = !event.done,
-                            routing = event.routing ?: it.routing,
-                            modelId = event.routing?.selectedModel ?: it.modelId,
-                            errorText = null,
-                        )
+                // An inline fork runs inside the parent turn: child-session Stop maps here
+                // (ChatResponseWorker.cancel) and must kill this stream, not just the bubble.
+                activeInline[session.id] = parentSession.id
+                try {
+                    engine.streamReply(request) { event ->
+                        completed = event.done
+                        var stopped = false
+                        val written = repo.updateMessage(session.id, messageId) {
+                            stopped = !it.isStreaming && it.errorText == com.sleepysoong.hoard.work.ChatResponseWorker.USER_STOPPED
+                            if (stopped) it else it.copy(
+                                text = event.deltaText,
+                                thinking = event.thinking,
+                                elapsedMs = event.elapsedMs,
+                                promptTokens = event.promptTokens,
+                                completionTokens = event.completionTokens,
+                                isStreaming = !event.done,
+                                routing = event.routing ?: it.routing,
+                                modelId = event.routing?.selectedModel ?: it.modelId,
+                                errorText = null,
+                            )
+                        }
+                        if (stopped) throw CancellationException(com.sleepysoong.hoard.work.ChatResponseWorker.USER_STOPPED)
+                        if (!written) throw ToolException("Skill session or response was deleted during execution.")
                     }
-                    if (!written) throw ToolException("Skill session or response was deleted during execution.")
+                } finally {
+                    activeInline.remove(session.id, parentSession.id)
                 }
                 check(completed) { "Skill stream ended without a completed response." }
                 val reply = repo.messagesOf(session.id).firstOrNull { it.id == messageId }
@@ -280,6 +291,8 @@ class SkillForkExecutor(
         private const val EXECUTION_TIMEOUT_MS = 10 * 60 * 1000L
         private const val SUMMARY_LIMIT = 24_000
         private const val ERROR_LIMIT = 2_000
+        /** childSessionId → parentSessionId while an inline fork runs (for child-stop→parent cancellation). */
+        internal val activeInline = ConcurrentHashMap<String, String>()
         private val READ_ONLY_TOOLS = SkillToolPolicy.readOnlyTools
         private val FORBIDDEN_TOOLS = setOf("skill", "schedule", "schedule_wakeup")
         private fun newMessageId() = "msg-${UUID.randomUUID()}"

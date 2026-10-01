@@ -5,6 +5,7 @@ import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.async
 import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.diagnostics.AppLog
 import com.sleepysoong.hoard.data.RouteAttempt
 import com.sleepysoong.hoard.data.RoutingInfo
 import com.sleepysoong.hoard.data.StepKind
@@ -240,6 +241,7 @@ class RouterAiEngine(
         try {
             return withResponse(httpRequest) { response ->
                 val responseBody = response.body
+                AppLog.i("RouterAiEngine", "POST responses status=${response.code} model=${request.modelId}")
                 if (!response.isSuccessful || !response.header("Content-Type").orEmpty().startsWith("text/event-stream")) {
                     throw errorFromJsonBody(response.code, responseBody?.string().orEmpty())
                 }

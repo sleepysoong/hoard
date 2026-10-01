@@ -31,6 +31,7 @@ import androidx.work.WorkerParameters
 import androidx.work.workDataOf
 import com.sleepysoong.hoard.R
 import com.sleepysoong.hoard.data.ChatMessage
+import com.sleepysoong.hoard.diagnostics.AppLog
 import com.sleepysoong.hoard.data.ChatSession
 import com.sleepysoong.hoard.data.CompactionInfo
 import com.sleepysoong.hoard.data.HoardRepository
@@ -82,12 +83,16 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // is asynchronous; the stop button must close the network call immediately.
         synchronized(executionLock) {
             val generation = generations[sessionId]
-            if (generation != null && generation != inputData.getLong(KEY_GENERATION, 0)) return Result.success()
+            if (generation != null && generation != inputData.getLong(KEY_GENERATION, 0)) {
+                AppLog.w(TAG, "skip stale work session=$sessionId gen=${inputData.getLong(KEY_GENERATION, 0)} current=$generation")
+                return Result.success()
+            }
             activeJobs[id] = sessionId to job
         }
+        AppLog.i(TAG, "start session=${sessionId.takeLast(6)} mode=${inputData.getString(KEY_MODE)} attempt=$runAttemptCount")
         return try {
             currentCoroutineContext().ensureActive()
-            runReply()
+            runReply().also { AppLog.i(TAG, "finish session=${sessionId.takeLast(6)} result=${it::class.simpleName}") }
         } finally {
             synchronized(executionLock) { activeJobs.remove(id) }
         }
@@ -107,7 +112,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         val (_, scheduler, wakeups) = WorkManagerScheduler.services(applicationContext)
         // Session gone (deleted / lost with the process), or the prompt was
         // deleted/edited away while this reply was queued.
-        val session = repo.sessionOf(sessionId) ?: return Result.success()
+        val session = repo.sessionOf(sessionId) ?: run {
+            AppLog.w(TAG, "skip: session $sessionId is gone")
+            return Result.success()
+        }
         val cfg = SettingsStore.current(applicationContext)
         // The model this reply asked for; a manual /compact has none of its own.
         val model = modelId.ifBlank { session.modelId }
@@ -123,7 +131,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             return Result.success()
         }
 
-        if (parentIdx < 0) return Result.success()
+        if (parentIdx < 0) {
+            AppLog.w(TAG, "skip: parent message $parentId missing in session ${sessionId.takeLast(6)}")
+            return Result.success()
+        }
         // A continuation queued before the user paused/cleared the goal: nothing to do.
         val goal = if (mode == MODE_BUDGET_SUMMARY) goals.current(sessionId) else goals.active(sessionId)
         if (mode == MODE_CONTINUE && goal == null) return Result.success()
@@ -347,6 +358,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             val willRetry = runAttemptCount + 1 < MAX_ATTEMPTS
             val routing = (e as? RouterException)?.routing
             val reason = e.message ?: "연결 오류"
+            AppLog.e(TAG, "reply failed session=${sessionId.takeLast(6)} retry=$willRetry reason=$reason", e)
             repo.updateMessage(sessionId, messageId) {
                 it.copy(
                     errorText = if (willRetry) "$reason · 곧 다시 시도합니다…" else "$reason · 답변이 중단됐습니다.",
@@ -533,7 +545,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         // existing bubbles. WorkManager remains the persistent cancellation owner.
         private val generations = mutableMapOf<String, Long>()
         private const val KEY_GENERATION = "session_generation"
-        private const val USER_STOPPED = "사용자가 중지함"
+        private const val TAG = "ChatResponseWorker"
+        const val USER_STOPPED = "사용자가 중지함"
         const val KEY_SESSION = "session_id"
         const val KEY_MODEL = "model_id"
         const val KEY_MESSAGE = "message_id"
@@ -613,21 +626,31 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         }
 
         fun cancel(ctx: Context, sessionId: String) {
+            // Stopping a skill fork's child must also cancel the parent turn: an inline
+            // fork executes inside the parent session's worker.
+            val targets = buildList {
+                add(sessionId)
+                com.sleepysoong.hoard.skills.SkillForkExecutor.activeInline[sessionId]?.let(::add)
+            }
             val jobs = synchronized(executionLock) {
-                generations[sessionId] = (generations[sessionId] ?: 0L) + 1L
-                activeJobs.values.filter { it.first == sessionId }.map { it.second }
+                targets.forEach { generations[it] = (generations[it] ?: 0L) + 1L }
+                activeJobs.values.filter { it.first in targets }.map { it.second }
             }
             // Show the stop immediately, even if a platform/tool call takes time to
             // unwind. Preserve partial text and make the send button available again.
             val repo = HoardRepository.get()
-            repo.messagesOf(sessionId).filter { it.isStreaming }.forEach { message ->
-                repo.updateMessage(sessionId, message.id) {
-                    if (!it.isStreaming) it else it.copy(isStreaming = false, errorText = USER_STOPPED,
-                        thinking = it.thinking.map { step -> step.copy(running = false) })
+            targets.forEach { sid ->
+                repo.messagesOf(sid).filter { it.isStreaming }.forEach { message ->
+                    repo.updateMessage(sid, message.id) {
+                        if (!it.isStreaming) it else it.copy(isStreaming = false, errorText = USER_STOPPED,
+                            thinking = it.thinking.map { step -> step.copy(running = false) })
+                    }
                 }
             }
             jobs.forEach { it.cancel(CancellationException(USER_STOPPED)) }
-            WorkManager.getInstance(ctx).cancelUniqueWork(uniqueName(sessionId))
+            val wm = WorkManager.getInstance(ctx)
+            targets.forEach { wm.cancelUniqueWork(uniqueName(it)) }
+            AppLog.i(TAG, "cancel: targets=${targets.map { it.takeLast(6) }} liveJobs=${jobs.size}")
         }
 
         internal fun uniqueName(sessionId: String) = "hoard-reply-$sessionId"

@@ -110,6 +110,21 @@ class AttachmentTest {
         assertTrue(huge.s("text").contains("너무 큼"))
     }
 
+    /** The read itself is bounded: a provider stream must not be read to the end before rejection. */
+    @Test fun oversizeStreamIsRejectedBeforeReadingItWhole() {
+        var bytesRead = 0
+        val endless = object : java.io.InputStream() {
+            override fun read(): Int { bytesRead++; return 0x41 }
+            override fun read(b: ByteArray, off: Int, len: Int): Int {
+                val n = minOf(len, 64 * 1024); bytesRead += n; b.fill(0x41, off, off + n); return n
+            }
+        }
+        val enc = AttachmentEncoder(AttachmentEncoder.contentReader { endless })
+        val out = enc.encode(UiAttachment("z", "archive.bin", "*/*", 0, Uri.parse("file:///dev/zero")))
+        assertTrue(out.s("text").contains("너무 큼"))
+        assertTrue("read stopped at the cap, not at EOF: $bytesRead", bytesRead <= AttachmentEncoder.MAX_IMAGE_BYTES + 1024)
+    }
+
     @Test fun chatSendsFilesOnlyWithTheNewestMessage() {
         val h = ChatHarness()
         router = FakeRouter()

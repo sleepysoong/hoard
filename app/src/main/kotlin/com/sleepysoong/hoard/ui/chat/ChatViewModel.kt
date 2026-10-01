@@ -149,6 +149,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     private fun requireRouter(): Boolean {
         if (canGenerate(settings.value.routerUrl, RouterConnection.status.value)) return true
         _goalNotice.value = "라우터가 연결되지 않았습니다 · 설정 → 라우터에서 연결하세요"
+        com.sleepysoong.hoard.diagnostics.AppLog.w("ChatViewModel",
+            "blocked send: url=${settings.value.routerUrl.ifBlank { "(blank)" }} status=${RouterConnection.status.value}")
         return false
     }
 
