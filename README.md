@@ -282,9 +282,11 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 ### App setup (설정 → 원격 브라우저)
 
 1. Host, SSH port (22), user.
-2. SSH key: paste a private key (OpenSSH/PEM, no passphrase) or tap **새 키 만들기** (Ed25519, made on the
-   phone). The private key is stored only encrypted with an Android Keystore AES-GCM key (`browser/SecretStore.kt`);
-   the public key is shown — add it to `~/.ssh/authorized_keys` on the VPS.
+2. Login: SSH key (recommended) or password, picked with the SSH 키 / 비밀번호 selector. Key: paste a private
+   key (OpenSSH/PEM, no passphrase) or tap **새 키 만들기** (Ed25519, made on the phone) — its public key is
+   shown, add it to `~/.ssh/authorized_keys` on the VPS. Password: the VPS's sshd must allow
+   `PasswordAuthentication yes`. Both are stored only encrypted with an Android Keystore AES-GCM key
+   (`browser/SecretStore.kt`).
 3. **연결 확인**: the first time, the app only reads the server's host key and shows its SHA256 fingerprint.
    Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VPS, then **신뢰하고 연결** pins it
    and runs `ensure-browser-runtime`. Every later connection must present exactly that key (another key

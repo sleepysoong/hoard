@@ -10,9 +10,18 @@ import java.io.ByteArrayOutputStream
 import java.security.MessageDigest
 import java.util.Base64
 
-/** Where and as whom to SSH. [privateKey] is the decrypted OpenSSH/PEM key (memory only). */
-data class SshTarget(val host: String, val port: Int, val user: String, val privateKey: String) {
-    override fun toString() = "SshTarget($user@$host:$port, key=${if (privateKey.isBlank()) "none" else "set"})"
+/** How the VPS login proves itself. Secrets exist in memory only, never persisted as plain text. */
+sealed interface SshAuth {
+    /** An OpenSSH/PEM private key without a passphrase. */
+    data class Key(val privateKey: String) : SshAuth { override fun toString() = "Key(...)" }
+
+    /** Password login (the VPS's sshd must allow PasswordAuthentication). */
+    data class Password(val password: String) : SshAuth { override fun toString() = "Password(...)" }
+}
+
+/** Where and as whom to SSH, and how to authenticate. */
+data class SshTarget(val host: String, val port: Int, val user: String, val auth: SshAuth) {
+    override fun toString() = "SshTarget($user@$host:$port, auth=${if (auth is SshAuth.Password) "password" else "key"})"
 }
 
 /** Something on the SSH / runtime / CDP path failed; the message is shown to the model and the user. */
@@ -45,10 +54,11 @@ data class PinnedKey(val type: String, val base64: String) {
 data class ExecResult(val exitCode: Int, val stdout: String, val stderr: String)
 
 /**
- * One SSH connection to the VPS (JSch, public-key auth only): exec commands and
+ * One SSH connection to the VPS (JSch, key or password auth): exec commands and
  * local port forwards. Host key verification is strict: the server must present
  * exactly the [pinned] key (pinned by the user in Settings after comparing the
- * fingerprint, see [probeHostKey]); anything else aborts before authentication.
+ * fingerprint, see [probeHostKey]); anything else aborts before authentication —
+ * with a password login that is what keeps the password from a spoofed server.
  */
 class SshClient(private val target: SshTarget, private val pinned: PinnedKey) {
     private var session: Session? = null
@@ -59,14 +69,23 @@ class SshClient(private val target: SshTarget, private val pinned: PinnedKey) {
         if (isConnected) return
         val jsch = JSch()
         jsch.setHostKeyRepository(PinnedRepository(pinned))
-        try {
-            jsch.addIdentity("hoard", target.privateKey.trim().toByteArray(Charsets.UTF_8), null, null)
-        } catch (e: Exception) {
-            throw BrowserException("SSH 개인 키를 읽을 수 없습니다 (암호 없는 OpenSSH/PEM 키만 지원): ${e.message}", e)
+        when (val auth = target.auth) {
+            is SshAuth.Key -> try {
+                jsch.addIdentity("hoard", auth.privateKey.trim().toByteArray(Charsets.UTF_8), null, null)
+            } catch (e: Exception) {
+                throw BrowserException("SSH 개인 키를 읽을 수 없습니다 (암호 없는 OpenSSH/PEM 키만 지원): ${e.message}", e)
+            }
+            is SshAuth.Password -> Unit // handed to the session below
         }
         val s = jsch.getSession(target.user, target.host, target.port).apply {
             setConfig("StrictHostKeyChecking", "yes")
-            setConfig("PreferredAuthentications", "publickey")
+            when (val auth = target.auth) {
+                is SshAuth.Key -> setConfig("PreferredAuthentications", "publickey")
+                is SshAuth.Password -> {
+                    setPassword(auth.password)
+                    setConfig("PreferredAuthentications", "password")
+                }
+            }
             userInfo = NoPrompts
             setServerAliveInterval(KEEPALIVE_MS)
             setServerAliveCountMax(3)
@@ -81,9 +100,12 @@ class SshClient(private val target: SshTarget, private val pinned: PinnedKey) {
                         "서버를 확인한 뒤 설정 → 원격 브라우저에서 다시 확인하세요."
                 )
             }
+            val authHint = when (target.auth) {
+                is SshAuth.Key -> "${target.user}의 ~/.ssh/authorized_keys에 이 앱의 공개 키가 있는지 확인하세요"
+                is SshAuth.Password -> "비밀번호가 맞는지, 서버의 sshd가 비밀번호 로그인을 허용하는지(PasswordAuthentication yes) 확인하세요"
+            }
             throw BrowserException(
-                if (msg.contains("Auth fail", true) || msg.contains("USERAUTH fail", true))
-                    "SSH 인증 실패: ${target.user}의 ~/.ssh/authorized_keys에 이 앱의 공개 키가 있는지 확인하세요"
+                if (msg.contains("Auth fail", true) || msg.contains("USERAUTH fail", true)) "SSH 인증 실패: $authHint"
                 else "SSH 연결 실패 (${target.host}:${target.port}): $msg",
                 e
             )

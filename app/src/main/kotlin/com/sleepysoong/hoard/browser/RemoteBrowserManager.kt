@@ -16,24 +16,51 @@ interface RemoteBrowser {
 }
 
 /**
- * The VPS to drive, from Settings → 원격 브라우저. [keyEncrypted] is the Keystore
- * blob ([SecretStore]); it is decrypted only when a connection is opened.
+ * The VPS to drive, from Settings → 원격 브라우저. The login secret ([keyEncrypted] or
+ * [passwordEncrypted], per [authMethod]) is a Keystore blob ([SecretStore]); it is
+ * decrypted only when a connection is opened.
  */
 data class RemoteBrowserConfig(
     val host: String,
     val port: Int,
     val user: String,
-    val keyEncrypted: String,
+    /** "key" or "password". */
+    val authMethod: String,
+    val keyEncrypted: String = "",
+    val passwordEncrypted: String = "",
     val hostKey: PinnedKey
 ) {
-    override fun toString() = "RemoteBrowserConfig($user@$host:$port, hostKey=${hostKey.fingerprint})"
+    /** Host + user + the chosen method's secret. */
+    val hasLogin: Boolean
+        get() = host.isNotBlank() && user.isNotBlank() &&
+            (if (authMethod == AUTH_PASSWORD) passwordEncrypted else keyEncrypted).isNotBlank()
+
+    /** The SSH target with the decrypted secret (memory only). */
+    fun target(decrypt: (String) -> String = SecretStore::decrypt): SshTarget {
+        val auth = try {
+            if (authMethod == AUTH_PASSWORD) SshAuth.Password(decrypt(passwordEncrypted))
+            else SshAuth.Key(decrypt(keyEncrypted))
+        } catch (e: Exception) {
+            val what = if (authMethod == AUTH_PASSWORD) "비밀번호" else "SSH 키"
+            throw FatalBrowserException("저장된 $what 를 풀 수 없습니다 (앱을 다시 설치한 경우 등). 설정 → 원격 브라우저에서 다시 저장하세요")
+        }
+        return SshTarget(host, port, user, auth)
+    }
+
+    override fun toString() = "RemoteBrowserConfig($user@$host:$port, auth=$authMethod, hostKey=${hostKey.fingerprint})"
 
     companion object {
-        /** Null until host, user, key and a verified host key are all set. */
+        const val AUTH_KEY = "key"
+        const val AUTH_PASSWORD = "password"
+
+        /** Null until host, user, the chosen login's secret and a verified host key are all set. */
         fun from(s: SettingsStore.Settings): RemoteBrowserConfig? {
-            if (s.browserHost.isBlank() || s.browserUser.isBlank() || s.browserKeyEncrypted.isBlank()) return null
-            val pinned = PinnedKey.parse(s.browserHostKey) ?: return null
-            return RemoteBrowserConfig(s.browserHost.trim(), s.browserPort, s.browserUser.trim(), s.browserKeyEncrypted, pinned)
+            val config = RemoteBrowserConfig(
+                s.browserHost.trim(), s.browserPort, s.browserUser.trim(),
+                s.browserAuthMethod, s.browserKeyEncrypted, s.browserPasswordEncrypted,
+                PinnedKey.parse(s.browserHostKey) ?: return null
+            )
+            return config.takeIf { it.hasLogin }
         }
     }
 }
@@ -57,8 +84,7 @@ data class RemoteBrowserConfig(
  *   └─ BrowserService         (CDP browser control)
  */
 class RemoteBrowserManager(
-    val config: RemoteBrowserConfig,
-    private val decryptKey: (String) -> String = SecretStore::decrypt
+    val config: RemoteBrowserConfig
 ) : RemoteBrowser {
     private val lock = Mutex()
     private var ssh: SshClient? = null
@@ -95,13 +121,7 @@ class RemoteBrowserManager(
     private suspend fun prepare(): RuntimeStatus {
         val client = ssh?.takeIf { it.isConnected } ?: run {
             teardown()
-            val key = try {
-                decryptKey(config.keyEncrypted)
-            } catch (e: Exception) {
-                throw FatalBrowserException("저장된 SSH 키를 풀 수 없습니다 (앱을 다시 설치한 경우 등). 설정 → 원격 브라우저에서 키를 다시 저장하세요")
-            }
-            val target = SshTarget(config.host, config.port, config.user, key)
-            SshClient(target, config.hostKey).also { it.connect(); ssh = it }
+            SshClient(config.target(), config.hostKey).also { it.connect(); ssh = it }
         }
         val status = runtime.ensure(client)
         if (status.chromeRestarted) {
@@ -161,7 +181,7 @@ object RemoteBrowsers {
     /** Settings "연결 확인": connect with the pinned key and run the runtime check once. */
     suspend fun check(config: RemoteBrowserConfig): RuntimeStatus = withContext(Dispatchers.IO) {
         reset()
-        val client = SshClient(SshTarget(config.host, config.port, config.user, SecretStore.decrypt(config.keyEncrypted)), config.hostKey)
+        val client = SshClient(config.target(), config.hostKey)
         try {
             client.connect()
             BrowserRuntimeManager().ensure(client)
