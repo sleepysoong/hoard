@@ -94,13 +94,38 @@ data class ChatMessage(
     val errorText: String? = null,
     /**
      * A user-role message the runtime created, not typed: "goal" (/goal objective),
-     * "wakeup" (schedule_wakeup fired), "schedule" (a scheduled run's prompt).
+     * "wakeup" (schedule_wakeup fired), "schedule" (a scheduled run's prompt),
+     * [TRIGGER_COMPACT] (a compaction summary, see [compaction]).
      * Shown as a compact notice; sent to the model with a label.
      */
-    val trigger: String? = null
+    val trigger: String? = null,
+    /** Set on a compaction summary: what it covers. */
+    val compaction: CompactionInfo? = null
 ) {
     val totalTokens: Int get() = promptTokens + completionTokens
 }
+
+/** [ChatMessage.trigger] of a compaction summary (/compact or the auto-compact threshold). */
+const val TRIGGER_COMPACT = "compact"
+
+/** A compaction marker: summarizing, done, or failed. */
+val ChatMessage.isCompaction: Boolean get() = trigger == TRIGGER_COMPACT
+
+/** A finished summary: requests start from the last one and skip everything before it. */
+val ChatMessage.isCompactionSummary: Boolean
+    get() = isCompaction && !isStreaming && errorText == null && text.isNotBlank()
+
+/** What a compaction summary replaced. */
+data class CompactionInfo(
+    /** Started by the context threshold (true) or by /compact (false). */
+    val auto: Boolean,
+    /** Messages folded into this summary (the earlier summary it rolled up not counted). */
+    val summarized: Int = 0,
+    /** Estimated context tokens right before compacting. */
+    val tokensBefore: Int = 0,
+    /** `/compact <focus>` instructions, if any. */
+    val focus: String? = null
+)
 
 data class ChatSession(
     val id: String,
