@@ -123,6 +123,7 @@ dependencies {
     implementation(libs.jsoup)
     implementation(libs.jsch)
     implementation(libs.okhttp)
+    implementation(libs.snakeyaml) // Bounded SafeConstructor for Agent Skills frontmatter.
     implementation(libs.bouncycastle.prov)
     // Only TermuxConstants' compile-time String constants are used; they are inlined into
     // our bytecode, so none of termux-shared (appcompat, guava, markwon, native libs) ships.

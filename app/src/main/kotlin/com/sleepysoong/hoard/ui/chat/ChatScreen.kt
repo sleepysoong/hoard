@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.skills.SkillStore
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
 import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -65,6 +66,9 @@ import com.sleepysoong.hoard.ui.glass.GlassTone
 import com.sleepysoong.hoard.ui.glass.glassMaterial
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 private const val GROUP_WINDOW_MS = 3 * 60 * 1000L
 
@@ -76,6 +80,23 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val state by vm.uiState.collectAsState()
+    val context = LocalContext.current
+    var skillStore by remember(context) { mutableStateOf<SkillStore?>(null) }
+    val skills = skillStore?.skills?.collectAsState()?.value.orEmpty()
+    var skillRefreshError by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(context) {
+        try {
+            val loaded = withContext(Dispatchers.IO) {
+                SkillStore.get(context).also { it.refresh() }
+            }
+            skillStore = loaded
+            skillRefreshError = null
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (failure: Exception) {
+            skillRefreshError = "스킬을 새로고침하지 못했습니다: ${failure.message ?: "알 수 없는 오류"}"
+        }
+    }
     val routerModels by com.sleepysoong.hoard.data.HoardRepository.get().routerModels.collectAsState()
     val catalog = routerModels
     val session = state.session
@@ -269,6 +290,9 @@ fun ChatScreen(
                 }
             }
 
+            skillRefreshError?.let {
+                Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
             ChatInputBar(
                 value = vm.input,
                 onValueChange = { vm.input = it },
@@ -277,7 +301,8 @@ fun ChatScreen(
                 onSend = { if (session != null) sendReply(vm.input, session.modelId) },
                 replying = state.messages.any { it.isStreaming },
                 onStop = { vm.stopReply() },
-                goal = state.goal
+                goal = state.goal,
+                skills = skills
             )
         }
 

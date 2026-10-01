@@ -12,6 +12,7 @@ import com.sleepysoong.hoard.schedule.WakeupService
 import com.sleepysoong.hoard.schedule.WorkManagerScheduler
 import com.sleepysoong.hoard.termux.TermuxBridge
 import com.sleepysoong.hoard.termux.TermuxExecutor
+import com.sleepysoong.hoard.skills.SkillRuntime
 import com.sleepysoong.hoard.tools.files.FileTools
 import com.sleepysoong.hoard.tools.files.Workspace
 import com.sleepysoong.hoard.tools.search.BraveSearchProvider
@@ -26,7 +27,8 @@ class AndroidToolServices(
     private val context: Context,
     private val braveApiKey: String,
     private val repo: HoardRepository = HoardRepository.get(),
-    private val browserConfig: RemoteBrowserConfig? = null
+    private val browserConfig: RemoteBrowserConfig? = null,
+    override val skills: SkillRuntime? = null
 ) : ToolServices {
     private val schedulerServices by lazy { WorkManagerScheduler.services(context) }
 
@@ -37,6 +39,7 @@ class AndroidToolServices(
     override val goals: GoalService by lazy { GoalService(repo) }
     override val schedules: ScheduleService get() = schedulerServices.first
     override val wakeups: WakeupService get() = schedulerServices.third
+    override val skillTasks: SkillTaskService by lazy { AndroidSkillTaskService(context, repo) }
     // Process-wide: SSH, tunnel and CDP session stay open between calls and turns.
     override val browser: RemoteBrowser? get() = browserConfig?.let(RemoteBrowsers::get)
 }

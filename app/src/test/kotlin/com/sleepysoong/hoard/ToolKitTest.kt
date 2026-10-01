@@ -51,7 +51,7 @@ class ToolKitTest {
     private fun names(ctx: ToolContext) = ToolKit.registry(ctx).tools.map { it.name }
 
     @Test fun modulesBuildTheRegistryInOrderAndFollowTheContext() {
-        assertEquals(listOf("todo", "web", "browser", "termux", "files", "goal", "schedule"), ToolKit.modules.map { it.id })
+        assertEquals(listOf("skills", "todo", "web", "browser", "termux", "files", "goal", "schedule"), ToolKit.modules.map { it.id })
         assertEquals(
             listOf("todo", "web_search", "web_fetch", "termux_exec", "read_file", "write_file", "edit_file", "glob", "grep", "goal"),
             names(ToolContext("s1", "coding", services))

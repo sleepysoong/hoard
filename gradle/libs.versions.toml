@@ -22,6 +22,7 @@ jsoup = "1.23.2"
 jsch = "2.28.7"
 okhttp = "5.5.0"
 bouncycastle = "1.86"
+snakeyaml = "2.4"
 termuxShared = "v0.118.3"
 hrmLatex = "1.5.4"
 hrmCodeHighlight = "1.1.2"
@@ -35,6 +36,8 @@ bouncycastle-prov = { module = "org.bouncycastle:bcprov-jdk18on", version.ref = 
 termux-shared = { module = "com.github.termux.termux-app:termux-shared", version.ref = "termuxShared" }
 # web_fetch: HTML parsing / main-content extraction.
 jsoup = { module = "org.jsoup:jsoup", version.ref = "jsoup" }
+# Agent Skills: bounded SafeConstructor for SKILL.md frontmatter (no tags, alias/depth limits).
+snakeyaml = { module = "org.yaml:snakeyaml", version.ref = "snakeyaml" }
 # Markdown (CommonMark+GFM tables) with integrated LaTeX, LLM streaming mode.
 hrm-markdown-parser = { module = "io.github.huarangmeng:markdown-parser", version.ref = "hrmMarkdown" }
 hrm-markdown-runtime = { module = "io.github.huarangmeng:markdown-runtime", version.ref = "hrmMarkdown" }

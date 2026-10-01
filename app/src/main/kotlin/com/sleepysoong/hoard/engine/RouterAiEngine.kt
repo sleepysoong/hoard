@@ -80,12 +80,37 @@ class RouterAiEngine(
         val prior = Prior()
         val toolItems = mutableListOf<JsonObject>()
         var round = 0
+        var stopHookActive = false
         while (true) {
             val finalRound = active == null || round >= maxToolRounds || request.forbidTools
-            val body = encodeRequest(request, attachments, active?.schemas(), toolGuidance = active?.guidance().orEmpty(), toolItems = toolItems,
+            val roundRequest = request.copy(
+                modelId = active?.skillRuntime?.modelOverride() ?: request.modelId,
+                reasoningEffort = active?.skillRuntime?.effortOverride() ?: request.reasoningEffort
+            )
+            val body = encodeRequest(roundRequest, attachments, active?.schemas(), toolGuidance = active?.guidance().orEmpty(), toolItems = toolItems,
                 forbidTools = active != null && finalRound, includeTodoReminder = round == 0)
-            val state = streamRound(request, body, prior, started, acceptTools = !finalRound, onEvent)
-            if (state.toolCalls.isEmpty()) return
+            val state = streamRound(roundRequest, body, prior, started, acceptTools = !finalRound, onEvent)
+            if (state.toolCalls.isEmpty()) {
+                // Stop hooks cannot turn a forced final round into another round: the loop's
+                // tool_choice: none round is already its answer.
+                val hook = active?.skillRuntime?.hook("Stop", buildJsonObject {
+                    put("stop_hook_active", stopHookActive)
+                    put("last_assistant_message", prior.joinText(state.text.toString()))
+                })
+                if (!stopHookActive && !finalRound && hook?.str("decision") == "block") {
+                    stopHookActive = true
+                    prior.absorb(state)
+                    toolItems += buildJsonObject {
+                        put("type", "message"); put("role", "user")
+                        put("content", buildJsonArray { add(buildJsonObject {
+                            put("type", "input_text"); put("text", "[Skill Stop hook] " + (hook.str("reason") ?: "Complete the skill before stopping."))
+                        }) })
+                    }
+                    round++
+                    continue
+                }
+                return
+            }
             prior.absorb(state)
             // Read-only calls of a round run concurrently (e.g. several web_fetch of the
             // chosen search results), bounded by maxParallelTools. A call with side effects
@@ -122,7 +147,29 @@ class RouterAiEngine(
                     put("output", outcome.output)
                 }
             }
+            val batchHook = active?.skillRuntime?.hook("PostToolBatch", buildJsonObject {
+                put("tool_calls", buildJsonArray { calls.forEach { call -> add(buildJsonObject {
+                    put("tool_name", call.name); put("tool_input", runCatching { json.parseToJsonElement(call.arguments) }.getOrDefault(JsonObject(emptyMap())))
+                }) } })
+            })
+            if (batchHook != null) toolItems += buildJsonObject {
+                put("type", "message"); put("role", "user")
+                put("content", buildJsonArray { add(buildJsonObject {
+                    put("type", "input_text"); put("text", "[Skill PostToolBatch hook result]\n$batchHook")
+                }) })
+            }
             onEvent(prior.event(request, started))
+            if (batchHook?.str("decision") == "block" || batchHook?.get("continue") == JsonPrimitive(false)) {
+                val reason = batchHook.str("reason") ?: batchHook.str("stopReason").orEmpty()
+                onEvent(prior.event(request, started).copy(done = true,
+                    deltaText = prior.text.ifBlank { "스킬 훅이 실행을 중지했습니다 · $reason" }))
+                return
+            }
+            active?.stopRequested?.let { reason ->
+                onEvent(prior.event(request, started).copy(done = true,
+                    deltaText = prior.text.ifBlank { "스킬 훅이 실행을 중지했습니다 · $reason" }))
+                return
+            }
             round++
         }
     }
@@ -446,6 +493,12 @@ class RouterAiEngine(
             includeTodoReminder: Boolean = true
         ): String = buildJsonObject {
             put("model", r.modelId)
+            r.reasoningEffort?.let { effort ->
+                if (effort !in setOf("low", "medium", "high", "xhigh", "max")) {
+                    throw com.sleepysoong.hoard.tools.ToolException("Unsupported skill effort: $effort")
+                }
+                put("reasoning", buildJsonObject { put("effort", effort) })
+            }
             put("stream", true)
             val note = if (toolSchemas.isNullOrEmpty()) "" else toolNote(toolGuidance, today, now)
             val instructions = listOf(r.systemPrompt.trim(), note, r.goalContext.orEmpty()).filter { it.isNotEmpty() }.joinToString("\n\n")
@@ -458,6 +511,14 @@ class RouterAiEngine(
             // answered) mention their attachments by name to keep requests small.
             val lastUser = r.history.indexOfLast { it.role == MessageRole.User }
             put("input", buildJsonArray {
+                r.skillContext?.takeIf { it.isNotBlank() }?.let { content ->
+                    add(buildJsonObject {
+                        put("type", "message"); put("role", "user")
+                        put("content", buildJsonArray { add(buildJsonObject {
+                            put("type", "input_text"); put("text", content)
+                        }) })
+                    })
+                }
                 if (includeTodoReminder) r.todoReminder?.let { reminder ->
                     add(buildJsonObject {
                         put("type", "message"); put("role", "developer")

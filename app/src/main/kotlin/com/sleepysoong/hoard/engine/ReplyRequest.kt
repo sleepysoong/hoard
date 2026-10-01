@@ -24,11 +24,34 @@ data class ReplyRequest(
     /** Final budget-summary turn: tools offered but not callable. */
     val forbidTools: Boolean = false,
     /** Authoritative execution state, captured at turn start; never stored as chat history. */
-    val todoReminder: String? = null
+    val todoReminder: String? = null,
+    /** Previously activated skills, user-level context rather than privileged instructions. */
+    val skillContext: String? = null,
+    /** Responses reasoning.effort, only when the invoking skill explicitly sets it. */
+    val reasoningEffort: String? = null
 ) {
     val question: String get() = history.lastOrNull { it.role == MessageRole.User }?.text.orEmpty()
     val hasAttachments: Boolean get() = history.lastOrNull { it.role == MessageRole.User }?.attachments?.isNotEmpty() == true
-    val promptTokens: Int get() = contextTokens(systemPrompt, history)
+    val promptTokens: Int get() = contextTokens(systemPrompt, history) +
+        (skillContext?.takeIf { it.isNotBlank() }?.let(::estimateTokens) ?: 0)
+
+    /** Reserve activated instructions before retaining old chat turns. Never silently cut a skill. */
+    fun withSkillContext(content: String?): ReplyRequest {
+        if (content.isNullOrBlank()) return this
+        val reserved = estimateTokens(systemPrompt) + estimateTokens(content)
+        if (reserved >= contextLimit) throw com.sleepysoong.hoard.tools.ToolException(
+            "활성 스킬 지침이 세션 컨텍스트 한도보다 큽니다 · 컨텍스트 한도를 높이거나 스킬을 비활성화하세요"
+        )
+        var budget = contextLimit - reserved
+        val kept = ArrayDeque<ChatMessage>()
+        for (message in history.asReversed()) {
+            val cost = estimateTokens(message.text)
+            if (kept.isNotEmpty() && cost > budget) break
+            kept.addFirst(message)
+            budget -= cost
+        }
+        return copy(skillContext = content, history = kept.toList(), droppedCount = droppedCount + history.size - kept.size)
+    }
 
     companion object {
         /**
