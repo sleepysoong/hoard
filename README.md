@@ -58,12 +58,18 @@ Still no gradients: every colour is solid.
     (run in parallel, max 5) → answer from the fetched text. Read-only tools of a round run concurrently;
     side-effect tools (write/edit, termux) run alone in call order.
   - `web_search` — discover pages via the Brave Search API with **the user's own key**
-    (none is bundled). Fixed params `count=10, extra_snippets=false, text_decorations=false, operators=true,
-    result_filter=web`; `country` / `search_lang` only when the model sets them for a clearly local / single-language
-    query (never from the device locale). The description teaches query refinement (specific / English terms,
-    `site:`, `"exact"`, `-exclude`, AND/OR/NOT, `filetype:`). Output is normalized (`search_1…` ids, title/url/snippet, `correctedQuery`,
-    `hasMore`), never Brave's raw JSON; 429 is retried with backoff honouring `X-RateLimit-Reset`.
-    The description tells the model that snippets are not page contents.
+    (none is bundled). Fixed params `text_decorations=false, operators=true,
+    result_filter=web,news,faq,discussions` (Q&A cards and forum threads included, not just links);
+    `extra_snippets` on, bounded by the normalizer (3 per result, ≤320 chars). Over-fetches
+    (shown count + 8, ≤20) and **re-ranks** by query relevance on top of the engine's rank,
+    then returns at most 10. `country` / `search_lang` only when the model sets them for a clearly
+    local / single-language query (never from the device locale). The description teaches query
+    refinement (specific / English terms, `site:`, `"exact"`, `-exclude`, AND/OR/NOT, `filetype:`).
+    Output is normalized (`search_1…` ids, `type` web/news/faq/discussion, title/url/source/snippet,
+    `extraSnippets`, FAQ `question`/`answer`, `pageAge`, `relatedQueries`, `correctedQuery`, `hasMore`),
+    never Brave's raw JSON: URLs deduped across sections (www/host case/trailing slash, `utm_*`/click
+    trackers stripped), markup and entities cleaned. 429 retried with backoff honouring `X-RateLimit-Reset`.
+    The description tells the model that snippets are not page contents and FAQ answers are unverified.
   - `web_fetch` — read a page: public http(s) only (loopback/LAN/metadata/CGNAT/ULA refused, checked
     on every redirect), `finalUrl` on redirects, size/length caps, main content → Markdown (jsoup).
   - `SearchProvider` interface: Brave is one implementation; Tavily/SearXNG can be added without

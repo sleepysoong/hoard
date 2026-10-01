@@ -9,6 +9,7 @@ import com.sleepysoong.hoard.tools.search.BraveSearchProvider
 import com.sleepysoong.hoard.tools.search.Freshness
 import com.sleepysoong.hoard.tools.search.SearchHit
 import com.sleepysoong.hoard.tools.search.SearchNormalizer
+import com.sleepysoong.hoard.tools.search.SearchRequest
 import com.sleepysoong.hoard.tools.search.SearchResponse
 import com.sun.net.httpserver.HttpExchange
 import com.sun.net.httpserver.HttpServer
@@ -78,25 +79,27 @@ class WebToolsTest {
         val (q, key) = seen.single()
         assertEquals("brave-key-123", key)
         assertEquals("kotlin corutine", q["q"])
-        assertEquals("3", q["count"])
+        // Over-fetches candidates (shown count + headroom) so the re-ranker has room; capped at MAX_COUNT.
+        assertEquals((3 + WebSearchTool.CANDIDATE_HEADROOM).toString(), q["count"])
         assertEquals("pw", q["freshness"])
         assertEquals("KR", q["country"])
         assertEquals("ko", q["search_lang"])
-        assertEquals("false", q["extra_snippets"])
+        assertEquals("true", q["extra_snippets"])
         assertEquals("false", q["text_decorations"])
-        assertEquals("web", q["result_filter"])
+        assertEquals("web,news,faq,discussions", q["result_filter"])
         assertEquals("true", q["operators"])
 
-        // Defaults: 10 results, fixed quality params, and no country/search_lang (never taken from the locale).
+        // Defaults: fixed quality params, richer result filter, and no country/search_lang (never taken from the locale).
         java.util.Locale.setDefault(java.util.Locale.KOREA)
         tool.execute(Json.parseToJsonElement("""{"query":"x"}""").jsonObject)
         val d = seen.last().first
-        assertEquals("10", d["count"]); assertNull(d["freshness"]); assertNull(d["country"]); assertNull(d["search_lang"])
-        assertEquals("false", d["extra_snippets"]); assertEquals("false", d["text_decorations"])
-        assertEquals("true", d["operators"]); assertEquals("web", d["result_filter"])
-        // Max 10.
+        assertEquals((SearchRequest.DEFAULT_COUNT + WebSearchTool.CANDIDATE_HEADROOM).coerceAtMost(SearchRequest.MAX_COUNT).toString(), d["count"])
+        assertNull(d["freshness"]); assertNull(d["country"]); assertNull(d["search_lang"])
+        assertEquals("true", d["extra_snippets"]); assertEquals("false", d["text_decorations"])
+        assertEquals("true", d["operators"]); assertEquals("web,news,faq,discussions", d["result_filter"])
+        // Excessive caller counts are clamped to 10 displayed results, plus candidate headroom.
         tool.execute(Json.parseToJsonElement("""{"query":"x","count":50}""").jsonObject)
-        assertEquals("10", seen.last().first["count"])
+        assertEquals("18", seen.last().first["count"])
     }
 
     @Test fun freshnessMapping() {
@@ -113,7 +116,9 @@ class WebToolsTest {
         val results = out["results"]!!.jsonArray.map { it.jsonObject }
         assertEquals("blank title/url, non-http and duplicate URLs dropped", 2, results.size)
         assertEquals(listOf("search_1", "search_2"), results.map { it.str("id") })
+        // The engine's leading result remains first and keeps its normalized metadata.
         val first = results[0]
+        assertEquals("web", first.str("type"))
         assertEquals("Coroutines guide", first.str("title"))
         assertEquals("https://kotlinlang.org/docs/coroutines-guide.html", first.str("url"))
         assertTrue(first.str("snippet")!!.startsWith("Kotlin & coroutines"))
@@ -124,7 +129,7 @@ class WebToolsTest {
         assertEquals("3 days ago", results[1].str("pageAge"))
         // Nothing Brave-specific leaks through.
         val flat = out.toString()
-        listOf("\"web\"", "more_results_available", "page_age", "\"description\"", "\"type\":\"search\"").forEach {
+        listOf("\"web\":", "more_results_available", "page_age", "\"description\"", "\"type\":\"search\"").forEach {
             assertFalse("$it leaked: $flat", flat.contains(it))
         }
     }
@@ -176,7 +181,7 @@ class WebToolsTest {
         val out = tool.execute(Json.parseToJsonElement("""{"query":"q"}""").jsonObject)
         assertEquals((1..10).map { "search_$it" }, out["results"]!!.jsonArray.map { it.jsonObject.str("id") })
         val d = tool.description
-        listOf("10", "web_fetch", "parallel", "site:", "\"exact phrase\"", "-excluded", "AND", "OR", "NOT", "filetype:", "English").forEach {
+        listOf("web_fetch", "parallel", "site:", "\"exact phrase\"", "-excluded", "AND", "OR", "NOT", "filetype:", "English", "faq", "discussion", "relatedQueries").forEach {
             assertTrue("description mentions $it", d.contains(it))
         }
         val props = tool.parameters["properties"]!!.jsonObject
@@ -186,7 +191,7 @@ class WebToolsTest {
 
     @Test fun toolDescriptionsSeparateDiscoverFromRead() {
         val search = WebSearchTool(BraveSearchProvider("k"))
-        assertTrue(search.description.contains("Search results contain only summaries/snippets"))
+        assertTrue(search.description.contains("summaries, NOT the full page"))
         assertTrue(search.description.contains("call web_fetch"))
         val schema = search.parameters
         assertEquals(listOf("query"), schema["required"]!!.jsonArray.map { it.jsonPrimitive.content })
