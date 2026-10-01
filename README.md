@@ -38,6 +38,15 @@ Still no gradients: every colour is solid.
 - Conversations persist across restarts (`data/HoardStore.kt`: one JSON file in app storage, atomic writes,
   debounced + flushed when the app leaves the screen; a corrupt file is kept aside, not overwritten)
 - System prompt editing, per-session context limit, session rename/delete
+- **Conversation compaction**: `/compact [지시]` manually summarizes older history; automatic
+  compaction starts at 90% of the session context limit (설정 → 자동 압축 slider, 50–100% in 5% steps).
+  The full visible transcript is retained. Model requests start from the latest successful checkpoint
+  plus newer messages; a recent turn is kept verbatim when it fits. Repeated compaction merges the
+  earlier summary, while failed or incomplete summaries fall back to ordinary history trimming.
+  Tap a checkpoint to read/copy/remove it. Removing the latest checkpoint restores the preceding
+  checkpoint (or original history) for subsequent requests, subject to trimming/automatic compaction.
+  Context usage reflects this model-facing window. Limits below 4,000 tokens use trimming instead
+  of automatic compaction. Design and prompt research: [`docs/COMPACTION.md`](docs/COMPACTION.md).
 - Edit my message (save & regenerate), branch from a message, delete message, retry
 - Model replies render as Markdown (`ui/chat/MarkdownText.kt`, [huarangmeng/Markdown](https://github.com/huarangmeng/Markdown)):
   headings, **bold**/*italic*/~~strike~~, lists, task lists, GFM tables, quotes, code blocks with
@@ -106,7 +115,7 @@ Still no gradients: every colour is solid.
   `PermissionGate` asks for what's missing: notifications + Termux RUN_COMMAND (if Termux is installed) in one
   dialog, then Android's "All files access" screen (shared storage for the file tools).
 - Settings: theme, router (URL/token), default model (typed; blank = router's first group), Brave key,
-  remote browser (VPS host / SSH port / user / SSH key / host key check), default context.
+  remote browser (VPS host / SSH port / user / SSH key / host key check), default context, auto-compaction threshold.
 - Top floating bar: session name + live context usage
 - Background continuation: replies are produced by a `WorkManager` worker with a
   foreground notification, so leaving the app after send still finishes the reply.

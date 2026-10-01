@@ -47,7 +47,7 @@ class SlashCommandTest {
     private val goals get() = GoalService(HoardRepository.get())
 
     @Test fun matchingFollowsTheTextAndTheGoalState() {
-        assertEquals(listOf("/goal <목표>", "/goal"), SlashCommands.matching("/", null).map { it.label })
+        assertEquals(listOf("/goal <목표>", "/goal", "/compact", "/compact <지시>"), SlashCommands.matching("/", null).map { it.label })
         assertTrue("typing an objective hides the menu", SlashCommands.matching("/goal 테스트 통과", null).isEmpty())
         assertTrue("not a command", SlashCommands.matching("안녕 /goal", null).isEmpty())
         goals.create(TestData.SESSION_ID, "목표", Actor.User)
@@ -56,7 +56,10 @@ class SlashCommandTest {
         assertEquals(listOf("/goal pause"), SlashCommands.matching("/goal p", active).map { it.label })
         assertTrue("finished command: no menu", SlashCommands.matching("/goal pause", active).isEmpty())
         goals.pause(TestData.SESSION_ID, Actor.User)
-        assertEquals(listOf("/goal <목표>", "/goal", "/goal resume", "/goal clear"), SlashCommands.matching("/", goals.current(TestData.SESSION_ID)).map { it.label })
+        assertEquals(
+            listOf("/goal <목표>", "/goal", "/goal resume", "/goal clear", "/compact", "/compact <지시>"),
+            SlashCommands.matching("/", goals.current(TestData.SESSION_ID)).map { it.label }
+        )
     }
 
     @Test fun typingSlashShowsTheMenuAndTappingRunsTheCommand() {
@@ -66,7 +69,7 @@ class SlashCommandTest {
         field.performTextInput("/")
         compose.waitForIdle()
         compose.onNode(hasTestTag("slash-menu")).assertExists()
-        assertEquals(2, items())
+        assertEquals(4, items())
         // Pick "/goal <목표>", type the objective, send.
         compose.onNodeWithText("/goal <목표>", useUnmergedTree = true).performClick()
         compose.waitForIdle()
