@@ -49,13 +49,20 @@ class SkillStore(
 
     /** Set when the registry file was unreadable; kept aside, never overwritten. */
     private var registryProblem: String? = null
+    private var registryWritable = true
 
     init {
         require(workspaceRoot.mkdirs() || workspaceRoot.isDirectory) { "Cannot create skills workspace" }
         require(stateRoot.mkdirs() || stateRoot.isDirectory) { "Cannot create skills registry" }
         // A corrupt registry must never take the whole app down (every chat turn reads it):
         // keep the file aside and continue with no skills until one is reinstalled.
-        runCatching { readRegistry() }.onFailure { quarantineRegistry(it) }
+        runCatching { readRegistry() }.onFailure {
+            // Parsing can fail after some records/flags were read. None of that
+            // partial state, especially code trust, may survive recovery.
+            records.clear()
+            flags.clear()
+            quarantineRegistry(it)
+        }
         refresh()
     }
 
@@ -64,6 +71,7 @@ class SkillStore(
         val base = registryFile.baseFile
         val kept = File(base.parentFile, "registry.corrupt-${System.currentTimeMillis()}.json")
         if (!base.exists() || !base.renameTo(kept)) {
+            registryWritable = false
             registryProblem = "스킬 목록(reg)을 읽지 못해 스킬을 비활성화했습니다: ${error?.message}"
             return
         }
@@ -316,6 +324,7 @@ class SkillStore(
     }
 
     private fun writeRegistry() {
+        check(registryWritable) { "Cannot safely replace the unreadable skill registry; preserve or repair it first." }
         val json = JSONObject().put("version", 1)
             .put("skills", JSONArray(records.values.map { it.toJson() }))
             .put("flags", JSONObject().apply {
