@@ -83,6 +83,8 @@ fun ChatScreen(
 ) {
     val state by vm.uiState.collectAsState()
     val settings by vm.settings.collectAsState()
+    val routerReady by vm.routerReady.collectAsState()
+    val replying by vm.replying.collectAsState()
     val browserPreview by BrowserPreviews.target.collectAsState()
     val context = LocalContext.current
     var skillStore by remember(context) { mutableStateOf<SkillStore?>(null) }
@@ -104,6 +106,16 @@ fun ChatScreen(
     val routerModels by com.sleepysoong.hoard.data.HoardRepository.get().routerModels.collectAsState()
     val catalog = routerModels
     val session = state.session
+    val retiringState = remember(session?.id) { mutableStateOf<String?>(null) }
+    var retiringReply by retiringState
+    androidx.compose.runtime.DisposableEffect(session?.id) {
+        val retiringSession = session?.id
+        onDispose {
+            // Leaving the chat removes its old bubble too; do not abandon the
+            // user's regeneration if navigation/rotation interrupts the exit.
+            retiringState.value?.let { vm.retryFrom(it, retiringSession) }
+        }
+    }
     var showModels by rememberSaveable { mutableStateOf(false) }
     var showSettings by rememberSaveable { mutableStateOf(false) }
     var editTarget by rememberSaveable { mutableStateOf<String?>(null) }
@@ -125,6 +137,16 @@ fun ChatScreen(
     var barAnchor by remember { mutableStateOf<Rect?>(null) }
     val listState = rememberLazyListState()
     val scope = rememberCoroutineScope()
+    LaunchedEffect(retiringReply) {
+        val targetId = retiringReply ?: return@LaunchedEffect
+        androidx.compose.runtime.snapshotFlow { listState.layoutInfo.visibleItemsInfo.any { it.key == targetId } }
+            .collect { visible ->
+                if (!visible && retiringReply == targetId) {
+                    retiringReply = null
+                    vm.retryFrom(targetId, session?.id)
+                }
+            }
+    }
     val clipboard = LocalClipboard.current
 
     // Notification permission is asked at app start (PermissionGate).
@@ -246,9 +268,9 @@ fun ChatScreen(
                                 next.createdAt - msg.createdAt >= GROUP_WINDOW_MS
                             if (msg.isCompaction) {
                                 CompactionNotice(msg, onOpen = { compactionTarget = msg.id },
-                                    modifier = Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = GlassMotion.fade()).padding(top = 10.dp))
+                                     modifier = Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = null).padding(top = 10.dp))
                             } else if (msg.trigger != null) {
-                                TriggerNotice(msg, Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = GlassMotion.fade()).padding(top = 10.dp))
+                                TriggerNotice(msg, Modifier.animateItem(fadeInSpec = null, placementSpec = GlassMotion.offsetSmooth(), fadeOutSpec = null).padding(top = 10.dp))
                             } else MessageBubble(
                                 message = msg,
                                 modelName = msg.modelId?.let { id ->
@@ -259,13 +281,18 @@ fun ChatScreen(
                                 groupedWithPrevious = grouped,
                                 showFooter = footer,
                                 onLongPress = { rect -> menuTargetId = msg.id; menuAnchorRect = rect },
-                                animateEntrance = msg.id !in initialIds,
+                                 animateEntrance = msg.id !in initialIds,
+                                 exiting = msg.id == retiringReply,
+                                 onExitFinished = {
+                                     retiringReply = null
+                                     vm.retryFrom(msg.id, session?.id)
+                                 },
                                 modifier = Modifier
                                     // Neighbours glide when a message is added, deleted or regenerated.
                                     .animateItem(
                                         fadeInSpec = null,
                                         placementSpec = GlassMotion.offsetSmooth(),
-                                        fadeOutSpec = GlassMotion.fade()
+                                        fadeOutSpec = null
                                     )
                                     .padding(top = if (grouped) 2.dp else 10.dp)
                             )
@@ -304,16 +331,19 @@ fun ChatScreen(
             browserPreview?.takeIf { it.sessionId == session?.id }?.let { preview ->
                 BrowserLivePreview(preview, settings.browserPreviewQuality, vm::setBrowserPreviewQuality)
             }
+            if (!routerReady) Text("라우터 연결 후 메시지를 보낼 수 있습니다 · 설정 → 라우터",
+                style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             ChatInputBar(
                 value = vm.input,
                 onValueChange = { vm.input = it },
                 attachments = vm.attachments,
                 onAttachmentsChange = { vm.attachments = it },
                 onSend = { if (session != null) sendReply(vm.input, session.modelId) },
-                replying = state.messages.any { it.isStreaming },
+                replying = replying,
                 onStop = { vm.stopReply() },
                 goal = state.goal,
-                skills = skills
+                skills = skills,
+                sendEnabled = routerReady && retiringReply == null
             )
         }
 
@@ -351,7 +381,17 @@ fun ChatScreen(
                                 GlassSheetAction(
                                     icon = Icons.Rounded.Refresh,
                                     label = "다시 생성",
-                                    onClick = { vm.retryFrom(menuTarget.id) }
+                                    onClick = {
+                                        if (routerReady && retiringReply == null) {
+                                            session?.let { com.sleepysoong.hoard.work.ChatResponseWorker.cancel(context, it.id) }
+                                            retiringReply = menuTarget.id
+                                            // Offscreen targets cannot finish an animation.
+                                            if (listState.layoutInfo.visibleItemsInfo.none { it.key == menuTarget.id }) {
+                                                retiringReply = null
+                                                vm.retryFrom(menuTarget.id)
+                                            }
+                                        }
+                                    }
                                 )
                             )
                         }

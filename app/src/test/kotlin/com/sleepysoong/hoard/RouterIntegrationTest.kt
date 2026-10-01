@@ -289,15 +289,16 @@ class RouterIntegrationTest {
     }
 
     @Test
-    fun noRouterConfiguredSaysSoInsteadOfAnswering() {
+    fun noRouterConfiguredBlocksSendingWithoutInventingABubble() {
         h = ChatHarness()
         com.sleepysoong.hoard.engine.Engines.offline = null // the app's real no-router behaviour
         router = FakeRouter()
+        h.vm.input = "오프라인 질문"
         sendAndSettle("오프라인 질문")
-        val r = reply()
-        assertEquals("no invented answer", "", r.text)
-        assertTrue(r.errorText!!, r.errorText!!.contains("라우터가 연결되지 않았습니다"))
-        assertFalse(r.isStreaming)
+        assertTrue("no user or error bubble created", h.messages().isEmpty())
+        assertEquals("draft retained", "오프라인 질문", h.vm.input)
+        assertTrue(h.vm.goalNotice.value!!.contains("라우터가 연결되지 않았습니다"))
+        assertTrue(h.allWork().isEmpty())
         assertTrue(router.requests.isEmpty())
     }
 

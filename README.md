@@ -6,7 +6,7 @@ AI chat app shell by **sleepysoong** — https://github.com/sleepysoong/hoard
 
 Liquid-glass AI chat app (white-first + dark mode). Replies come from
 [sleepyrouter](https://github.com/sleepysoong/sleepyrouter); the app ships no sample data
-or fake replies — without a router it says so.
+or fake replies — connect the router before sending messages.
 
 ## Brand colours
 
@@ -48,6 +48,12 @@ Still no gradients: every colour is solid.
   Context usage reflects this model-facing window. Limits below 4,000 tokens use trimming instead
   of automatic compaction. Design and prompt research: [`docs/COMPACTION.md`](docs/COMPACTION.md).
 - Edit my message (save & regenerate), branch from a message, delete message, retry
+  - Regeneration finishes the old bubble's short exit before inserting the replacement; removed lazy-list
+    items are never retained as fading ghosts over the new bubble.
+  - Session menu actions retain the selected session ID after closing the menu. Deleting the last session
+    leaves an empty list instead of silently creating a replacement session.
+  - Stop is available even for a queued/network-waiting reply. It marks streaming bubbles stopped immediately,
+    cancels live coroutine/network work directly and cancels the session's persistent WorkManager queue.
 - Model replies render as Markdown (`ui/chat/MarkdownText.kt`, [huarangmeng/Markdown](https://github.com/huarangmeng/Markdown)):
   headings, **bold**/*italic*/~~strike~~, lists, task lists, GFM tables, quotes, code blocks with
   highlighting, and LaTeX (`$…$` inline, `$$…$$` block). What I type is shown verbatim.
@@ -400,7 +406,9 @@ inlined `input_text`, other files (e.g. PDF) → `input_file`. Files over 10 MB 
 reported to the model instead of silently dropped. Earlier turns only name their attachments.
 Whether a model can use `input_file` depends on the provider.
 
-With no router URL a reply fails with "라우터가 연결되지 않았습니다". Plain HTTP is allowed
+Until the configured router successfully connects, sending (including Alt+Enter), regeneration and
+save-and-regenerate are blocked before changing chat history or enqueueing work. The draft and attachments
+are preserved, and the composer shows where to connect. Plain HTTP is allowed
 (`network_security_config.xml`) because sleepyrouter is a local gateway; note it applies app-wide.
 
 Code: `engine/RouterAiEngine.kt` (HTTP + SSE, request encoding, trace parsing, error
@@ -419,6 +427,9 @@ Run only one or two classes at a time on the low-spec dev machine (see `AGENTS.m
 GitHub Actions runs the full suite, including a freshly built sleepyrouter, on every push.
 
 - `RouterIntegrationTest`, `RouterUiTest`: against `FakeRouter`, which speaks sleepyrouter's exact wire format.
+- `ChatLifecycleFlowTest`: real chat/session menus and composer → WorkManager → HTTP; covers inactive-session
+  deletion/rename, sequential regeneration, stop before the first delta/while network queued, immediate resend,
+  and offline draft/history preservation. Screenshots and transcripts: `app/build/test-artifacts/chat-lifecycle/`.
 - `CompactionFlowTest`: manual/automatic summaries, rejected or incomplete output, checkpoint invalidation,
   and preserving the checkpoint when skill context consumes the history budget.
 - `SkillFlowTest`: real local bundles through the tool loop, persisted instructions, user-only invocation,

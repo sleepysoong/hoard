@@ -6,6 +6,7 @@ import com.sleepysoong.hoard.testing.ChatHarness
 import kotlinx.coroutines.runBlocking
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TestName
@@ -70,7 +71,7 @@ class SettingsWiringTest {
     }
 
     @Test
-    fun replacementSessionAfterDeletingTheLastOneUsesDefaults() {
+    fun deletingTheLastSessionLeavesTheListEmptyAndNextCreationUsesDefaults() {
         h = ChatHarness()
         applySettings({
             SettingsStore.setDefaultModel(h.app, "hoard-1-mini")
@@ -78,6 +79,10 @@ class SettingsWiringTest {
         }) { it.defaultModel == "hoard-1-mini" && it.defaultContext == 8_000 }
 
         h.vm.deleteSession(com.sleepysoong.hoard.testing.TestData.SESSION_ID)
+        h.idle()
+        assertTrue(h.repo.sessions.value.isEmpty())
+        assertEquals(null, h.vm.uiState.value.session)
+        h.vm.newSession()
         h.idle()
         val s = h.repo.sessions.value.single()
         assertEquals("hoard-1-mini", s.modelId)

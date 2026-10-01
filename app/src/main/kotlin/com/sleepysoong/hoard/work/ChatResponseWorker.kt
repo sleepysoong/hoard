@@ -77,6 +77,24 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
 
     override suspend fun doWork(): Result {
         val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
+        val job = currentCoroutineContext()[kotlinx.coroutines.Job] ?: return Result.failure()
+        // Register before settings/skills/tools can block. WorkManager cancellation
+        // is asynchronous; the stop button must close the network call immediately.
+        synchronized(executionLock) {
+            val generation = generations[sessionId]
+            if (generation != null && generation != inputData.getLong(KEY_GENERATION, 0)) return Result.success()
+            activeJobs[id] = sessionId to job
+        }
+        return try {
+            currentCoroutineContext().ensureActive()
+            runReply()
+        } finally {
+            synchronized(executionLock) { activeJobs.remove(id) }
+        }
+    }
+
+    private suspend fun runReply(): Result {
+        val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
         val parentId = inputData.getString(KEY_PARENT) ?: return Result.failure()
         val modelId = inputData.getString(KEY_MODEL).orEmpty()
         val messageId = inputData.getString(KEY_MESSAGE) ?: ("msg-" + UUID.randomUUID().toString().take(8))
@@ -516,6 +534,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     private class TargetGone : Exception()
 
     companion object {
+        private val executionLock = Any()
+        private val activeJobs = mutableMapOf<UUID, Pair<String, kotlinx.coroutines.Job>>()
+        // An enqueue racing stop must not start a new bubble after stop marked the
+        // existing bubbles. WorkManager remains the persistent cancellation owner.
+        private val generations = mutableMapOf<String, Long>()
+        private const val KEY_GENERATION = "session_generation"
         private const val USER_STOPPED = "사용자가 중지함"
         const val KEY_SESSION = "session_id"
         const val KEY_MODEL = "model_id"
@@ -560,10 +584,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             /** [MODE_COMPACT] only: the `/compact <focus>` the user typed (capped in [Compaction]). */
             focus: String? = null
         ) {
+            val generation = synchronized(executionLock) { generations.getOrPut(sessionId) { 0L } }
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
                     workDataOf(
                         KEY_SESSION to sessionId,
+                        KEY_GENERATION to generation,
                         KEY_MODEL to modelId,
                         KEY_MESSAGE to messageId,
                         KEY_PARENT to parentId,
@@ -594,6 +620,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         }
 
         fun cancel(ctx: Context, sessionId: String) {
+            val jobs = synchronized(executionLock) {
+                generations[sessionId] = (generations[sessionId] ?: 0L) + 1L
+                activeJobs.values.filter { it.first == sessionId }.map { it.second }
+            }
             // Show the stop immediately, even if a platform/tool call takes time to
             // unwind. Preserve partial text and make the send button available again.
             val repo = HoardRepository.get()
@@ -603,6 +633,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                         thinking = it.thinking.map { step -> step.copy(running = false) })
                 }
             }
+            jobs.forEach { it.cancel(CancellationException(USER_STOPPED)) }
             WorkManager.getInstance(ctx).cancelUniqueWork(uniqueName(sessionId))
         }
 

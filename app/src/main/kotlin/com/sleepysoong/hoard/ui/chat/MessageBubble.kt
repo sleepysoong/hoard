@@ -79,7 +79,9 @@ fun MessageBubble(
     onLongPress: (Rect) -> Unit,
     modifier: Modifier = Modifier,
     /** Pop in on first composition. False for bubbles already there when the chat opened. */
-    animateEntrance: Boolean = true
+    animateEntrance: Boolean = true,
+    exiting: Boolean = false,
+    onExitFinished: () -> Unit = {}
 ) {
     val isUser = message.role == MessageRole.User
     val scheme = MaterialTheme.colorScheme
@@ -92,6 +94,14 @@ fun MessageBubble(
     }
     LaunchedEffect(message.id) {
         if (appear.value < 1f) appear.animateTo(1f, GlassMotion.bouncy())
+    }
+    val retire = remember(message.id) { Animatable(1f) }
+    val exitFinished by androidx.compose.runtime.rememberUpdatedState(onExitFinished)
+    LaunchedEffect(exiting) {
+        if (exiting) {
+            retire.animateTo(0f, GlassMotion.leave())
+            exitFinished()
+        }
     }
 
     val shape = RoundedCornerShape(
@@ -108,10 +118,10 @@ fun MessageBubble(
             // iMessage-ish entrance: new bubbles glide in from their tail corner.
             .graphicsLayer {
                 val p = appear.value
-                scaleX = 0.6f + 0.4f * p
-                scaleY = 0.6f + 0.4f * p
+                scaleX = (0.6f + 0.4f * p) * (0.92f + 0.08f * retire.value)
+                scaleY = (0.6f + 0.4f * p) * (0.92f + 0.08f * retire.value)
                 translationY = (1f - p) * 24.dp.toPx()
-                alpha = p.coerceIn(0f, 1f)
+                alpha = p.coerceIn(0f, 1f) * retire.value
                 transformOrigin = TransformOrigin(
                     pivotFractionX = if (isUser) 1f else 0f,
                     pivotFractionY = 0.85f

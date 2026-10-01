@@ -99,7 +99,9 @@ fun ChatInputBar(
     /** The session's goal: decides which /goal commands the "/" menu offers. */
     goal: com.sleepysoong.hoard.data.Goal? = null,
     modifier: Modifier = Modifier,
-    skills: List<InstalledSkill> = emptyList()
+    skills: List<InstalledSkill> = emptyList(),
+    /** Offline: retain the editable draft, but disable every send entry point. */
+    sendEnabled: Boolean = true
 ) {
     val scheme = MaterialTheme.colorScheme
     val haptics = LocalHapticFeedback.current
@@ -118,7 +120,7 @@ fun ChatInputBar(
             onAttachmentsChange(attachments + uris.map { uri -> describe(uri, uri.lastPathSegment?.substringAfterLast('/') ?: "파일") })
         }
     }
-    val canSend = value.isNotBlank() || attachments.isNotEmpty()
+    val canSend = sendEnabled && (value.isNotBlank() || attachments.isNotEmpty())
     val slash = SlashCommands.matching(value, goal, skills)
 
     GlassSurface(modifier = modifier, shape = RoundedCornerShape(28.dp), tone = GlassTone.Thick) {

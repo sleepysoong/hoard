@@ -24,6 +24,11 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
+import com.sleepysoong.hoard.engine.Engines
+import com.sleepysoong.hoard.engine.RouterConnection
+import com.sleepysoong.hoard.engine.RouterStatus
 import java.util.UUID
 
 data class SessionPreview(
@@ -86,6 +91,28 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         )
     }.stateIn(viewModelScope, SharingStarted.Eagerly, ChatUiState())
 
+    /** Include queued/network-waiting work: it must be stoppable before a bubble exists. */
+    @OptIn(kotlinx.coroutines.ExperimentalCoroutinesApi::class)
+    val replying: StateFlow<Boolean> = combine(uiState, _activeSessionId.flatMapLatest { id ->
+        androidx.work.WorkManager.getInstance(app).getWorkInfosForUniqueWorkFlow(ChatResponseWorker.uniqueName(id))
+    }) { state, work ->
+        state.messages.any { it.isStreaming } || work.any { !it.state.isFinished }
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    val routerReady: StateFlow<Boolean> = combine(settings, RouterConnection.status) { cfg, status ->
+        canGenerate(cfg.routerUrl, status)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    private fun canGenerate(url: String, status: RouterStatus): Boolean =
+        Engines.override != null || Engines.offline != null ||
+            (url.isNotBlank() && status is RouterStatus.Connected && status.url == url)
+
+    private fun requireRouter(): Boolean {
+        if (canGenerate(settings.value.routerUrl, RouterConnection.status.value)) return true
+        _goalNotice.value = "라우터가 연결되지 않았습니다 · 설정 → 라우터에서 연결하세요"
+        return false
+    }
+
     fun selectSession(id: String) { _activeSessionId.value = id }
 
     /** New sessions start from the defaults chosen in Settings. */
@@ -106,6 +133,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val session = uiState.value.session ?: return
         val clean = text.trim()
         if (clean.isEmpty() && attachments.isEmpty()) return
+        if (!requireRouter()) return
         if (attachments.isEmpty() && (clean == "/goal" || clean.startsWith("/goal "))) {
             input = ""
             goalCommand(clean.removePrefix("/goal").trim(), modelId)
@@ -139,10 +167,12 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         val session = uiState.value.session ?: return
         val clean = newText.trim()
         if (clean.isEmpty()) return
+        if (!requireRouter()) return
         val messages = repo.messagesOf(session.id)
         val idx = messages.indexOfFirst { it.id == messageId }
         val target = messages.getOrNull(idx) ?: return
         if (target.role != MessageRole.User) return
+        ChatResponseWorker.cancel(getApplication(), session.id)
         // Save & regenerate: the old reply and every later turn answered the old
         // text, so drop them and answer the edited message right after it.
         repo.replaceSessionTail(session.id, idx + 1)
@@ -177,6 +207,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun goalCommand(arg: String, modelId: String) {
         val session = uiState.value.session ?: return
         _goalNotice.value = null
+        if (arg.lowercase() !in setOf("", "pause", "clear") && !requireRouter()) return
         try {
             when (arg.lowercase()) {
                 "" -> goalSheetOpen = true
@@ -206,6 +237,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun compactCommand(focus: String, modelId: String) {
         val session = uiState.value.session ?: return
         _goalNotice.value = null
+        if (!requireRouter()) return
         val messages = repo.messagesOf(session.id)
         if (Compaction.plan(session, messages) == null) {
             _goalNotice.value = "요약할 이전 대화가 없습니다"
@@ -241,8 +273,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         repo.deleteMessage(session.id, messageId)
     }
 
-    fun retryFrom(messageId: String) {
-        val session = uiState.value.session ?: return
+    fun retryFrom(messageId: String, sessionId: String? = uiState.value.session?.id) {
+        val session = sessionId?.let(repo::sessionOf) ?: return
+        if (!requireRouter()) return
         // Act on the store, not the (possibly one frame stale) UI snapshot.
         val messages = repo.messagesOf(session.id)
         val idx = messages.indexOfFirst { it.id == messageId }
@@ -251,6 +284,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         // the target is dropped below, so later prompts must never be used.
         val parent = messages.subList(0, idx).lastOrNull { it.role == MessageRole.User && !it.isCompaction }
             ?: return
+        ChatResponseWorker.cancel(getApplication(), session.id)
         // Remove the old reply (same position) and everything after; then
         // regenerate at that same spot.
         repo.replaceSessionTail(session.id, idx)
@@ -271,18 +305,17 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         return branch.id
     }
 
-    fun renameSession(name: String) {
-        val session = uiState.value.session ?: return
-        repo.renameSession(session.id, name.ifBlank { "제목 없음" })
+    fun renameSession(name: String, sessionId: String? = uiState.value.session?.id) {
+        sessionId?.let { repo.renameSession(it, name.ifBlank { "제목 없음" }) }
     }
 
     fun deleteSession(id: String) {
         ChatResponseWorker.cancel(getApplication(), id)
         SkillRuntime.clearSession(SkillStore.get(getApplication()), id)
         repo.deleteSession(id)
-        viewModelScope.launch {
+        if (_activeSessionId.value == id) viewModelScope.launch {
             val remaining = repo.sessions.value
-            _activeSessionId.value = remaining.firstOrNull()?.id ?: createDefaultSession().id
+            _activeSessionId.value = remaining.firstOrNull()?.id.orEmpty()
         }
     }
 

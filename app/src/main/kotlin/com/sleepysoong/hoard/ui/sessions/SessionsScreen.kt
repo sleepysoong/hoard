@@ -142,13 +142,13 @@ fun SessionsScreen(
                         GlassSheetAction(
                             icon = Icons.Rounded.DriveFileRenameOutline,
                             label = "이름 바꾸기",
-                            onClick = { renameTarget = menuTargetId }
+                            onClick = { renameTarget = target.id }
                         ),
                         GlassSheetAction(
                             icon = Icons.Rounded.Delete,
                             label = "삭제",
                             destructive = true,
-                            onClick = { deleteTarget = menuTargetId }
+                            onClick = { deleteTarget = target.id }
                         )
                     ),
                     onDismiss = { menuTargetId = null; menuAnchor = null }
@@ -162,16 +162,16 @@ fun SessionsScreen(
         if (target != null) {
             RenameSessionDialog(
                 initial = target.name,
-                onConfirm = { vm.renameSession(it); renameTarget = null },
+                onConfirm = { vm.renameSession(it, target.id); renameTarget = null },
                 onDismiss = { renameTarget = null }
             )
         }
     }
-    if (deleteTarget != null) {
+    deleteTarget?.let { targetId ->
         DeleteConfirmDialog(
             title = "세션을 삭제할까요?",
             message = "이 세션의 모든 메시지가 삭제됩니다.",
-            onConfirm = { vm.deleteSession(deleteTarget!!); deleteTarget = null },
+            onConfirm = { vm.deleteSession(targetId); deleteTarget = null },
             onDismiss = { deleteTarget = null }
         )
     }
