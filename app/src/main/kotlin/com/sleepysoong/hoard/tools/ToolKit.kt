@@ -123,7 +123,8 @@ object BrowserModule : ToolModule {
         val browser = context.services.browser ?: return emptyList()
         // Screenshots go to the app workspace (browser/…), shown to the model as a workspace path.
         val ws = context.services.workspace(false)
-        return listOf(BrowserUseTool(browser, ws?.let { java.io.File(it.root, "browser") }, displayPath = { f -> ws?.relative(f) ?: f.path }))
+        return listOf(BrowserUseTool(browser, ws?.let { java.io.File(it.root, "browser") },
+            displayPath = { f -> ws?.relative(f) ?: f.path }, sessionId = context.sessionId))
     }
 }
 

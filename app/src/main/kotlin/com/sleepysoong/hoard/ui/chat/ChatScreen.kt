@@ -52,6 +52,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.sleepysoong.hoard.data.MessageRole
+import com.sleepysoong.hoard.browser.BrowserPreviews
 import com.sleepysoong.hoard.skills.SkillStore
 import com.sleepysoong.hoard.data.isCompaction
 import com.sleepysoong.hoard.ui.glass.GlassAnchoredMenu
@@ -81,6 +82,7 @@ fun ChatScreen(
     modifier: Modifier = Modifier
 ) {
     val state by vm.uiState.collectAsState()
+    val browserPreview by BrowserPreviews.target.collectAsState()
     val context = LocalContext.current
     var skillStore by remember(context) { mutableStateOf<SkillStore?>(null) }
     val skills = skillStore?.skills?.collectAsState()?.value.orEmpty()
@@ -297,6 +299,9 @@ fun ChatScreen(
 
             skillRefreshError?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            }
+            browserPreview?.takeIf { it.sessionId == session?.id }?.let { preview ->
+                BrowserLivePreview(preview)
             }
             ChatInputBar(
                 value = vm.input,

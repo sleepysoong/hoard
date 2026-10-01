@@ -2,6 +2,7 @@ package com.sleepysoong.hoard.tools
 
 import com.sleepysoong.hoard.browser.BrowserAction
 import com.sleepysoong.hoard.browser.BrowserException
+import com.sleepysoong.hoard.browser.BrowserPreviews
 import com.sleepysoong.hoard.browser.BrowserService
 import com.sleepysoong.hoard.browser.RemoteBrowser
 import kotlinx.serialization.json.JsonArray
@@ -26,7 +27,8 @@ class BrowserUseTool(
     /** Where screenshots are saved (the Hoard workspace), or null to not save them. */
     private val screenshotDir: File? = null,
     /** How a saved file is shown to the model (workspace-relative path). */
-    private val displayPath: (File) -> String = { it.path }
+    private val displayPath: (File) -> String = { it.path },
+    private val sessionId: String? = null
 ) : Tool {
     override val name = NAME
     override val title = "브라우저"
@@ -100,6 +102,7 @@ class BrowserUseTool(
 
     override suspend fun execute(args: JsonObject): JsonObject {
         val action = parse(args)
+        sessionId?.let { BrowserPreviews.show(it, browser) }
         val result = try {
             browser.execute(action)
         } catch (e: BrowserException) {

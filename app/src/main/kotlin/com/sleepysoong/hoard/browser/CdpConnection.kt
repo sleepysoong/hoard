@@ -63,8 +63,11 @@ class CdpConnection private constructor(val localPort: Int) {
         val response = try {
             withTimeout(timeoutMs) { reply.await() }
         } catch (e: TimeoutCancellationException) {
-            pending.remove(id)
             throw BrowserException("브라우저가 응답하지 않습니다 ($method, ${timeoutMs / 1000}초)")
+        } finally {
+            // A preview leaves the foreground often; cancelled frame requests must
+            // not accumulate unresolved replies in the shared CDP connection.
+            pending.remove(id)
         }
         (response["error"] as? JsonObject)?.let { err ->
             throw CdpException(method, (err["message"] as? JsonPrimitive)?.contentOrNull ?: err.toString())

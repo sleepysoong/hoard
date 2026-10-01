@@ -255,7 +255,7 @@ Android (Hoard)                                    Ubuntu VPS
 │       ├─ SshTunnelManager    │ 127.0.0.1:<port> ─► 127.0.0.1:9222                  │
 │       └─ BrowserService (CDP)│                   │                                 │
 └──────────────────────────────┘                   └─────────────────────────────────┘
-SSH = control + secure transport · CDP = browser control · VNC = human viewing only
+SSH = control + secure transport · CDP = browser control + in-app preview · VNC = desktop viewing/help
 ```
 
 **Every action** runs the same flow (`browser/RemoteBrowserManager.kt`): SSH connected? (else connect) →
@@ -315,6 +315,24 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
    aborts before authentication; changing host/port un-pins it).
 
 `browser_use` is offered once host, user, key and the pinned host key are all set.
+
+### Live preview in chat
+
+Calling `browser_use` opens a compact live browser view above the chat input in the invoking session.
+Tap it to open a full-screen, read-only viewer; close the full-screen viewer to return to chat, or close
+the compact view to stop previewing. The current tab continues updating while the preview is visible,
+including during navigation and between tool calls.
+
+- JPEG frames refresh at most twice per second over the **existing SSH/CDP connection**. There is no
+  extension, exposed CDP port, new HTTP relay, or separate login.
+- Observation never creates tabs, changes focus, runs page scripts, restarts Chrome, or blocks the
+  browser action queue. Until a connected tab is ready, the UI shows a connection/waiting state.
+- Capture and image decoding stop when the chat is hidden, the app is backgrounded, or the preview is
+  dismissed. Image decoding runs off the UI thread and the bitmap size is bounded.
+- Preview frames are ephemeral UI data: never saved as chat attachments or sent to the model. The
+  explicit `screenshot` action still saves its own image in the workspace as described below.
+- Chrome is shared across sessions: only the session most recently invoking `browser_use` gets the
+  live preview, so another chat never silently displays its browser work.
 
 ### Actions and page state
 

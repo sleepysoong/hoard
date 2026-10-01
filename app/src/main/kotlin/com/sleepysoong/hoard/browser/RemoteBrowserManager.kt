@@ -13,6 +13,9 @@ import kotlinx.serialization.json.put
 /** What the browser_use tool talks to (the tool knows nothing about SSH or CDP). */
 interface RemoteBrowser {
     suspend fun execute(action: BrowserAction): BrowserResult
+    val supportsPreview: Boolean get() = false
+    /** Read-only JPEG of the current tab; null until a real connection/page is ready. */
+    suspend fun previewFrame(): ByteArray? = null
 }
 
 /**
@@ -90,8 +93,17 @@ class RemoteBrowserManager(
     private var ssh: SshClient? = null
     private val runtime = BrowserRuntimeManager()
     private val tunnel = SshTunnelManager()
-    private var cdp: CdpConnection? = null
+    @Volatile private var cdp: CdpConnection? = null
     private val browser = BrowserService()
+
+    override val supportsPreview = true
+
+    override suspend fun previewFrame(): ByteArray? = withContext(Dispatchers.IO) {
+        if (cdp?.isOpen != true) return@withContext null
+        // Deliberately outside the action lock: long navigation/settling must not
+        // freeze the view. Never reconnect, restart Chrome or create a tab here.
+        browser.previewFrame()
+    }
 
     override suspend fun execute(action: BrowserAction): BrowserResult = lock.withLock {
         withContext(Dispatchers.IO) {
@@ -153,7 +165,10 @@ class RemoteBrowserManager(
         ssh = null
     }
 
-    fun close() = teardown()
+    fun close() {
+        BrowserPreviews.clear(this)
+        teardown()
+    }
 }
 
 /**

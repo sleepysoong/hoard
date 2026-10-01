@@ -53,7 +53,7 @@ class BrowserResult(val json: JsonObject, val screenshot: ByteArray? = null)
  * the model always holds the current element ids.
  */
 class BrowserService {
-    private lateinit var cdp: CdpConnection
+    @Volatile private lateinit var cdp: CdpConnection
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
     private class PageSession(val targetId: String, val sessionId: String) {
@@ -89,6 +89,26 @@ class BrowserService {
         synchronized(tabIds) { tabIds.clear(); nextTab = 1 }
         current = null
         sessions.clear(); docTokens.clear(); openedBy.clear()
+    }
+
+    /** Observe the already attached current tab without changing focus or element ids. */
+    suspend fun previewFrame(): ByteArray? {
+        if (!::cdp.isInitialized) return null
+        val connection = cdp
+        if (!connection.isOpen) return null
+        val target = current ?: return null
+        val page = sessions[target] ?: return null
+        val result = connection.send("Page.captureScreenshot", buildJsonObject {
+            put("format", "jpeg")
+            put("quality", 55)
+            put("captureBeyondViewport", false)
+        }, page.sessionId, timeoutMs = 3_000)
+        // A switch/reconnect can race capture. Never label the previous tab's frame
+        // as the newly active page, and keep the image payload bounded in memory.
+        if (current != target || cdp !== connection || !connection.isOpen) return null
+        val encoded = result.str("data") ?: return null
+        if (encoded.length > 6 * 1024 * 1024) throw BrowserException("미리보기 화면이 너무 큽니다")
+        return Base64.getDecoder().decode(encoded)
     }
 
     suspend fun perform(action: BrowserAction): BrowserResult = when (action) {
