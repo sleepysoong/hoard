@@ -166,6 +166,48 @@ class ChatLifecycleFlowTest {
         shot("queue-cancelled")
     }
 
+    @Test fun deletingActiveSessionWhileStreamingViaUiDoesNotCrash() {
+        router.enqueue(FakeRouter.Reply.Sse(listOf(FakeRouter.created(), FakeRouter.delta("부분 응답", 1)), stallMs = 20_000))
+        openChat()
+        compose.onNode(hasSetTextAction()).performTextInput("삭제할 세션의 질문")
+        compose.onNodeWithContentDescription("보내기").performClick()
+        waitFor { repo.messagesOf(TestData.SESSION_ID).any { it.text == "부분 응답" && it.isStreaming } }
+        compose.activity.onBackPressedDispatcher.onBackPressed()
+        compose.waitForIdle()
+        compose.onNodeWithText(TestData.SESSION_NAME).performTouchInput { longClick() }
+        compose.onNodeWithText("삭제").performClick()
+        compose.onNodeWithText("삭제").performClick()
+        waitFor { repo.sessionOf(TestData.SESSION_ID) == null }
+        compose.onNodeWithText("다른 세션").assertExists()
+        compose.onNodeWithContentDescription("새 세션").performClick()
+        compose.onNode(hasSetTextAction()).assertExists()
+        shot("active-deleted-while-streaming")
+    }
+
+    @Test fun deletingSessionWithUndeletableSkillStateStillDeletesIt() {
+        // Corrupted skill-runtime storage: the session file slot is a directory, so
+        // File.delete() fails. Cleanup failure must never keep the session (or crash).
+        val store = runBlocking { kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) { com.sleepysoong.hoard.skills.SkillStore.get(app) } }
+        val root = store.workspaceRoot.canonicalFile
+        val slot = java.io.File(
+            java.io.File(root.parentFile, "skill-runtime/${com.sleepysoong.hoard.skills.SkillShell.hash(root.path.toByteArray()).take(24)}"),
+            "${com.sleepysoong.hoard.skills.SkillShell.hash(TestData.SESSION_ID.toByteArray())}.json"
+        )
+        slot.mkdirs()
+        java.io.File(slot, "junk").writeText("x")
+        // The skill store is a process singleton: remove the corruption after this
+        // test so it cannot make later replies in this JVM fail to load context.
+        try {
+            compose.onNodeWithText(TestData.SESSION_NAME).performTouchInput { longClick() }
+            compose.onNodeWithText("삭제").performClick()
+            compose.onNodeWithText("삭제").performClick()
+            waitFor { repo.sessionOf(TestData.SESSION_ID) == null }
+            compose.onNodeWithText(TestData.SESSION_NAME).assertDoesNotExist()
+        } finally {
+            slot.deleteRecursively()
+        }
+    }
+
     @Test fun emptyChatHasNoHeroOrSuggestionsAndComposerStillSends() {
         router.enqueue(FakeRouter.Reply.Sse(listOf(FakeRouter.created(), FakeRouter.delta("첫 답변", 1), FakeRouter.completed("첫 답변"))))
         compose.onNodeWithContentDescription("새 세션").performClick()

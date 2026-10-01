@@ -355,7 +355,9 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteSession(id: String) {
         if (editingSessionId == id) cancelEditing()
         ChatResponseWorker.cancel(getApplication(), id)
-        SkillRuntime.clearSession(SkillStore.get(getApplication()), id)
+        // Stale/corrupt skill storage must never block (or crash) session deletion.
+        runCatching { SkillRuntime.clearSession(SkillStore.get(getApplication()), id) }
+            .onFailure { android.util.Log.w("ChatViewModel", "cannot clear skill state for $id", it) }
         repo.deleteSession(id)
         if (_activeSessionId.value == id) viewModelScope.launch {
             val remaining = repo.sessions.value
