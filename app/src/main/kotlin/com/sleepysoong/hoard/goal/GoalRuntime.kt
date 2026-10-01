@@ -30,8 +30,9 @@ object GoalRuntime {
         g.verification?.let { append("<verification>\n").append(it).append("\n</verification>\n") }
         g.constraints?.let { append("<constraints>\n").append(it).append("\n</constraints>\n") }
         g.boundaries?.let { append("<boundaries>\n").append(it).append("\n</boundaries>\n") }
-        append("<runtime>\nturns_used: ").append(g.usedTurns).append("\nturns_remaining: ").append((g.maxTurns - g.usedTurns).coerceAtLeast(0))
-        append("\ntokens_used: ").append(g.usedTokens).append(" of ").append(g.maxTokens).append("\n</runtime>\n</active_goal>\n")
+        append("<runtime>\nturns_used: ").append(g.usedTurns)
+        append("\ntokens_used: ").append(g.usedTokens).append("\n</runtime>\n</active_goal>\n")
+        append("There is no fixed turn, token or time limit for this goal. Do not stop just because many turns have elapsed. ")
         append("Audit the objective against concrete evidence. If incomplete, take the next useful action. ")
         append("If verified complete, use the goal tool to complete it with the evidence. ")
         append("If progress is impossible under the current constraints, report the blocker with goal \"block\".")
@@ -59,7 +60,6 @@ sealed class ContinuationDecision {
     object Continue : ContinuationDecision()
     /** Spin prevention: the continuation did nothing observable. */
     object Suppress : ContinuationDecision()
-    data class BudgetLimited(val which: String) : ContinuationDecision()
 }
 
 class ContinuationEvaluator(private val goals: GoalService) {
@@ -72,7 +72,6 @@ class ContinuationEvaluator(private val goals: GoalService) {
         if (g.continuationSuppressed) return ContinuationDecision.Stop("suppressed")
         if (activity.workQueued) return ContinuationDecision.Stop("user input queued")
         if (activity.wakeupPending) return ContinuationDecision.Stop("waiting for wakeup")
-        goals.budgetExceeded(g)?.let { return ContinuationDecision.BudgetLimited(it) }
         return ContinuationDecision.Continue
     }
 }

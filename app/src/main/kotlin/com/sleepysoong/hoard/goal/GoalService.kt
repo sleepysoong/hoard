@@ -10,11 +10,11 @@ enum class Actor { User, Model, System }
 
 class GoalException(message: String) : Exception(message)
 
-/** Runtime limits for automatic continuation (defaults per the design; overridable in tests). */
+/** Legacy persisted limits: retained for compatibility, no longer stop goal execution. */
 data class GoalBudget(
-    val maxAutoTurns: Int = 8,
-    val maxTokens: Int = 150_000,
-    val maxWallTimeMs: Long = 30 * 60_000L
+    val maxAutoTurns: Int = Int.MAX_VALUE,
+    val maxTokens: Int = Int.MAX_VALUE,
+    val maxWallTimeMs: Long = Long.MAX_VALUE
 )
 
 /**
@@ -139,12 +139,7 @@ class GoalService(
     }
 
     /** Which budget ran out, if any. */
-    fun budgetExceeded(g: Goal, now: Long = clock()): String? = when {
-        g.usedTurns >= g.maxTurns -> "${g.maxTurns} automatic turns"
-        g.usedTokens >= g.maxTokens -> "${g.maxTokens} tokens"
-        g.activatedAt != null && now - g.activatedAt >= g.maxDurationMs -> "${g.maxDurationMs / 60_000} minutes"
-        else -> null
-    }
+    fun budgetExceeded(g: Goal, now: Long = clock()): String? = null
 
     fun markBudgetLimited(sessionId: String): Goal? = update(sessionId) {
         if (it.status == GoalStatus.Active) it.copy(status = GoalStatus.BudgetLimited) else it

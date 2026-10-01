@@ -84,8 +84,8 @@ class GoalTool(private val sessionId: String, private val goals: GoalService) : 
             g.boundaries?.let { put("boundaries", it) }
             g.blockedReason?.let { put("blocked_reason", it) }
             g.evidence?.let { put("evidence", it) }
-            put("turns_used", g.usedTurns); put("turns_max", g.maxTurns)
-            put("tokens_used", g.usedTokens); put("tokens_max", g.maxTokens)
+            put("turns_used", g.usedTurns)
+            put("tokens_used", g.usedTokens)
         }
     }
 }

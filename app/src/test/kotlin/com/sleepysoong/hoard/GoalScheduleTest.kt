@@ -100,7 +100,7 @@ class GoalScheduleTest {
         goals.suppressContinuation("s1", false)
         // Budget: automatic turns, tokens, wall time.
         repeat(3) { goals.recordTurn("s1", 10, automatic = true) }
-        assertTrue(ev.decide("s1", progressed, idle) is ContinuationDecision.BudgetLimited)
+        assertEquals(ContinuationDecision.Continue, ev.decide("s1", progressed, idle))
         goals.markBudgetLimited("s1")
         assertEquals(GoalStatus.BudgetLimited, goals.current("s1")!!.status)
         assertTrue("budget_limited is not completed", ev.decide("s1", progressed, idle) is ContinuationDecision.Stop)
@@ -108,13 +108,13 @@ class GoalScheduleTest {
         goals.resume("s1", Actor.User)
         assertEquals(0, goals.current("s1")!!.usedTurns)
         goals.recordTurn("s1", 5_000, automatic = false)
-        assertTrue("tokens", ev.decide("s1", progressed, idle) is ContinuationDecision.BudgetLimited)
+        assertEquals("tokens do not end goals", ContinuationDecision.Continue, ev.decide("s1", progressed, idle))
     }
 
     @Test fun wallTimeBudget() {
         goals.create("s1", "목표", Actor.Model)
         now += 61_000
-        assertEquals("1 minutes", goals.budgetExceeded(goals.current("s1")!!))
+        assertNull("time does not end goals", goals.budgetExceeded(goals.current("s1")!!))
     }
 
     @Test fun forkSnapshotsTheOpenGoal() {

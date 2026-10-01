@@ -123,21 +123,19 @@ class GoalScheduleFlowTest {
         assertEquals(4, bodies().size)
     }
 
-    @Test fun budgetEndsWithASummaryTurnNotCompletion() {
+    @Test fun legacyTurnLimitDoesNotStopWorkBeforeModelCompletes() {
         GoalService.defaultBudget = GoalBudget(maxAutoTurns = 2)
         start()
-        repeat(3) {
+        repeat(11) {
             router.enqueue(sse(toolCallCompleted(Triple("t$it", "goal", """{"action":"get"}"""))), sse(completed("작업 $it")))
         }
-        router.enqueue(sse(completed("요약: 진행 2/3, 남은 일 있음")))
+        router.enqueue(sse(toolCallCompleted(Triple("done", "goal", """{"action":"complete","evidence":"All requested work verified after more than eight turns."}"""))), sse(completed("검증 완료")))
         h.vm.send("/goal 큰 작업", emptyList(), "coding")
         h.awaitReplies(timeoutMs = 30_000)
         val b = bodies()
-        assertEquals("user turn + 2 automatic turns (2 requests each) + 1 summary", 7, b.size)
-        assertEquals("none", b.last()["tool_choice"]!!.jsonPrimitive.content)
-        assertEquals(GoalRuntime.BUDGET_SUMMARY_MESSAGE, b.last().inputTexts().last())
-        assertEquals(GoalStatus.BudgetLimited, GoalService(h.repo).current(sid)!!.status)
-        assertEquals("요약: 진행 2/3, 남은 일 있음", h.messages().last().text)
+        assertEquals("work continues beyond legacy limit", 24, b.size)
+        assertEquals(GoalStatus.Completed, GoalService(h.repo).current(sid)!!.status)
+        assertEquals("검증 완료", h.messages().last().text)
     }
 
     @Test fun userControlsPauseResumeClear() {

@@ -48,6 +48,8 @@ Still no gradients: every colour is solid.
   Context usage reflects this model-facing window. Limits below 4,000 tokens use trimming instead
   of automatic compaction. Design and prompt research: [`docs/COMPACTION.md`](docs/COMPACTION.md).
 - Edit my message (save & regenerate), branch from a message, delete message, retry
+  - Long-press → **수정** edits in the bottom composer, not a popup. Check saves and regenerates;
+    X/Back cancels. Both restore the draft and attachments that were present before editing.
   - Regeneration finishes the old bubble's short exit before inserting the replacement; removed lazy-list
     items are never retained as fading ghosts over the new bubble.
   - Session menu actions retain the selected session ID after closing the menu. Deleting the last session
@@ -103,10 +105,11 @@ Still no gradients: every colour is solid.
 - **Goals** (`goal/`): a thread-scoped persistent completion contract. `/goal <objective>` (or the model's
   `goal` tool, action create/get/complete/block) sets one per session; after each settled turn the
   continuation engine (in `ChatResponseWorker.afterTurn`, outside the agent loop) queues a hidden continuation
-  turn while the goal is active, the session is idle (nothing queued, no pending wakeup) and budget remains
-  (8 auto turns / 150k tokens / 30 min). Completion needs concrete evidence; a continuation with no tool call
-  and no goal change suppresses further ones (spin guard); an exhausted budget → `budget_limited` + one
-  summary turn, never "completed". Goal context is injected as ephemeral developer text, never stored in the
+   turn while the goal is active and the session is idle (nothing queued, no pending wakeup).
+   There is **no fixed turn, token or wall-time cap**: the AI completes the goal with concrete evidence,
+   or reports a blocker; the user can stop/pause it. A continuation with no tool call and no goal change
+   waits for input (spin guard), without completing the goal. Legacy budget-limited goals can be resumed.
+   Goal context is injected as ephemeral developer text, never stored in the
   conversation. Pause/resume/clear are user-only (goal bar → sheet, `/goal pause|resume|clear`); the stop
   button pauses; branching snapshots the goal (`parentGoalId`). Goals persist with the conversation store.
 - **Schedules** (`schedule/`): durable `at` / `every` (anchored, no drift) / 5-field `cron` + IANA zone,

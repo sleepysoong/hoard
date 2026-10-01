@@ -483,13 +483,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 parentId = messageId, needsNetwork = needsNetwork, mode = MODE_CONTINUE
             )
             ContinuationDecision.Suppress -> goals.suppressContinuation(sessionId, true)
-            is ContinuationDecision.BudgetLimited -> {
-                goals.markBudgetLimited(sessionId)
-                enqueue(
-                    applicationContext, sessionId, inputData.getString(KEY_MODEL).orEmpty(), "msg-" + UUID.randomUUID().toString().take(8),
-                    parentId = messageId, needsNetwork = needsNetwork, mode = MODE_BUDGET_SUMMARY
-                )
-            }
             is ContinuationDecision.Stop -> Unit
         }
     }

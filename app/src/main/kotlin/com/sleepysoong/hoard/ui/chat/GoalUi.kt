@@ -79,11 +79,11 @@ fun GoalBar(goal: Goal?, notice: String?, onOpen: () -> Unit, modifier: Modifier
 private fun statusLabel(g: Goal): Pair<String, Color> {
     val scheme = MaterialTheme.colorScheme
     return when (g.status) {
-        GoalStatus.Active -> (if (g.continuationSuppressed) "목표 대기 · ${g.usedTurns}/${g.maxTurns}턴" else "목표 진행 중 · ${g.usedTurns}/${g.maxTurns}턴") to scheme.primary
+        GoalStatus.Active -> (if (g.continuationSuppressed) "목표 대기" else "목표 진행 중") to scheme.primary
         GoalStatus.Paused -> "목표 일시정지" to scheme.onSurfaceVariant
         GoalStatus.Blocked -> "목표 막힘" to scheme.error
         GoalStatus.Completed -> "목표 달성" to scheme.tertiary
-        GoalStatus.BudgetLimited -> "예산 소진" to scheme.error
+        GoalStatus.BudgetLimited -> "목표 재개 필요" to scheme.onSurfaceVariant
         GoalStatus.Cleared -> "목표 해제" to scheme.onSurfaceVariant
     }
 }
@@ -106,7 +106,7 @@ fun GoalSheet(goal: Goal?, onPause: () -> Unit, onResume: () -> Unit, onClear: (
             goal.evidence?.let { WorkCard("근거", it, scheme.onSurface, collapsedBodyLines = 6) }
             WorkCard(
                 "사용량",
-                "자동 턴 ${goal.usedTurns}/${goal.maxTurns} · 토큰 ${goal.usedTokens}/${goal.maxTokens} · 최대 ${goal.maxDurationMs / 60_000}분" +
+                "자동 턴 ${goal.usedTurns} · 사용 토큰 ${goal.usedTokens} · AI가 검증 완료하면 종료" +
                     (if (goal.continuationSuppressed) "\n진전 없는 자동 턴이라 자동 진행을 멈춤 · 메시지를 보내면 재개" else ""),
                 scheme.onSurface
             )
