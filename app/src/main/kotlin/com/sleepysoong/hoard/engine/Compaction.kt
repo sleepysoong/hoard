@@ -253,9 +253,16 @@ object Compaction {
         }
         append(clip(neutralize(m.text.trim()), capTokens))
         if (m.role != MessageRole.Assistant && m.attachments.isNotEmpty()) {
-            append("\n[Attached: ").append(m.attachments.joinToString { "${it.name} (${it.mime})" }).append(']')
+            // Attachment names/MIME types are external data too: they must not close the
+            // transcript or inject another apparent speaker via a newline in a filename.
+            val attached = m.attachments.joinToString {
+                "${it.name} (${it.mime})".replace(WHITESPACE, " ").trim()
+            }
+            append("\n[Attached: ").append(neutralize(attached)).append(']')
         }
-        if (m.role == MessageRole.Assistant) m.errorText?.let { append("\n(reply cut off: ").append(it).append(')') }
+        if (m.role == MessageRole.Assistant) m.errorText?.let {
+            append("\n(reply cut off: ").append(neutralize(it.replace(WHITESPACE, " ").trim())).append(')')
+        }
     }
 
     private fun speaker(m: ChatMessage): String = when {
