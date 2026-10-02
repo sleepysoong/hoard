@@ -58,8 +58,15 @@ class NativeChatFlowTest {
             notes.appendLine("HTTP: ${router?.requests}")
             notes.appendLine("request: ${router?.requestBody}")
             notes.appendLine(AppLog.tail.value.joinToString("\n"))
-            val out = File(context.getExternalFilesDir(null), "test-artifacts").apply { mkdirs() }
-            File(out, "NativeChatFlowTest.${name.methodName}.txt").writeText(notes.toString())
+            // AGP uninstalls the APK after testing, deleting externalFilesDir too.
+            // A dedicated logcat stream survives cleanup and is collected by CI.
+            android.util.Log.i("HoardNativeArtifact", "BEGIN ${name.methodName}")
+            notes.toString().lineSequence().forEach { line ->
+                line.chunked(3_000).ifEmpty { listOf("") }.forEach {
+                    android.util.Log.i("HoardNativeArtifact", it)
+                }
+            }
+            android.util.Log.i("HoardNativeArtifact", "END ${name.methodName}")
         } finally {
             sessionId?.let {
                 ChatResponseWorker.cancel(context, it)
@@ -103,7 +110,7 @@ class NativeChatFlowTest {
             assertEquals("Android native response", answer.text)
             assertTrue(answer.completionTokens > 0)
             assertEquals(turn + 1, server.requests.count { it == "POST /hoard/v1/responses" })
-            assertTrue(server.requestBody.contains("질문 $turn"))
+            assertTrue("request carries the actual prompt: ${server.requestBody}", server.requestBody.contains("질문 $turn"))
         }
     }
 
@@ -148,13 +155,30 @@ class NativeChatFlowTest {
                     val request = line().substringBeforeLast(" HTTP/")
                     requests += request
                     var size = 0
+                    var chunked = false
                     while (true) {
                         val header = line()
                         if (header.isEmpty()) break
                         if (header.startsWith("Content-Length:", true)) size = header.substringAfter(':').trim().toInt()
+                        if (header.startsWith("Transfer-Encoding:", true)) chunked = header.substringAfter(':').trim().equals("chunked", true)
                     }
                     check(size in 0..1_048_576)
-                    val body = ByteArray(size).also(input::readFully).decodeToString()
+                    // RouterAiEngine's streaming RequestBody has no known length;
+                    // OkHttp uses HTTP/1.1 chunked encoding on the actual device.
+                    val body = if (chunked) {
+                        val bytes = ByteArrayOutputStream()
+                        while (true) {
+                            val count = line().substringBefore(';').trim().toInt(16)
+                            check(count >= 0 && count <= 1_048_576 - bytes.size())
+                            if (count == 0) {
+                                while (line().isNotEmpty()) { /* trailers */ }
+                                break
+                            }
+                            bytes.write(ByteArray(count).also(input::readFully))
+                            check(line().isEmpty()) { "chunk must end with CRLF" }
+                        }
+                        bytes.toByteArray().decodeToString()
+                    } else ByteArray(size).also(input::readFully).decodeToString()
                     val (type, response) = when (request) {
                         "GET /v1/models" -> "application/json" to """{"object":"list","data":[{"id":"coding","object":"model","owned_by":"test"}]}"""
                         "POST /hoard/v1/responses" -> {

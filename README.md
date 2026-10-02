@@ -450,7 +450,8 @@ zero installed skills, and braced/indexed skill substitution plus persisted
 context. No test fixture ships in the production app. On a provisioned device,
 run `scripts/gradlew-lowspec.sh :app:connectedDebugAndroidTest`; do not start an
 unaccelerated emulator on the low-spec dev machine. Release CI preserves Android
-test reports, transcripts and logcat in the **hoard-native-smoke** artifact.
+test reports, `native-smoke/transcripts.txt` and logcat in the **hoard-native-smoke**
+artifact. Transcripts use a dedicated logcat tag so APK uninstall cannot delete them.
 
 - `RouterIntegrationTest`, `RouterUiTest`, `RouterRefreshRaceTest` (stale/overlapping connection probes):
   against fake sleepyrouter servers.
