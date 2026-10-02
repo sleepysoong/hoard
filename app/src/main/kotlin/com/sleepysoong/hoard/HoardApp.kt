@@ -16,6 +16,14 @@ class HoardApp : Application(), Configuration.Provider {
     override fun onCreate() {
         super.onCreate()
         com.sleepysoong.hoard.diagnostics.AppLog.init(this)
+        // A silent crash/starvation must not go unrecorded: log it before the system handler.
+        val previous = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, error ->
+            runCatching {
+                com.sleepysoong.hoard.diagnostics.AppLog.e("Crash", "uncaught on ${thread.name}", error)
+            }
+            previous?.uncaughtException(thread, error)
+        }
         com.sleepysoong.hoard.diagnostics.AppLog.i("HoardApp", "app start")
         com.sleepysoong.hoard.data.HoardRepository.init(java.io.File(filesDir, "hoard-store.json"))
         // Scheduler recovery off the main thread: re-arm active schedules (catch-up policy
