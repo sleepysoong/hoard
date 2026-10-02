@@ -69,6 +69,7 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Produces a reply from sleepyrouter in the background
@@ -206,7 +207,17 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             val skillStore = SkillStore.get(applicationContext)
             withContext(Dispatchers.IO) { skillStore.refresh() }
             AppLog.i(TAG, "skills loaded ok skills=${skillStore.skills.value.size} (${System.currentTimeMillis() - prepStart}ms)")
-            val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
+            AppLog.i(TAG, "runtime ctor…")
+            val runtime = withTimeoutOrNull(15_000L) {
+                SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
+            } ?: run {
+                val dump = Thread.getAllStackTraces().filter { (t, _) -> t.name != "main" }
+                    .entries.joinToString("\n") { (t, s) ->
+                        "${t.name}: " + s.take(3).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
+                    }.take(6_000)
+                AppLog.e(TAG, "skill runtime init stalled 15s:\n$dump")
+                throw IllegalStateException("스킬 런타임 준비가 15초를 넘었습니다 · 로그를 확인하세요")
+            }
             AppLog.i(TAG, "runtime ok loadedContext=${runtime.context().length}b")
             // A skill `model:` must be resolved against the real catalog before anything runs.
             val needsCatalog = skillFork || skillStore.skills.value.any { it.enabled && it.document.model?.let { it != "inherit" } == true }

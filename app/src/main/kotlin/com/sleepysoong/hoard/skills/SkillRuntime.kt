@@ -1,6 +1,7 @@
 package com.sleepysoong.hoard.skills
 
 import com.sleepysoong.hoard.termux.TermuxExecutor
+import com.sleepysoong.hoard.diagnostics.AppLog
 import com.sleepysoong.hoard.tools.ToolException
 import com.sleepysoong.hoard.tools.SkillToolPolicy
 import kotlinx.coroutines.Dispatchers
@@ -655,8 +656,10 @@ class SkillRuntime(
             return File(directory, "${SkillShell.hash(sessionId.toByteArray())}.json")
         }
         private fun readSession(store: SkillStore, sessionId: String): LinkedHashMap<String, JsonObject> = synchronized(storageLock) {
+            AppLog.d("SkillRuntime", "readSession lock")
             val file = sessionFile(store, sessionId)
             if (!file.exists()) return@synchronized linkedMapOf()
+            AppLog.d("SkillRuntime", "readSession exists ${file.length()}b")
             if (file.length() > 4L * MAX_TOTAL) throw ToolException("Stored skill session exceeds its size limit; clear loaded skills for this conversation.")
             val entries = try { Json.parseToJsonElement(file.readText()).jsonObject["skills"]!!.jsonArray } catch (e: Exception) {
                 throw ToolException("Cannot load persisted skill context: ${e.message}. Clear loaded skills for this conversation.")
@@ -672,6 +675,7 @@ class SkillRuntime(
                 if (body.length > MAX_BODY || size > MAX_TOTAL) throw ToolException("Stored skill content exceeds its context limit.")
                 result[id] = entry
             }
+            AppLog.d("SkillRuntime", "readSession done ${result.size}")
             result
         }
         private fun writeSession(store: SkillStore, sessionId: String, entries: Map<String, JsonObject>) {
