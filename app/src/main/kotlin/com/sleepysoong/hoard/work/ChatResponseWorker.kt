@@ -202,8 +202,10 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         return try {
             promote("Hoard가 생각 중…")
             AppLog.i(TAG, "placeholders ok session=${sessionId.takeLast(6)} model=$model")
+            val prepStart = System.currentTimeMillis()
             val skillStore = SkillStore.get(applicationContext)
             withContext(Dispatchers.IO) { skillStore.refresh() }
+            AppLog.i(TAG, "skills loaded ok skills=${skillStore.skills.value.size} (${System.currentTimeMillis() - prepStart}ms)")
             val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
             // A skill `model:` must be resolved against the real catalog before anything runs.
             val needsCatalog = skillFork || skillStore.skills.value.any { it.enabled && it.document.model?.let { it != "inherit" } == true }
@@ -245,7 +247,9 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                     }
                 }
             }
+            AppLog.i(TAG, "hooks/slash ok (${System.currentTimeMillis() - prepStart}ms)")
             val completionContext = withContext(Dispatchers.IO) { SkillForkDelivery.context(applicationContext, sessionId) }
+            AppLog.i(TAG, "fork records ok (${System.currentTimeMillis() - prepStart}ms)")
             val directContext = directSkillResult?.takeIf { it.string("context") == "fork" }?.let {
                 "[The user's slash skill has already been invoked. Do not invoke it again for this request. " +
                     "Report its actual task/result status, and use skill_task to read a queued background task.]\n$it"
@@ -268,6 +272,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 else built.onWorkspaceFile = SkillPathActivation(skillStore, runtime)::onFile
                 built
             }
+            AppLog.i(TAG, "tools ready tools=${registry.tools.size} (${System.currentTimeMillis() - prepStart}ms)")
             val engine = Engines.forRouter(
                 cfg.routerUrl,
                 AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
