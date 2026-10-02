@@ -53,6 +53,12 @@ jobs:
       - name: Install compile SDK
         run: sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
 
+      - name: Check skill patterns with native ICU (Android regex dialect)
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y libicu-dev
+          python3 scripts/check-skill-regex.py
+
       - name: Run tests (incl. real sleepyrouter)
         env:
           SLEEPYROUTER_BIN: ${{ runner.temp }}/sleepyrouter

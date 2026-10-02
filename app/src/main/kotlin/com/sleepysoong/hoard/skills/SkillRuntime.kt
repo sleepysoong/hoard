@@ -584,7 +584,9 @@ class SkillRuntime(
         private val TOOL_HOOK_EVENTS = setOf("PreToolUse", "PostToolUse", "PostToolUseFailure")
         private val HOOK_EVENTS = TOOL_HOOK_EVENTS + setOf("UserPromptSubmit", "UserPromptExpansion", "PostToolBatch", "Stop", "StopFailure")
         private val DYNAMIC = Regex("(?m)^[ \\t]*```![ \\t]*\\r?\\n([\\s\\S]*?)^[ \\t]*```[ \\t]*\\r?$|(?<!\\S)!`([^`\\r\\n]+)`")
-        private val PLACEHOLDER = Regex("\\$\\{CLAUDE_(?:SESSION_ID|SKILL_DIR|PROJECT_DIR|PLUGIN_ROOT|PLUGIN_DATA|EFFORT)}|\\${'$'}ARGUMENTS\\[\\d+]|\\${'$'}ARGUMENTS\\b|\\$\\d+|\\$[A-Za-z_][A-Za-z0-9_]*")
+        // Escape BOTH delimiters: Android's ICU rejects bare closing } / ], even
+        // though OpenJDK (and therefore Robolectric) accepts them as literals.
+        private val PLACEHOLDER = Regex("\\$\\{CLAUDE_(?:SESSION_ID|SKILL_DIR|PROJECT_DIR|PLUGIN_ROOT|PLUGIN_DATA|EFFORT)\\}|\\${'$'}ARGUMENTS\\[\\d+\\]|\\${'$'}ARGUMENTS\\b|\\$\\d+|\\$[A-Za-z_][A-Za-z0-9_]*")
         private val ALIASES = mapOf("Bash" to "termux_exec", "Read" to "read_file", "Write" to "write_file", "Edit" to "edit_file", "Glob" to "glob", "Grep" to "grep", "WebFetch" to "web_fetch", "WebSearch" to "web_search", "Skill" to "skill")
         private fun canonicalHookInput(input: JsonObject): JsonObject = buildJsonObject {
             input.forEach { (key, value) -> put(key, value) }

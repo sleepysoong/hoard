@@ -435,6 +435,23 @@ stack. Each test writes a conversation transcript to `app/build/test-artifacts/`
 Run only one or two classes at a time on the low-spec dev machine (see `AGENTS.md`).
 GitHub Actions runs the full suite, including a freshly built sleepyrouter, on every push.
 
+Robolectric uses OpenJDK regex, **not Android's ICU regex**. Run
+`python3 scripts/check-skill-regex.py` (requires `libicu-dev`) to exercise the actual
+skill placeholder/dynamic-command patterns with native ICU. Its evidence is
+`app/build/test-artifacts/skill-native-regex.txt`. A bare closing delimiter once
+passed all JVM tests but threw `ExceptionInInitializerError` on Android, leaving
+chat at `skills loaded ok`. WorkManager captured the error; neither the uncaught
+handler nor the stall watchdog reported it. The worker now records the causal
+stack and stops the bubble for initialization/linkage failures without retrying.
+
+Publishing an APK is also gated on `NativeChatFlowTest` running in an Android 35
+emulator: real WorkManager, tools, HTTP/SSE, two consecutive plain replies with
+zero installed skills, and braced/indexed skill substitution plus persisted
+context. No test fixture ships in the production app. On a provisioned device,
+run `scripts/gradlew-lowspec.sh :app:connectedDebugAndroidTest`; do not start an
+unaccelerated emulator on the low-spec dev machine. Release CI preserves Android
+test reports, transcripts and logcat in the **hoard-native-smoke** artifact.
+
 - `RouterIntegrationTest`, `RouterUiTest`, `RouterRefreshRaceTest` (stale/overlapping connection probes):
   against fake sleepyrouter servers.
 - `AttachmentTest`: attachment encoding including bounded reads (oversize streams are rejected
@@ -446,6 +463,8 @@ GitHub Actions runs the full suite, including a freshly built sleepyrouter, on e
   and preserving the checkpoint when skill context consumes the history budget.
 - `SkillFlowTest`: real local bundles through the tool loop, persisted instructions, user-only invocation,
   code-trust revocation on helper edits, unsafe YAML isolation, and corrupt-registry recovery.
+- `WorkerFailureFlowTest`: initial and subsequent class-loading failures finish their
+  bubbles, retain causal diagnostics, and never replay side effects automatically.
 - `RealSleepyrouterTest` (opt-in): runs the **real** sleepyrouter binary in front of fake upstreams.
   ```bash
   (cd ../sleepyrouter && go build -o /tmp/opencode/sleepyrouter-bin ./cmd/sleepyrouter)

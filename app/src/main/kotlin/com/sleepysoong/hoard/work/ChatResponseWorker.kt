@@ -69,7 +69,6 @@ import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withTimeout
-import kotlinx.coroutines.withTimeoutOrNull
 
 /**
  * Produces a reply from sleepyrouter in the background
@@ -78,8 +77,8 @@ import kotlinx.coroutines.withTimeoutOrNull
 class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
     /**
-     * A stall never disappears silently: after a stage sits for [thresholdMs], this
-     * daemon thread dumps every worker thread's stack into AppLog (repeating).
+     * Periodically record an active worker's current stage and thread stacks.
+     * This is diagnostic only, not a time limit on model/goal execution.
      * Plain blocking calls (file IO, monitors) can't be interrupted by coroutine
      * cancellation — the watchdog lives outside coroutines on purpose.
      */
@@ -130,6 +129,21 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         return try {
             currentCoroutineContext().ensureActive()
             runReply().also { AppLog.i(TAG, "finish session=${sessionId.takeLast(6)} result=${it::class.simpleName}") }
+        } catch (e: CancellationException) {
+            AppLog.i(TAG, "cancelled session=${sessionId.takeLast(6)} stage=${currentStage?.get()}")
+            throw e
+        } catch (e: LinkageError) {
+            // A static Regex failure is ExceptionInInitializerError, NOT Exception.
+            // WorkManager captures it in its Future (the uncaught handler never runs),
+            // and finally stops our watchdog. Explicitly finish the orphan bubble.
+            failUnhandled(e)
+        } catch (e: Exception) {
+            // Covers setup/cleanup outside runReply's normal router retry boundary.
+            failUnhandled(e)
+        } catch (e: Error) {
+            // VM/resource failures are not recoverable; record, but do not swallow.
+            AppLog.e(TAG, "fatal worker error session=${sessionId.takeLast(6)} stage=${currentStage?.get()}", e)
+            throw e
         } finally {
             watchdog.stop()
             synchronized(executionLock) { activeJobs.remove(id) }
@@ -139,6 +153,32 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     /** Current prep stage name, shared to the stall watchdog (updated as runReply progresses). */
     @Volatile private var currentStage: java.util.concurrent.atomic.AtomicReference<String>? = null
     private fun stage(name: String) = currentStage?.set(name)
+
+    private fun failUnhandled(error: Throwable): Result {
+        val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
+        val cause = generateSequence(error) { it.cause?.takeUnless { next -> next === it } }.take(8).last()
+        val reason = "앱 실행 오류 · ${cause.javaClass.simpleName}: ${cause.message.orEmpty().take(400)}"
+        AppLog.e(TAG, "work failed session=${sessionId.takeLast(6)} stage=${currentStage?.get()} retry=false", error)
+        val repo = HoardRepository.get()
+        inputData.getString(KEY_MESSAGE)?.let { messageId ->
+            repo.updateMessage(sessionId, messageId) {
+                // A concurrent user stop must retain its own reason and partial content.
+                if (!it.isStreaming) it else it.copy(isStreaming = false, errorText = reason,
+                    thinking = it.thinking.map { step -> step.copy(running = false) })
+            }
+            if (inputData.getBoolean(KEY_SKILL_FORK, false)) {
+                runCatching { deliverSkillResult(sessionId, messageId) }
+                    .onFailure { AppLog.e(TAG, "failed worker result delivery", it) }
+            }
+        }
+        inputData.getString(KEY_RUN)?.let { runId ->
+            runCatching { WorkManagerScheduler.services(applicationContext).second.onRunFinished(runId, RunStatus.Failed, error = reason) }
+                .onFailure { AppLog.e(TAG, "failed worker run bookkeeping", it) }
+        }
+        repo.flush()
+        // Initialization/implementation errors are permanent. Never replay tool effects.
+        return Result.failure()
+    }
 
     private suspend fun runReply(): Result {
         val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
@@ -249,8 +289,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             val skillStore = SkillStore.get(applicationContext)
             withContext(Dispatchers.IO) { skillStore.refresh() }
             AppLog.i(TAG, "skills loaded ok skills=${skillStore.skills.value.size} (${System.currentTimeMillis() - prepStart}ms)")
+            stage("termux bridge init")
+            val termux = TermuxBridge(applicationContext)
             stage("skill-runtime init")
-            val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
+            val runtime = SkillRuntime(skillStore, termux, sessionId, allowShell = allowed.termux)
+            stage("skill-runtime context")
             AppLog.i(TAG, "runtime ok loadedContext=${runtime.context().length}b")
             // A skill `model:` must be resolved against the real catalog before anything runs.
             val needsCatalog = skillFork || skillStore.skills.value.any { it.enabled && it.document.model?.let { it != "inherit" } == true }
@@ -262,6 +305,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             if (skillFork) runtime.resumeTurn()
             // A fork is a new context, not a recursive worker chain inheriting the parent's history.
             if (!skillFork) runtime.fork = SkillForkExecutor(applicationContext, cfg, session, allowed, repo)::execute
+            stage("prompt hooks+slash")
             var directSkillResult: JsonObject? = null
             val promptHookContext = mutableListOf<String>()
             if (mode == MODE_REPLY && !skillFork) {
@@ -305,6 +349,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 listOf(runtime.context(), completionContext, directContext, promptHookContext.joinToString("\n\n"))
                     .filter { it.isNotBlank() }.joinToString("\n\n").takeIf { it.isNotBlank() }
             )
+            stage("tool registry")
             val registry = ToolKit.registry(
                 ToolContext(
                     sessionId = sessionId,

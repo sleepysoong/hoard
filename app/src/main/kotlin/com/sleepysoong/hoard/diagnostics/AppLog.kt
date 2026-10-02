@@ -43,25 +43,27 @@ object AppLog {
         File(store?.parentFile, "hoard.log.1").delete()
     }
 
-    private fun write(level: Char, tag: String, msg: String, tr: Throwable?) {
-        val line = "${time.format(Date())} $level/$tag: ${redact(msg)}" +
-            (tr?.let { " " + redact("${it::class.simpleName}: ${it.message}") } ?: "")
+    private fun write(level: Char, tag: String, msg: String, tr: Throwable?) = synchronized(lock) {
+        // SimpleDateFormat is not thread-safe; formatting belongs under the lock too.
+        val line = "${time.format(Date())} $level/$tag[${Thread.currentThread().name.takeLast(24)}]: ${redact(msg)}" +
+            (tr?.let { "\n" + redact(it.stackTraceToString()).take(12_000) } ?: "")
+        // Use the same redacted causal stack in logcat and in-app copying. Passing
+        // the original Throwable to Log would bypass credential masking.
         when (level) {
             'D' -> Log.d(TAG, "$tag: $line")
-            'I' -> Log.i(TAG, "$tag: $line", tr)
-            'W' -> Log.w(TAG, "$tag: $line", tr)
-            else -> Log.e(TAG, "$tag: $line", tr)
+            'I' -> Log.i(TAG, "$tag: $line")
+            'W' -> Log.w(TAG, "$tag: $line")
+            else -> Log.e(TAG, "$tag: $line")
         }
-        synchronized(lock) {
-            _tail.value = (_tail.value + line).takeLast(MAX_TAIL_LINES)
-            val f = store ?: return
-            runCatching {
-                if (f.length() > MAX_FILE_BYTES) {
-                    File(f.parentFile, "hoard.log.1").let { old -> old.delete(); f.renameTo(old) }
-                }
-                f.appendText(line + "\n")
+        _tail.value = (_tail.value + line).takeLast(MAX_TAIL_LINES)
+        val f = store ?: return@synchronized
+        runCatching {
+            if (f.length() > MAX_FILE_BYTES) {
+                File(f.parentFile, "hoard.log.1").let { old -> old.delete(); f.renameTo(old) }
             }
+            f.appendText(line + "\n")
         }
+        Unit
     }
 
     /** Never persist credentials or private keys. */

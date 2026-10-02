@@ -15,6 +15,7 @@ concurrency:
 jobs:
   release:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     permissions:
       contents: write
 
@@ -69,6 +70,33 @@ jobs:
 
       - name: Build Signed Release APK
         run: ./gradlew :app:assembleRelease --no-daemon
+
+      # A green Robolectric run is not sufficient: it uses OpenJDK regex, not ICU.
+      # Gate publishing on the actual Android worker/network/skill startup flow.
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+
+      - name: Run native Android chat smoke test
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/run-native-smoke.sh
+
+      - name: Upload native Android smoke evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoard-native-smoke
+          path: |
+            app/build/native-smoke/
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
+          retention-days: 14
 
       - name: Name APK after the version
         run: |
