@@ -254,7 +254,7 @@ GlassHost가 기록하는 건 단색 배경뿐이다. 흰 배경을 굴절시키
 | 토글이 리퀴드가 아님 | 썸이 평소엔 흰 불투명(Kyant 원본은 누를 때만 유리) | `glassAtRest`: 평소에도 서리 낀 유리 + 풀 스페큘러 림 |
 | "테스트/제거"가 리퀴드가 아님 | 그냥 파란/빨간 텍스트 링크 | `GlassPillButton`(틴트 글래스 캡슐) |
 | 입력창 첨부 칩·슬래시 메뉴 | `background(surfaceContainerHigh)` 불투명 | 각각 Thin 글래스 캡슐 / Regular 글래스 카드 |
-| 도구·설정 그룹 카드 | `IOSGroupedSection`이 불투명 흰 `Surface` | `GlassSurface`로 |
+| 도구·설정 그룹 카드 | `GlassGroupedSection`이 불투명 흰 `Surface` | `GlassSurface`로 |
 
 > 규칙: **글래스 표면 위에 `background()`로 불투명 면을 올리지 않는다.** 필요하면 그
 > 요소 자체를 Thin 글래스로 만든다.
@@ -307,15 +307,15 @@ Kyant 카탈로그 원본(`LiquidToggle.kt`, `LiquidBottomTabs.kt`, `LiquidSlide
 | 분류 | 컴포넌트 | 쓰는 곳 |
 | --- | --- | --- |
 | 기반 | `GlassTheme`, `GlassHost`, `glassMaterial`, `GlassTokens`, `GlassTone` | 전체 |
-| 표면 | `GlassSurface`, `GlassCard`, `IOSGroupedSection`(=GlassSurface) | 카드, 그룹 |
+| 표면 | `GlassSurface`, `GlassCard`, `GlassGroupedSection`(=GlassSurface) | 카드, 그룹 |
 | 상단 바 | `GlassFloatingBar(title, subtitle, onTitleClick, navigationIcon, actions)` | 세션·도구·설정·채팅 |
 | 하단 바 | `GlassBottomBar` + `GlassTabItem` | 탭 |
 | 버튼 | `GlassButton` / `GlassSecondaryButton` / `GlassCapsuleButton` / `GlassIconButton` / `GlassPillButton` | |
 | 입력 | `GlassTextField`(filled), `GlassTokenField`(숫자·"토큰"·범위 검증) | 팝업, 설정 |
-| 리퀴드 컨트롤 | `GlassSwitch`, `IOSSegmentedControl`, `GlassSlider` | 도구, 설정 (`GlassSlider`: 설정 · 자동 압축) |
+| 리퀴드 컨트롤 | `GlassSwitch`, `GlassSegmentedControl`, `GlassSlider` | 도구, 설정 (`GlassSlider`: 설정 · 자동 압축) |
 | 팝업 | `GlassAnchoredOverlay`(내부), `GlassPopup`, `GlassPopupRow`, `GlassPopupDivider`, `GlassAnchoredMenu` | 모든 팝업 |
 | 모션 | `GlassMotion`, `liquidPress`, `liquidClickable`, `HoardTransitions`, `screenCanvas` | 전체 |
-| 기타 | `IOSSectionHeader`, `IOSRowDivider`, `IOSTypingDots`, `GlassAnimatedVisibility`, `GlassEmptyState` | |
+| 기타 | `GlassSectionHeader`, `GlassRowDivider`, `GlassTypingDots`, `GlassAnimatedVisibility`, `GlassEmptyState` | |
 
 현재 **호출하는 곳이 없는** 것: `GlassFilterChip`, `GlassBadge`, `GlassModalBottomSheet`/`GlassBottomSheetPanel`/`SheetGrabber`,
 `LargeTitle`/`CollapsingLargeTitle`. 되살릴 땐 11.4 수준으로 리퀴드화한 뒤 쓴다 — `GlassSlider`가 그렇게
@@ -384,7 +384,7 @@ blur가 빠지고 lens·스페큘러·내부 그림자가 들어와 투명한 �
 - **layerBlock은 안에서 읽은 스냅샷 상태가 바뀔 때만 다시 돈다**(`drawBackdrop` = `graphicsLayer(layerBlock)` + …,
   2.0.1 AAR에서 확인). `Animatable.velocity`는 상태가 아니라서 `value`를 같이 읽어야 매 프레임 늘어남이 갱신된다.
 
-**세그먼트** `IOSSegmentedControl`(높이 44dp) — 하단 탭 바와 같은 구조(Kyant LiquidBottomTabs):
+**세그먼트** `GlassSegmentedControl`(높이 44dp) — 하단 탭 바와 같은 구조(Kyant LiquidBottomTabs):
 ```text
 트랙      glassMaterial(Capsule, surface, Thick)                 ← 탭 바와 같은 재질
 라벨 사본  alpha(0) · clearAndSetSemantics · layerBackdrop(labels) · drawBehind(pillTint)
@@ -477,7 +477,7 @@ IME가 떠 있으면 하단 탭 바를 숨긴다.
 
 ## 17. 모션 그래머 — `GlassMotion`
 
-애플처럼: **도착은 살짝 넘쳤다 안착, 퇴장은 빠르고 안 튐, 누르는 동안은 손가락을 따른다.**
+모션 규칙: **도착은 살짝 넘쳤다 안착, 퇴장은 빠르고 안 튐, 누르는 동안은 손가락을 따른다.**
 
 ```kotlin
 object GlassMotion {

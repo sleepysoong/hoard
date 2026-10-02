@@ -84,10 +84,10 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 
 /*
- * Liquid glass controls (iOS 26), modelled on Kyant's catalog LiquidToggle.
+ * Liquid glass controls, modelled on Kyant's catalog LiquidToggle.
  *
  * Shared idea — the "liquid thumb":
- *   at rest   → a solid, softly shadowed capsule (reads like the classic iOS thumb)
+ *   at rest   → a solid, softly shadowed capsule
  *   pressed   → it swells and turns into clear glass: blur fades out, lens refraction,
  *               ambient rim highlight and inner shadow fade in, and it refracts the
  *               track underneath (the track is recorded into its own layer).
@@ -99,7 +99,7 @@ import kotlin.math.roundToInt
 
 private val Capsule = RoundedCornerShape(50)
 
-/** Track colours shared by the switch and the slider: iOS system-fill grey, Hoard matcha when on / filled. */
+/** Track colours shared by the switch and the slider: neutral grey, Hoard matcha when on / filled. */
 private fun liquidAccent(dark: Boolean): Color = if (dark) HoardMatchaLight else HoardMatcha
 
 private fun liquidTrackOff(dark: Boolean): Color =
@@ -122,7 +122,7 @@ private fun Modifier.liquidThumb(
     /**
      * Glass at rest too: a frosted lens that shows the track through it, with a
      * specular rim. Off = Kyant's original (solid white at rest, glass only when
-     * pressed), which reads as the old opaque iOS knob.
+     * pressed), which reads as an opaque knob.
      */
     glassAtRest: Boolean = false,
     /**
@@ -200,7 +200,7 @@ private fun Modifier.liquidThumb(
 }
 
 /**
- * iOS 26 liquid switch. Tap toggles; the thumb can also be dragged. While the
+ * Liquid switch. Tap toggles; the thumb can also be dragged. While the
  * finger is down the thumb swells into clear glass refracting the (green) track.
  */
 @Composable
@@ -345,7 +345,7 @@ private fun sliderValue(fraction: Float, range: ClosedFloatingPointRange<Float>)
     range.start + (range.endInclusive - range.start) * fraction
 
 /**
- * iOS 26 liquid slider in [GlassSwitch]'s grammar, modelled on Kyant's catalog LiquidSlider:
+ * Liquid slider in [GlassSwitch]'s grammar, modelled on Kyant's catalog LiquidSlider:
  *  - a 6dp capsule track (the switch's off grey, matcha fill) recorded into its own layer;
  *  - a 40×24dp thumb that is glass at rest and refracts it (`liquidThumb`), swells to 1.5×
  *    while the finger is down and stretches with speed.
@@ -508,7 +508,7 @@ fun GlassSlider(
         // The thumb's centre travels over [thumbW/2, width − thumbW/2], so it never leaves the
         // component. The track spans the full width (lined up with the rest of the card) and the
         // fill ends at width·f, which is always under the thumb (thumbW·f from its leading edge):
-        // outside the thumb it reads exactly like iOS — tint up to the thumb, grey after — and it
+        // outside the thumb it shows tint up to the thumb, grey after — and it
         // is empty at the minimum and full at the maximum. Ending the fill at the thumb's centre
         // instead would leave a tint stub showing through the glass thumb at 0.
         val travel = if (constraints.hasBoundedWidth) (maxWidth - thumbW).coerceAtLeast(0.dp) else 0.dp
@@ -559,7 +559,7 @@ fun GlassSlider(
 }
 
 /**
- * iOS 26 liquid segmented control, built like Kyant's LiquidBottomTabs (and our tab bar):
+ * Liquid segmented control, built like Kyant's LiquidBottomTabs (and our tab bar):
  *  - track: a lifted glass capsule (same material as the floating tab bar)
  *  - pill: tinted glass (primaryContainer) filling the track with a 3dp inset; while
  *    pressed it swells and becomes a clear lens with a specular rim
@@ -569,7 +569,7 @@ fun GlassSlider(
  *    dragged, release snaps to the nearest segment
  */
 @Composable
-fun IOSSegmentedControl(
+fun GlassSegmentedControl(
     options: List<String>,
     selectedIndex: Int,
     onSelect: (Int) -> Unit,

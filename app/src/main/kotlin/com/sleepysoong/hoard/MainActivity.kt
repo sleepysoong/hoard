@@ -171,7 +171,7 @@ class MainActivity : ComponentActivity() {
                     NavHost(
                         navController = nav,
                         startDestination = "sessions",
-                        // iOS push: chat slides in from the right over a slightly receding
+                        // Push: chat slides in from the right over a slightly receding
                         // list; Back reverses it. Tabs swap with a soft scale-fade instead.
                         enterTransition = { HoardTransitions.enter(initialState.destination.route, targetState.destination.route) },
                         exitTransition = { HoardTransitions.exit(initialState.destination.route, targetState.destination.route) },

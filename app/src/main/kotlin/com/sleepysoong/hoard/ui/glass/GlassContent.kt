@@ -49,16 +49,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import com.sleepysoong.hoard.ui.theme.IOSSegmentThumbDark
 
-/** iOS Large Title. */
+/** Large page title. */
 @Composable
 fun LargeTitle(text: String, modifier: Modifier = Modifier) {
     Text(text, style = MaterialTheme.typography.displaySmall, modifier = modifier)
 }
 
 /**
- * iOS large-title collapse: 34pt bold shrinks into a 17pt inline title as the
+ * Large-title collapse: 34pt bold shrinks into a 17pt inline title as the
  * content scrolls up. Drive it with the scroll offset of the page content.
  */
 class LargeTitleCollapseState {
@@ -106,9 +105,9 @@ fun CollapsingLargeTitle(
     )
 }
 
-/** iOS section header: small gray label above a grouped section. */
+/** Small gray label above a grouped section. */
 @Composable
-fun IOSSectionHeader(text: String, modifier: Modifier = Modifier) {
+fun GlassSectionHeader(text: String, modifier: Modifier = Modifier) {
     Text(
         text.uppercase(),
         style = MaterialTheme.typography.labelMedium,
@@ -117,9 +116,9 @@ fun IOSSectionHeader(text: String, modifier: Modifier = Modifier) {
     )
 }
 
-/** iOS inset-grouped container: solid card, 12dp corners, content rows inside. */
+/** Inset-grouped container with content rows inside a shared card. */
 @Composable
-fun IOSGroupedSection(
+fun GlassGroupedSection(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
@@ -130,9 +129,9 @@ fun IOSGroupedSection(
     }
 }
 
-/** iOS separator with 16dp leading inset. */
+/** Separator with 16dp leading inset. */
 @Composable
-fun ColumnScope.IOSRowDivider() {
+fun ColumnScope.GlassRowDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(start = 16.dp),
         thickness = 0.5.dp,
@@ -161,9 +160,9 @@ fun GlassAnimatedVisibility(
     ) { content() }
 }
 
-/** iMessage-style typing indicator: three pulsing dots. */
+/** Typing indicator: three pulsing dots. */
 @Composable
-fun IOSTypingDots(modifier: Modifier = Modifier) {
+fun GlassTypingDots(modifier: Modifier = Modifier) {
     val transition = rememberInfiniteTransition(label = "typing")
     val t by transition.animateFloat(
         initialValue = 0f,

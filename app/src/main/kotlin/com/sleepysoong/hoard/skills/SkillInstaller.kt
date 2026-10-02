@@ -382,7 +382,8 @@ class SkillInstaller(private val store: SkillStore) {
         repeat(4) {
             if (File(root, "SKILL.md").isFile || File(root, ".claude-plugin/plugin.json").isFile ||
                 File(root, "skills").isDirectory || File(root, ".claude").isDirectory) return root
-            val children = root.listFiles().orEmpty().filter { it.name != "__MACOSX" && it.name != ".DS_Store" }
+            // Ignore generic archive metadata and hidden sidecars when peeling wrappers.
+            val children = root.listFiles().orEmpty().filter { !it.name.startsWith("__") && !it.name.startsWith('.') }
             if (children.size != 1 || !children[0].isDirectory) return root
             root = children[0]
         }

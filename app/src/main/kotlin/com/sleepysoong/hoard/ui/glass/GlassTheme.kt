@@ -60,7 +60,7 @@ object GlassTokens {
     val touchMin: Dp = 44.dp
     val barHeight: Dp = 64.dp
     val hairline: Dp = 0.5.dp
-    /** iOS modal buttons: full-width, 54dp, separated from content. */
+    /** Modal buttons: full-width, 54dp, separated from content. */
     val modalActionHeight: Dp = 54.dp
     /** Max width of every popup (menus, pickers, dialogs). */
     val popupWidth: Dp = 360.dp

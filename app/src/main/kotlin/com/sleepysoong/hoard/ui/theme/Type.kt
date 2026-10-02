@@ -19,7 +19,7 @@ val Pretendard = FontFamily(
 /** 자간 -5% (Pretendard official tracking rule). */
 private fun track(sizeSp: Float): TextUnit = -(sizeSp * 0.05f).sp
 
-/** Apple-like type scale in Pretendard with -5% letter spacing. */
+/** Hoard type scale in Pretendard with -5% letter spacing. */
 val HoardTypography = Typography(
     displaySmall = TextStyle( // Large Title 34
         fontFamily = Pretendard,

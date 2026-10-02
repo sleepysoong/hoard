@@ -13,7 +13,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
+import com.sleepysoong.hoard.ui.glass.GlassSegmentedControl
 import com.sleepysoong.hoard.ui.theme.HoardTheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -38,7 +38,7 @@ class ThemeContrastTest {
     private fun selectedSegmentContrast(appDark: Boolean, name: String): Double {
         compose.setContent {
             HoardTheme(darkTheme = appDark) {
-                IOSSegmentedControl(
+                GlassSegmentedControl(
                     options = listOf("시스템", "라이트", "다크"),
                     selectedIndex = 0,
                     onSelect = {},

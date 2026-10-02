@@ -48,7 +48,7 @@ import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.formatElapsed
 import com.sleepysoong.hoard.ui.glass.GlassMotion
 import com.sleepysoong.hoard.ui.glass.GlassTone
-import com.sleepysoong.hoard.ui.glass.IOSTypingDots
+import com.sleepysoong.hoard.ui.glass.GlassTypingDots
 import com.sleepysoong.hoard.ui.glass.glassMaterial
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -64,7 +64,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.animation.core.Animatable
 
 /**
- * Messenger-grade bubble: content-sized (never full width), iMessage geometry.
+ * Content-sized chat bubble (never full width) with rounded corners and a tail.
  * My messages are solid system blue; Hoard's are frosted liquid glass so the
  * wallpaper refracts through them. Long-press hands off to the glass action
  * sheet rendered by ChatScreen — no buttons are pinned under the bubble.
@@ -116,7 +116,7 @@ fun MessageBubble(
     Box(
         modifier
             .fillMaxWidth()
-            // iMessage-ish entrance: new bubbles glide in from their tail corner.
+            // New bubbles glide in from their tail corner.
             .graphicsLayer {
                 val p = appear.value
                 scaleX = (0.6f + 0.4f * p) * (0.92f + 0.08f * retire.value)
@@ -137,7 +137,7 @@ fun MessageBubble(
             // Model name sits on the footer line, not above the bubble.
 
             // Hoard bubble = liquid glass (frosted neutral so it reads on white);
-            // my bubble = solid iOS blue.
+            // Outgoing bubble uses a solid accent fill.
             val bubbleModifier = if (isUser) {
                 Modifier
                     .clip(shape)
@@ -189,7 +189,7 @@ fun MessageBubble(
                 if (!isUser && message.thinking.isNotEmpty()) WorkPanel(message.thinking, textColor)
 
                 if (message.text.isEmpty() && message.isStreaming) {
-                    IOSTypingDots(Modifier.padding(vertical = 6.dp))
+                    GlassTypingDots(Modifier.padding(vertical = 6.dp))
                 } else if (message.text.isNotEmpty()) {
                     if (isUser) {
                         // What I typed is shown verbatim.

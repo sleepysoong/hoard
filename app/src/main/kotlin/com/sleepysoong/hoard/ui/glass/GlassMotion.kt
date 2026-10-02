@@ -24,10 +24,10 @@ import kotlinx.coroutines.launch
 
 /**
  * The app's motion grammar — one physical system for every press, popup, screen
- * and bubble, tuned like iOS: things arrive with a soft overshoot, leave quickly
+ * and bubble: things arrive with a soft overshoot, leave quickly
  * without bounce, and follow the finger while pressed.
  *
- * Springs are described the way Apple does (response ≈ how long, damping ≈ how
+ * Springs use response (≈ how long) and damping (≈ how
  * bouncy); never use raw tween for things that move — only for pure fades/colours.
  */
 object GlassMotion {
@@ -49,10 +49,10 @@ object GlassMotion {
     fun sizeSmooth(): SpringSpec<IntSize> = spring(dampingRatio = 0.86f, stiffness = 420f, visibilityThreshold = IntSize(1, 1))
     fun offsetBouncy(): SpringSpec<IntOffset> = spring(dampingRatio = 0.72f, stiffness = 380f, visibilityThreshold = IntOffset(1, 1))
 
-    /** Leaving the screen: quick ease-in, no bounce (Apple dismissals never wobble). */
+    /** Leaving the screen: quick ease-in, no bounce. */
     fun leave(): FiniteAnimationSpec<Float> = TweenSpec(170, easing = CubicBezierEasing(0.4f, 0f, 1f, 1f))
 
-    /** Finger lifted: springs back past 1.0 and settles — the iOS rebound. */
+    /** Finger lifted: springs back past 1.0 and settles. */
     fun release(): SpringSpec<Float> = spring(dampingRatio = 0.5f, stiffness = 600f, visibilityThreshold = SCALE_THRESHOLD)
 
     /**
@@ -80,7 +80,7 @@ object GlassMotion {
 private const val HOVER_SCALE = 1.02f
 
 /**
- * iOS press physics for anything tappable: sinks to [pressedScale] while the
+ * Press physics for anything tappable: sinks to [pressedScale] while the
  * finger is down (fast, no bounce), then springs back past 1.0 and settles on
  * release; with a mouse/stylus it swells and brightens slightly on hover.
  * Reads the same [interactionSource] the clickable uses.

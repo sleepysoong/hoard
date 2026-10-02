@@ -81,11 +81,11 @@ import java.util.UUID
 private val ControlSize = 48.dp // Material minimum touch target
 
 /**
- * iMessage-grade composer.
+ * Chat composer.
  *
  * Every control is the same 44dp box on a shared bottom baseline, so the attach
  * buttons, the text field and the send button line up exactly. The field has no
- * container of its own — it sits directly on the glass bar like iOS.
+ * container of its own — it sits directly on the shared bar.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable

@@ -185,7 +185,7 @@ fun formatElapsed(ms: Long): String = when {
     else -> String.format("%d분 %d초", ms / 60_000, (ms % 60_000) / 1000)
 }
 
-/** Apple-style relative timestamp for list rows. Day boundaries are calendar days in the local zone. */
+/** Relative timestamp for list rows. Day boundaries are calendar days in the local zone. */
 fun formatRelativeTime(epochMs: Long, now: Long = System.currentTimeMillis()): String {
     val diff = (now - epochMs).coerceAtLeast(0L)
     val minute = 60_000L

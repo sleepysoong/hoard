@@ -36,7 +36,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 
 /**
- * Primary action button — iOS-style filled glass pill (primary container tint).
+ * Primary action button — filled glass pill (primary container tint).
  * 50dp default height, liquid press. All call sites should use this instead
  * of building their own button; it keeps the visual grammar consistent.
  */
@@ -186,7 +186,7 @@ fun GlassFilterChip(
 }
 
 /**
- * iOS-style field: solid system-gray fill, 12dp corners, no outline and no
+ * Text field: solid neutral-gray fill, 12dp corners, no outline and no
  * underline. The label floats *inside* the fill (a filled TextField) — an
  * outlined field would cut a notch into the fill for the label.
  * Fills the available width by default so stacked fields line up.

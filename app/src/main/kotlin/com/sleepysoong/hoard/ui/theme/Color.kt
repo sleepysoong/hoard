@@ -3,8 +3,7 @@ package com.sleepysoong.hoard.ui.theme
 import androidx.compose.ui.graphics.Color
 
 /**
- * iOS system palette. Solid colors only — no gradients anywhere in the app.
- * Chrome (bars, sheets, tab bar) is liquid glass; content controls are iOS-solid.
+ * Hoard palette. Solid colors only — no gradients anywhere in the app.
  */
 /*
  * Hoard key colours, from the mascot (app icon): matcha body + cocoa face.
@@ -22,24 +21,24 @@ val HoardMatchaLight = Color(0xFFB4D866)
 val HoardMatchaDeep = Color(0xFF5E7A24)
 val HoardMatchaPale = Color(0xFFE4F0CB)
 val HoardMatchaNight = Color(0xFF2E3E17)
-val IOSRedLight = Color(0xFFFF3B30)
-val IOSRedDark = Color(0xFFFF453A)
+val HoardRedLight = Color(0xFFFF3B30)
+val HoardRedDark = Color(0xFFFF453A)
 
 // Light: white-first. The canvas is pure white — glass carries the depth.
-val IOSGroupedBgLight = Color(0xFFFFFFFF)
-val IOSCardLight = Color(0xFFFFFFFF)
-val IOSFieldGrayLight = Color(0xFFE5E5EA)
-val IOSSeparatorLight = Color(0xFFC6C6C8)
-val IOSSecondaryLabelLight = Color(0xFF6C6C70)
+val HoardGroupedBgLight = Color(0xFFFFFFFF)
+val HoardCardLight = Color(0xFFFFFFFF)
+val HoardFieldGrayLight = Color(0xFFE5E5EA)
+val HoardSeparatorLight = Color(0xFFC6C6C8)
+val HoardSecondaryLabelLight = Color(0xFF6C6C70)
 
 // Dark: black base + elevated cards.
-val IOSGroupedBgDark = Color(0xFF000000)
-val IOSCardDark = Color(0xFF1C1C1E)
-val IOSFieldGrayDark = Color(0xFF38383A)
-val IOSSeparatorDark = Color(0xFF38383A)
-val IOSSecondaryLabelDark = Color(0xFFAEAEB2)
-val IOSSegmentThumbDark = Color(0xFF636366)
+val HoardGroupedBgDark = Color(0xFF000000)
+val HoardCardDark = Color(0xFF1C1C1E)
+val HoardFieldGrayDark = Color(0xFF38383A)
+val HoardSeparatorDark = Color(0xFF38383A)
+val HoardSecondaryLabelDark = Color(0xFFAEAEB2)
+val HoardSegmentThumbDark = Color(0xFF636366)
 
-// iMessage bubbles.
-val IOSIncomingLight = Color(0xFFE5E5EA)
-val IOSIncomingDark = Color(0xFF262629)
+// Incoming message bubbles.
+val HoardIncomingLight = Color(0xFFE5E5EA)
+val HoardIncomingDark = Color(0xFF262629)

@@ -25,7 +25,7 @@ import com.sleepysoong.hoard.ui.glass.GlassPopup
 import com.sleepysoong.hoard.ui.glass.GlassPopupDivider
 import com.sleepysoong.hoard.ui.glass.GlassPopupRow
 import com.sleepysoong.hoard.ui.glass.GlassTone
-import com.sleepysoong.hoard.ui.glass.IOSTypingDots
+import com.sleepysoong.hoard.ui.glass.GlassTypingDots
 import com.sleepysoong.hoard.ui.glass.glassMaterial
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 
@@ -61,7 +61,7 @@ fun CompactionNotice(message: ChatMessage, onOpen: () -> Unit, modifier: Modifie
                 maxLines = 1
             )
             if (message.isStreaming) {
-                IOSTypingDots()
+                GlassTypingDots()
             } else {
                 val info = message.compaction
                 Text(
@@ -102,7 +102,7 @@ fun CompactionSheet(message: ChatMessage, onCopy: () -> Unit, onRemove: () -> Un
         Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (message.isStreaming) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    IOSTypingDots()
+                    GlassTypingDots()
                     Text("요약을 만드는 중입니다", style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
                 }
             }

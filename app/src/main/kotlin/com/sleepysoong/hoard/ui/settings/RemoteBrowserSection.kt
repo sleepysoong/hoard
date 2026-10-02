@@ -38,8 +38,8 @@ import com.sleepysoong.hoard.data.SettingsStore
 import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassTextField
-import com.sleepysoong.hoard.ui.glass.IOSRowDivider
-import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
+import com.sleepysoong.hoard.ui.glass.GlassRowDivider
+import com.sleepysoong.hoard.ui.glass.GlassSegmentedControl
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -121,10 +121,10 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
             modifier = Modifier.testTag("browser-user")
         )
 
-        IOSRowDivider()
+        GlassRowDivider()
         // ---- how to log in: an SSH key (recommended) or a password
         val passwordMode = settings.browserAuthMethod == "password"
-        IOSSegmentedControl(
+        GlassSegmentedControl(
             options = listOf("SSH 키", "비밀번호"),
             selectedIndex = if (passwordMode) 1 else 0,
             onSelect = { i ->
@@ -235,7 +235,7 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
             }
         }
 
-        IOSRowDivider()
+        GlassRowDivider()
         // ---- host key + connection check
         val loginWhat = if (settings.browserAuthMethod == "password") "비밀번호" else "SSH 키"
         val loginHint = if (settings.browserAuthMethod == "password") "비밀번호를 먼저 저장하세요" else "SSH 키를 먼저 저장하거나 만드세요"

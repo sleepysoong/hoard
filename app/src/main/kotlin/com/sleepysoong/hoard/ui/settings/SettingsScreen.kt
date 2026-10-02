@@ -55,10 +55,10 @@ import com.sleepysoong.hoard.data.parseContextLimit
 import com.sleepysoong.hoard.ui.glass.GlassTokenField
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.GlassTokens
-import com.sleepysoong.hoard.ui.glass.IOSGroupedSection
-import com.sleepysoong.hoard.ui.glass.IOSRowDivider
-import com.sleepysoong.hoard.ui.glass.IOSSectionHeader
-import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
+import com.sleepysoong.hoard.ui.glass.GlassGroupedSection
+import com.sleepysoong.hoard.ui.glass.GlassRowDivider
+import com.sleepysoong.hoard.ui.glass.GlassSectionHeader
+import com.sleepysoong.hoard.ui.glass.GlassSegmentedControl
 import com.sleepysoong.hoard.ui.glass.GlassFloatingBar
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.launch
@@ -85,9 +85,9 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
 
-        IOSSectionHeader("화면 스타일")
-        IOSGroupedSection {
-            IOSSegmentedControl(
+        GlassSectionHeader("화면 스타일")
+        GlassGroupedSection {
+            GlassSegmentedControl(
                 options = listOf("시스템", "라이트", "다크"),
                 selectedIndex = themeIndex,
                 onSelect = { scope.launch { SettingsStore.setTheme(ctx, listOf("system", "light", "dark")[it]) } },
@@ -95,14 +95,14 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        IOSSectionHeader("라우터")
-        IOSGroupedSection {
+        GlassSectionHeader("라우터")
+        GlassGroupedSection {
             RouterSection(settings.routerUrl, settings.routerToken)
         }
 
         val routerModels by HoardRepository.get().routerModels.collectAsState()
-        IOSSectionHeader("기본 모델")
-        IOSGroupedSection {
+        GlassSectionHeader("기본 모델")
+        GlassGroupedSection {
             // Typed, saved as you type: new sessions start on it. Blank = the router's first group.
             var modelText by rememberSaveable { mutableStateOf<String?>(null) }
             GlassTextField(
@@ -126,8 +126,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        IOSSectionHeader("웹 검색")
-        IOSGroupedSection {
+        GlassSectionHeader("웹 검색")
+        GlassGroupedSection {
             // The user's own Brave Search key (web_search); stored on this device only.
             var key by rememberSaveable(settings.braveApiKey) { mutableStateOf(settings.braveApiKey) }
             GlassTextField(
@@ -143,13 +143,13 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
             )
         }
 
-        IOSSectionHeader("원격 브라우저")
-        IOSGroupedSection {
+        GlassSectionHeader("원격 브라우저")
+        GlassGroupedSection {
             RemoteBrowserSection(settings)
         }
 
-        IOSSectionHeader("기본 컨텍스트")
-        IOSGroupedSection {
+        GlassSectionHeader("기본 컨텍스트")
+        GlassGroupedSection {
             // Typed, saved as soon as the number is valid (new sessions start with it).
             var contextText by rememberSaveable { mutableStateOf<String?>(null) }
             val shown = contextText ?: settings.defaultContext.toString()
@@ -165,8 +165,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                 modifier = Modifier.padding(12.dp)
             )
         }
-        IOSSectionHeader("자동 압축")
-        IOSGroupedSection {
+        GlassSectionHeader("자동 압축")
+        GlassGroupedSection {
             // Save once on release, rather than writing DataStore on every drag frame.
             var percent by remember(settings.autoCompactPercent) { mutableFloatStateOf(settings.autoCompactPercent.toFloat()) }
             val range = Defaults.AUTO_COMPACT_RANGE
@@ -194,8 +194,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
                     style = MaterialTheme.typography.labelMedium, color = scheme.onSurfaceVariant)
             }
         }
-        IOSSectionHeader("로그")
-        IOSGroupedSection {
+        GlassSectionHeader("로그")
+        GlassGroupedSection {
             LogSection(onOpen = { logOpen = true })
         }
     }

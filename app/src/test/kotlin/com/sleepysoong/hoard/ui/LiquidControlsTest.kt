@@ -33,7 +33,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.sleepysoong.hoard.ui.glass.GlassPillButton
 import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassSwitch
-import com.sleepysoong.hoard.ui.glass.IOSSegmentedControl
+import com.sleepysoong.hoard.ui.glass.GlassSegmentedControl
 import com.sleepysoong.hoard.ui.theme.HoardTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -45,7 +45,7 @@ import org.robolectric.annotation.GraphicsMode
 import java.io.File
 
 /**
- * Liquid controls behave like iOS 26: switch toggles on tap and on drag, its thumb
+ * Liquid controls: switch toggles on tap and on drag, its thumb
  * swells into glass while pressed; the segmented thumb glides with overshoot, can be
  * dragged, and release picks the nearest segment. Screenshots (rest + pressed, light
  * + dark) go to build/test-artifacts/liquid/.
@@ -67,7 +67,7 @@ class LiquidControlsTest {
     private fun content(dark: Boolean = false) = compose.setContent {
         HoardTheme(darkTheme = dark) {
             Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(28.dp)) {
-                IOSSegmentedControl(listOf("MCP", "플러그인", "스킬", "명령어"), seg, { seg = it },
+                GlassSegmentedControl(listOf("MCP", "플러그인", "스킬", "명령어"), seg, { seg = it },
                     Modifier.fillMaxWidth().testTag("segmented"))
                 Box(Modifier.size(120.dp, 60.dp), contentAlignment = Alignment.Center) {
                     GlassSwitch(checked, { checked = it }, Modifier.testTag("switch"))

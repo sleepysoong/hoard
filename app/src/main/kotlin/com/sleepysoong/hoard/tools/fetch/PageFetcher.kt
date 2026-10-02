@@ -123,7 +123,7 @@ class PageFetcher(
             }.getOrNull() ?: direct
         }
 
-        const val USER_AGENT = "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Mobile Safari/537.36 Hoard/1.0 (+https://github.com/sleepysoong/hoard)"
+        const val USER_AGENT = "Hoard/1.0 (Android; +https://github.com/sleepysoong/hoard)"
 
         fun parseContentType(header: String?): Pair<String, String?> {
             if (header.isNullOrBlank()) return "" to null

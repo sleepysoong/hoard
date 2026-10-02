@@ -29,7 +29,7 @@ import org.robolectric.annotation.Config
 
 /**
  * Samples the rendered scale of a tappable surface frame by frame (virtual clock)
- * and checks the iOS press curve: sinks fast while held, overshoots past 1.0 on
+ * and checks the press curve: sinks fast while held, overshoots past 1.0 on
  * release, then settles exactly at 1.0.
  */
 @RunWith(AndroidJUnit4::class)

@@ -18,7 +18,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 
 /**
- * Screen transitions, Apple style.
+ * Screen transitions with spring motion and parallax.
  *  - Push into chat: new screen slides in from the right on a smooth spring; the
  *    list underneath drifts left a third of the way (parallax). No alpha on either
  *    side — a faded layer composites above its sibling and bleeds through.

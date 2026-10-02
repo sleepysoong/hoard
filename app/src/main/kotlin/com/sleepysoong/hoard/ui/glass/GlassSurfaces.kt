@@ -107,7 +107,7 @@ fun GlassSurface(
 }
 
 /**
- * Floating navigation bar — the iOS-grade header used by all top-level screens.
+ * Floating navigation bar — the shared header used by all top-level screens.
  *
  * Layout contract:
  * - Left slot is always 44dp wide (nav icon or a blank spacer), so the centered
@@ -180,7 +180,7 @@ fun GlassFloatingBar(
 }
 
 /**
- * iOS 26 floating tab bar: one thick glass bar, a liquid capsule that morphs
+ * Floating tab bar: one thick glass bar, a liquid capsule that morphs
  * between tabs, and press deformation on the whole bar.
  */
 @Composable
@@ -328,7 +328,7 @@ fun RowScope.GlassTabItem(
     }
 }
 
-/** iOS grabber for sheet headers. */
+/** Grabber for sheet headers. */
 @Composable
 fun SheetGrabber(modifier: Modifier = Modifier) {
     Box(
