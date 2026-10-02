@@ -64,6 +64,22 @@ class TabBarSelectionTest {
         assertTrue("each tab remains a usable touch target", left.width >= 44f * compose.activity.resources.displayMetrics.density)
     }
 
+    @Test
+    @org.robolectric.annotation.GraphicsMode(org.robolectric.annotation.GraphicsMode.Mode.NATIVE)
+    fun tabsShowOnlyIconsWhileKeepingAccessibleNamesAndSelection() {
+        for (title in listOf("세션", "도구", "설정")) {
+            val insideTab = androidx.compose.ui.test.hasAnyAncestor(androidx.compose.ui.test.hasTestTag("tab-$title"))
+            compose.onAllNodes(androidx.compose.ui.test.hasText(title) and insideTab, useUnmergedTree = true)
+                .assertCountEquals(0)
+            compose.onNodeWithContentDescription(title).assertExists()
+            compose.onNodeWithTag("tab-$title").performClick()
+            onlySelected(title)
+        }
+        val out = java.io.File(System.getProperty("hoard.artifacts") ?: "build/test-artifacts", "tabbar").apply { mkdirs() }
+        val image = compose.onRoot().captureToImage().asAndroidBitmap()
+        java.io.File(out, "icons-only.png").outputStream().use { image.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it) }
+    }
+
     @Test fun tappingTabsMovesHighlight() {
         compose.onNodeWithTag("tab-도구").performClick(); onlySelected("도구")
         compose.onNodeWithTag("tab-설정").performClick(); onlySelected("설정")

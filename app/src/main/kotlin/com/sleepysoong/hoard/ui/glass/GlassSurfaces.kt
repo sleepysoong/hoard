@@ -261,7 +261,8 @@ fun GlassBottomBar(
 }
 
 /**
- * One tab inside the floating glass bar. Icon + 10sp label, no ripple, haptic
+ * One tab inside the floating bar. Icon only; the title remains its accessible
+ * name and stable test tag. No ripple, haptic
  * on tap, and its press state is reported upward so the bar can deform.
  */
 @Composable
@@ -323,12 +324,6 @@ fun RowScope.GlassTabItem(
                     scaleX = iconScale
                     scaleY = iconScale
                 }
-        )
-        Text(
-            title,
-            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
-            color = tint,
-            maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
         )
     }
 }
