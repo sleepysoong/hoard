@@ -207,6 +207,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             withContext(Dispatchers.IO) { skillStore.refresh() }
             AppLog.i(TAG, "skills loaded ok skills=${skillStore.skills.value.size} (${System.currentTimeMillis() - prepStart}ms)")
             val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
+            AppLog.i(TAG, "runtime ok loadedContext=${runtime.context().length}b")
             // A skill `model:` must be resolved against the real catalog before anything runs.
             val needsCatalog = skillFork || skillStore.skills.value.any { it.enabled && it.document.model?.let { it != "inherit" } == true }
             val skillModels = if (needsCatalog && repo.modelCatalog().isEmpty() && cfg.routerUrl.isNotBlank()) {
@@ -220,6 +221,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             var directSkillResult: JsonObject? = null
             val promptHookContext = mutableListOf<String>()
             if (mode == MODE_REPLY && !skillFork) {
+                AppLog.i(TAG, "hook pass start")
                 val parent = before[parentIdx]
                 val typedPrompt = runId == null && parent.role == MessageRole.User && parent.trigger !in setOf("schedule", "wakeup", "skill")
                 if (typedPrompt) {
