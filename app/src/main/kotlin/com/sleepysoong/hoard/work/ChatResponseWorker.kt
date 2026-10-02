@@ -77,27 +77,68 @@ import kotlinx.coroutines.withTimeoutOrNull
  */
 class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWorker(ctx, params) {
 
+    /**
+     * A stall never disappears silently: after a stage sits for [thresholdMs], this
+     * daemon thread dumps every worker thread's stack into AppLog (repeating).
+     * Plain blocking calls (file IO, monitors) can't be interrupted by coroutine
+     * cancellation — the watchdog lives outside coroutines on purpose.
+     */
+    private class StallWatchdog(private val sessionId: String) {
+        val stage = java.util.concurrent.atomic.AtomicReference("queued")
+        private val done = java.util.concurrent.atomic.AtomicBoolean(false)
+        private val thread: Thread
+
+        init {
+            thread = Thread({
+                val startedAt = System.currentTimeMillis()
+                while (!done.get()) {
+                    try { Thread.sleep(20_000) } catch (_: InterruptedException) { return@Thread }
+                    if (done.get()) break
+                    val sb = StringBuilder()
+                    Thread.getAllStackTraces().forEach { (t, frames) ->
+                        if (!t.name.contains("dispatcher", true) && !t.name.contains("Worker", true) &&
+                            !t.name.startsWith("pool-") && t.name != "main" && !t.name.contains("hoard", true)) return@forEach
+                        sb.append(t.name).append(" [").append(t.state).append("]\n")
+                        frames.take(8).forEach { sb.append("  at ${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}\n") }
+                    }
+                    AppLog.e(TAG, "STALL ${(System.currentTimeMillis() - startedAt) / 1000}s stage=${stage.get()} session=${sessionId.takeLast(6)}\n$sb")
+                }
+            }, "hoard-stall-watch").apply { isDaemon = true }
+            thread.start()
+        }
+
+        fun stop() { done.set(true); thread.interrupt() }
+    }
+
     override suspend fun doWork(): Result {
         val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
         val job = currentCoroutineContext()[kotlinx.coroutines.Job] ?: return Result.failure()
+        val watchdog = StallWatchdog(sessionId)
         // Register before settings/skills/tools can block. WorkManager cancellation
         // is asynchronous; the stop button must close the network call immediately.
         synchronized(executionLock) {
             val generation = generations[sessionId]
             if (generation != null && generation != inputData.getLong(KEY_GENERATION, 0)) {
+                watchdog.stop()
                 AppLog.w(TAG, "skip stale work session=$sessionId gen=${inputData.getLong(KEY_GENERATION, 0)} current=$generation")
                 return Result.success()
             }
             activeJobs[id] = sessionId to job
         }
         AppLog.i(TAG, "start session=${sessionId.takeLast(6)} mode=${inputData.getString(KEY_MODE)} attempt=$runAttemptCount")
+        currentStage = watchdog.stage
         return try {
             currentCoroutineContext().ensureActive()
             runReply().also { AppLog.i(TAG, "finish session=${sessionId.takeLast(6)} result=${it::class.simpleName}") }
         } finally {
+            watchdog.stop()
             synchronized(executionLock) { activeJobs.remove(id) }
         }
     }
+
+    /** Current prep stage name, shared to the stall watchdog (updated as runReply progresses). */
+    @Volatile private var currentStage: java.util.concurrent.atomic.AtomicReference<String>? = null
+    private fun stage(name: String) = currentStage?.set(name)
 
     private suspend fun runReply(): Result {
         val sessionId = inputData.getString(KEY_SESSION) ?: return Result.failure()
@@ -204,20 +245,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             promote("Hoard가 생각 중…")
             AppLog.i(TAG, "placeholders ok session=${sessionId.takeLast(6)} model=$model")
             val prepStart = System.currentTimeMillis()
+            stage("settings+store")
             val skillStore = SkillStore.get(applicationContext)
             withContext(Dispatchers.IO) { skillStore.refresh() }
             AppLog.i(TAG, "skills loaded ok skills=${skillStore.skills.value.size} (${System.currentTimeMillis() - prepStart}ms)")
-            AppLog.i(TAG, "runtime ctor…")
-            val runtime = withTimeoutOrNull(15_000L) {
-                SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
-            } ?: run {
-                val dump = Thread.getAllStackTraces().filter { (t, _) -> t.name != "main" }
-                    .entries.joinToString("\n") { (t, s) ->
-                        "${t.name}: " + s.take(3).joinToString(" < ") { "${it.className.substringAfterLast('.')}.${it.methodName}:${it.lineNumber}" }
-                    }.take(6_000)
-                AppLog.e(TAG, "skill runtime init stalled 15s:\n$dump")
-                throw IllegalStateException("스킬 런타임 준비가 15초를 넘었습니다 · 로그를 확인하세요")
-            }
+            stage("skill-runtime init")
+            val runtime = SkillRuntime(skillStore, TermuxBridge(applicationContext), sessionId, allowShell = allowed.termux)
             AppLog.i(TAG, "runtime ok loadedContext=${runtime.context().length}b")
             // A skill `model:` must be resolved against the real catalog before anything runs.
             val needsCatalog = skillFork || skillStore.skills.value.any { it.enabled && it.document.model?.let { it != "inherit" } == true }
@@ -261,6 +294,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 }
             }
             AppLog.i(TAG, "hooks/slash ok (${System.currentTimeMillis() - prepStart}ms)")
+            stage("fork records")
             val completionContext = withContext(Dispatchers.IO) { SkillForkDelivery.context(applicationContext, sessionId) }
             AppLog.i(TAG, "fork records ok (${System.currentTimeMillis() - prepStart}ms)")
             val directContext = directSkillResult?.takeIf { it.string("context") == "fork" }?.let {
@@ -286,6 +320,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 built
             }
             AppLog.i(TAG, "tools ready tools=${registry.tools.size} (${System.currentTimeMillis() - prepStart}ms)")
+            stage("engine+network")
             val engine = Engines.forRouter(
                 cfg.routerUrl,
                 AttachmentEncoder(AttachmentEncoder.contentReader(applicationContext.contentResolver)),
