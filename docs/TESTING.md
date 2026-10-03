@@ -25,6 +25,8 @@ Artifacts are in `hoard-native-smoke`; native screenshots are reconstructed from
 logcat so APK uninstall cannot erase them. Screenshots alone are **manual visual
 evidence**, not automated proof of appearance. Review the captures as well as the
 assertions. The emulator fixture does not validate the user's VPS or physical phone.
+The browser UI fixture pre-grants notification/all-files permissions so the unrelated
+first-launch permission screen cannot cover the viewer. It does not validate that screen.
 
 ## Why smaller tests remain
 

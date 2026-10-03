@@ -34,6 +34,13 @@ class NativeBrowserPreviewTest {
     private val sessionName = "Native browser preview"
     @get:Rule(order = 0) val seed = object : ExternalResource() {
         override fun before() {
+            val instrumentation = InstrumentationRegistry.getInstrumentation()
+            val packageName = instrumentation.targetContext.packageName
+            // This flow verifies the browser, not the first-launch permission UI.
+            // Grant real Android permissions before MainActivity's PermissionGate runs.
+            instrumentation.uiAutomation.grantRuntimePermission(packageName, android.Manifest.permission.POST_NOTIFICATIONS)
+            val command = instrumentation.uiAutomation.executeShellCommand("appops set --uid $packageName MANAGE_EXTERNAL_STORAGE allow")
+            android.os.ParcelFileDescriptor.AutoCloseInputStream(command).use { it.readBytes() }
             sessionId = HoardRepository.get().createSession(sessionName, modelId = "coding").id
         }
         override fun after() { HoardRepository.get().deleteSession(sessionId) }
