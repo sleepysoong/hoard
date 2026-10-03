@@ -53,10 +53,27 @@ class NativeBrowserPreviewTest {
         val unique = "ui-$name-${sequence++}"
         chunks.forEachIndexed { i, chunk -> android.util.Log.i("HoardNativeImage", "IMAGE $unique $i ${chunks.size} $chunk") }
     }
-    private fun screenshot(tag: String, name: String): Bitmap = compose.onNodeWithTag(tag, useUnmergedTree = true)
-        .captureToImage().asAndroidBitmap().also { bitmap ->
-            image(name, ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }.toByteArray())
+    private fun screenshot(tag: String, name: String): Bitmap {
+        val bitmap = captureNode(tag)
+        image(name, ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, 95, it) }.toByteArray())
+        return bitmap
+    }
+
+    /** Software-rendered emulators occasionally time out PixelCopy under load;
+     *  retry briefly so the gate fails only on a real rendering/content problem. */
+    private fun captureNode(tag: String): Bitmap {
+        val deadline = System.currentTimeMillis() + 15_000
+        var last: Throwable? = null
+        while (System.currentTimeMillis() < deadline) {
+            val attempt = runCatching {
+                compose.onNodeWithTag(tag, useUnmergedTree = true).captureToImage().asAndroidBitmap()
+            }
+            attempt.onSuccess { return it }
+            last = attempt.exceptionOrNull()
+            Thread.sleep(250)
         }
+        throw AssertionError("capture never succeeded for $tag", last)
+    }
     private fun await(condition: () -> Boolean) = compose.waitUntil(20_000, condition)
 
     @Test fun liquidViewerFitsChromeInputsTheVisiblePageAndSurvivesRotationAndBackground(): Unit = runBlocking {
@@ -88,7 +105,7 @@ class NativeBrowserPreviewTest {
 
             fun assertFitAndTab(blue: Boolean) {
                 await {
-                    val bitmap = compose.onNodeWithTag("browser-desktop-input", useUnmergedTree = true).captureToImage().asAndroidBitmap()
+                    val bitmap = runCatching { captureNode("browser-desktop-input") }.getOrNull() ?: return@await false
                     try {
                         val pixel = bitmap.getPixel(bitmap.width / 2, bitmap.height * 2 / 3)
                         if (blue) Color.blue(pixel) > Color.red(pixel) + 60 else Color.red(pixel) > Color.blue(pixel) + 60
