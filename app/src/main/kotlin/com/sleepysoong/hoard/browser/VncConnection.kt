@@ -34,6 +34,7 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val closed = AtomicBoolean()
     private val frameLock = Mutex()
+    private val inputLock = Mutex()
     private val writeLock = Any()
     private val pendingIo = linkedSetOf<CompletableDeferred<*>>()
     private lateinit var input: DataInputStream
@@ -263,7 +264,15 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
         }
     }
 
-    suspend fun input(event: DesktopInput) = io { synchronized(writeLock) {
+    suspend fun input(event: DesktopInput) = try { inputLock.withLock {
+        if (event is DesktopInput.Text) {
+            io { synchronized(writeLock) { releaseHeld(); output.flush() } }
+            // RFB flush confirms delivery, not the desktop toolkit's asynchronous
+            // focus change. An immediate bulk write can lose a URL's prefix after
+            // a mouse click or Ctrl+L. Keep the frame/write channel free while waiting.
+            delay(INPUT_SETTLE_MS)
+        }
+        io { synchronized(writeLock) {
         when (event) {
             is DesktopInput.Pointer -> pointer(event.x, event.y, event.buttons and 7)
             is DesktopInput.Scroll -> {
@@ -293,12 +302,15 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
             DesktopInput.ReleaseHeld -> releaseHeld()
         }
         output.flush()
-    } }
+        } }
+    } } catch (cancelled: CancellationException) { close(); throw cancelled }
 
-    suspend fun releaseInputs() = io { synchronized(writeLock) {
-        releaseHeld()
-        output.flush()
-    } }
+    suspend fun releaseInputs() = inputLock.withLock {
+        io { synchronized(writeLock) { releaseHeld(); output.flush() } }
+        // Observe the tab selected by the last native shortcut, not the tab that
+        // was still foreground when its input packet reached the VNC server.
+        delay(INPUT_SETTLE_MS)
+    }
 
     private fun releaseHeld() {
         heldKeys.toList().asReversed().forEach { key(it, false) }
@@ -366,6 +378,7 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
     }
 
     companion object {
+        private const val INPUT_SETTLE_MS = 100L
         private const val MAX_PIXELS = 8_000_000L
         private const val MAX_BYTES = 5 * 1024 * 1024
         private fun rgb(r: Byte, g: Byte, b: Byte) = 0xff000000.toInt() or ((r.toInt() and 255) shl 16) or ((g.toInt() and 255) shl 8) or (b.toInt() and 255)

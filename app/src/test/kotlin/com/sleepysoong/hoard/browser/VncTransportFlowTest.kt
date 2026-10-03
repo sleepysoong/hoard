@@ -11,6 +11,7 @@ import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.test.StandardTestDispatcher
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -30,7 +31,8 @@ import java.util.zip.Deflater
 
 /** Real RFB socket → decoder → desktop image/input. Failure paths: authentication
  * downgrade, missing password, malformed rectangles, decompression, persistent zlib
- * state, resized displays, stuck keys/buttons, and a silent server during cancellation.
+ * state, resized displays, stuck keys/buttons, and cancellation during reads or
+ * native focus settling without blocking the live frame channel.
  * This wire fixture is test-only, not an SSH or real Chrome verification.
  */
 @RunWith(AndroidJUnit4::class)
@@ -224,6 +226,47 @@ class VncTransportFlowTest {
             catch (e: BrowserException) { assertTrue(e.message.orEmpty().contains("비밀번호")) }
             fixture.verify()
         }
+    }
+
+    @Test fun textFocusWaitDoesNotBlockFramesOrSurviveAClosedDesktop() = runBlocking {
+        val released = CountDownLatch(1)
+        val packets = CopyOnWriteArrayList<String>()
+        val focusWait = StandardTestDispatcher()
+        Fixture { peer ->
+            peer.handshake(80, 60); peer.encodings(); peer.request()
+            peer.update(1) { fill(0, 0, 80, 60, 40, 150, 55) }
+            while (true) when (val type = peer.input.read()) {
+                -1 -> break
+                4 -> {
+                    val down = peer.input.readUnsignedByte(); peer.input.readUnsignedShort()
+                    val sym = peer.input.readInt(); packets += "key:$down:$sym"
+                    if (down == 0 && sym == 0xffe3) released.countDown()
+                }
+                3 -> {
+                    peer.input.readFully(ByteArray(9))
+                    peer.update(1) { fill(0, 0, 80, 60, 40, 150, 55) }
+                }
+                else -> error("unexpected client message $type")
+            }
+        }.use { fixture ->
+            VncConnection.open(fixture.port).use { client ->
+                client.frame(55)
+                client.input(DesktopInput.Key(0xffe3, true))
+                val typing = async(focusWait, start = CoroutineStart.UNDISPATCHED) {
+                    runCatching { client.input(DesktopInput.Text("must not reach the closed desktop")) }
+                }
+                assertTrue("text first releases the remote modifier", released.await(2, TimeUnit.SECONDS))
+                focusWait.scheduler.runCurrent()
+                assertFalse("text waits for the native focus change", typing.isCompleted)
+                artifact("focus-settling-live-frame", withTimeout(2_000) { client.frame(55) })
+                client.close()
+                focusWait.scheduler.advanceUntilIdle()
+                val failure = withTimeout(2_000) { typing.await() }.exceptionOrNull()
+                assertTrue("pending text cannot outlive the desktop: $failure", failure is BrowserException)
+            }
+            fixture.verify()
+        }
+        assertEquals("closing during focus settling must not deliver any text", listOf("key:1:65507", "key:0:65507"), packets.toList())
     }
 
     @Test fun closingBeforeTheIoWorkerStartsDoesNotStrandThePendingFrame() = runBlocking {
