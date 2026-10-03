@@ -47,6 +47,16 @@ class NativeBrowserControlTest {
                 check(System.currentTimeMillis() < deadline) { "No native VNC desktop frame" }; delay(100)
             }
         }
+        suspend fun pageInset(name: String): Int {
+            val desktop = frame(name)
+            val screenshot = manager.execute(BrowserAction.Screenshot)
+            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            BitmapFactory.decodeByteArray(desktop, 0, desktop.size, bounds)
+            val pageHeight = screenshot.json["height"]!!.jsonPrimitive.int
+            note("$name desktop=${bounds.outWidth}x${bounds.outHeight} viewport-height=$pageHeight")
+            assertTrue("VNC includes actual Chrome tabs and address bar", bounds.outHeight > pageHeight + 60)
+            return bounds.outHeight - pageHeight
+        }
         fun inputId(result: BrowserResult) = result.json["elements"]!!.jsonArray.map { it.jsonObject }
             .first { it["type"]?.jsonPrimitive?.content == "input" }["id"]!!.jsonPrimitive.int
         fun tabId(result: BrowserResult) = result.json["tab"]!!.jsonObject["id"]!!.jsonPrimitive.int
@@ -55,13 +65,7 @@ class NativeBrowserControlTest {
             val first = manager.execute(BrowserAction.Open("http://127.0.0.1:18080/first.html"))
             note("first=${first.json}")
             manager.startPreview()
-            val desktop = frame("whole-chrome")
-            val screenshot = manager.execute(BrowserAction.Screenshot)
-            val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
-            BitmapFactory.decodeByteArray(desktop, 0, desktop.size, bounds)
-            val pageHeight = screenshot.json["height"]!!.jsonPrimitive.int
-            assertTrue("VNC includes actual Chrome tabs and address bar", bounds.outHeight > pageHeight + 60)
-            val topInset = bounds.outHeight - pageHeight
+            val topInset = pageInset("whole-chrome")
             val control = manager.acquireControl()
             try {
                 val queued = async { runCatching { manager.execute(BrowserAction.Click(inputId(first))) } }
@@ -91,10 +95,13 @@ class NativeBrowserControlTest {
             note("after-manual=${second.json}")
             assertTrue(second.json["url"]!!.jsonPrimitive.content.endsWith("/second.html"))
             val newTab = manager.execute(BrowserAction.Open("http://127.0.0.1:18080/first.html", newTab = true))
+            // Native Chrome may remove an infobar when opening another tab. The
+            // viewer uses desktop pixels, so measure this tab's viewport afresh.
+            val newTopInset = pageInset("new-tab-before-input")
             val manual = manager.acquireControl()
             try {
-                manual.input(DesktopInput.Pointer(140, topInset + 160, 1))
-                manual.input(DesktopInput.Pointer(140, topInset + 160, 0))
+                manual.input(DesktopInput.Pointer(140, newTopInset + 160, 1))
+                manual.input(DesktopInput.Pointer(140, newTopInset + 160, 0))
                 manual.input(DesktopInput.Text("manual mouse 한국"))
                 key(manual, 0xffe3, 0xffe1, 0xff09) // Chrome's previous-tab shortcut
             } finally { manual.release() }
