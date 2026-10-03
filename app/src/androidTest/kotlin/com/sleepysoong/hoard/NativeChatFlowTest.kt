@@ -187,24 +187,28 @@ class NativeChatFlowTest {
             check(entered.await(10, java.util.concurrent.TimeUnit.SECONDS)) { "worker never reached HTTP" }
             val store = androidx.lifecycle.ViewModelStore()
             lateinit var vm: com.sleepysoong.hoard.ui.chat.ChatViewModel
-            InstrumentationRegistry.getInstrumentation().runOnMainSync {
-                vm = androidx.lifecycle.ViewModelProvider(store,
-                    androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as android.app.Application)
-                )[com.sleepysoong.hoard.ui.chat.ChatViewModel::class.java]
-                vm.selectSession(session.id)
+            try {
+                InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                    vm = androidx.lifecycle.ViewModelProvider(store,
+                        androidx.lifecycle.ViewModelProvider.AndroidViewModelFactory.getInstance(context.applicationContext as android.app.Application)
+                    )[com.sleepysoong.hoard.ui.chat.ChatViewModel::class.java]
+                    vm.selectSession(session.id)
+                }
+                val deadline = SystemClock.elapsedRealtime() + 5_000
+                while (vm.uiState.value.session?.id != session.id) {
+                    check(SystemClock.elapsedRealtime() < deadline); kotlinx.coroutines.delay(20)
+                }
+                InstrumentationRegistry.getInstrumentation().runOnMainSync { vm.stopReply() }
+                released.countDown()
+                awaitWork { goals.current(session.id)?.status == GoalStatus.Paused }
+                val stoppedAt = server.responseBodies.size
+                kotlinx.coroutines.delay(800)
+                assertEquals("stop cannot enqueue another automatic turn", stoppedAt, server.responseBodies.size)
+                assertEquals(GoalStatus.Paused, goals.current(session.id)!!.status)
+            } finally {
+                released.countDown()
+                InstrumentationRegistry.getInstrumentation().runOnMainSync { store.clear() }
             }
-            val deadline = SystemClock.elapsedRealtime() + 5_000
-            while (vm.uiState.value.session?.id != session.id) {
-                check(SystemClock.elapsedRealtime() < deadline); kotlinx.coroutines.delay(20)
-            }
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { vm.stopReply() }
-            released.countDown()
-            awaitWork { goals.current(session.id)?.status == GoalStatus.Paused }
-            val stoppedAt = server.responseBodies.size
-            kotlinx.coroutines.delay(800)
-            assertEquals("stop cannot enqueue another automatic turn", stoppedAt, server.responseBodies.size)
-            assertEquals(GoalStatus.Paused, goals.current(session.id)!!.status)
-            InstrumentationRegistry.getInstrumentation().runOnMainSync { store.clear() }
         } finally { file.delete() }
     }
 

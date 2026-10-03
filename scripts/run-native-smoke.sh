@@ -3,7 +3,8 @@
 set -euo pipefail
 out=app/build/native-smoke
 mkdir -p "$out"
-collect() {
+baseline_collected=false
+collect_evidence() {
     adb logcat -d > "$out/logcat.txt" 2>&1 || true
     adb logcat -d -v raw HoardNativeArtifact:I '*:S' > "$out/transcripts.txt" 2>&1 || true
     adb logcat -d -v raw HoardNativeImage:I '*:S' > "$out/images.txt" 2>&1 || true
@@ -21,6 +22,9 @@ for (name, count), chunks in images.items():
     if set(chunks) == set(range(count)):
         (out / (name + '.jpg')).write_bytes(base64.b64decode(''.join(chunks[i] for i in range(count)), validate=True))
 PY
+}
+collect() {
+    if [[ "$baseline_collected" != true ]]; then collect_evidence; fi
     if [[ -f "$out/browser-fixture/pids" ]]; then
         DISPLAY=:97 xprop -root _NET_ACTIVE_WINDOW > "$out/browser-fixture/active-window.txt" 2>&1 || true
         DISPLAY=:97 xwininfo -root -tree > "$out/browser-fixture/window-tree.txt" 2>&1 || true
@@ -32,10 +36,18 @@ bash scripts/start-browser-smoke.sh "$out"
 adb logcat -G 8M
 fixture="$out/browser-fixture"
 host_key="$(awk '{print $1 " " $2}' "$fixture/host-key.pub")"
-./gradlew :app:connectedDebugAndroidTest --no-daemon \
-    -Pandroid.testInstrumentationRunnerArguments.browserHost=10.0.2.2 \
-    -Pandroid.testInstrumentationRunnerArguments.browserPort=22022 \
-    "-Pandroid.testInstrumentationRunnerArguments.browserUser=$(id -un)" \
-    "-Pandroid.testInstrumentationRunnerArguments.browserKey=$(base64 -w0 "$fixture/client-key")" \
-    "-Pandroid.testInstrumentationRunnerArguments.browserHostKey=$host_key" \
+args=(
+    -Pandroid.testInstrumentationRunnerArguments.browserHost=10.0.2.2
+    -Pandroid.testInstrumentationRunnerArguments.browserPort=22022
+    "-Pandroid.testInstrumentationRunnerArguments.browserUser=$(id -un)"
+    "-Pandroid.testInstrumentationRunnerArguments.browserKey=$(base64 -w0 "$fixture/client-key")"
+    "-Pandroid.testInstrumentationRunnerArguments.browserHostKey=$host_key"
     -Pandroid.testInstrumentationRunnerArguments.browserVncPassword=nativepw
+)
+./gradlew :app:connectedDebugAndroidTest --no-daemon "${args[@]}"
+if [[ "${HOARD_VERIFY_ORACLES:-}" == true ]]; then
+    collect_evidence
+    baseline_collected=true
+    cp -a app/build/outputs/androidTest-results "$out/baseline-results"
+    python3 scripts/check-native-oracles.py "$out" "${args[@]}"
+fi

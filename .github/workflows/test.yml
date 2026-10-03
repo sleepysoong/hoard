@@ -7,6 +7,11 @@ on:
   push:
   pull_request:
   workflow_dispatch:
+    inputs:
+      native_oracles:
+        description: 'Run emulator flows and verify deliberate behavioral failures are caught'
+        type: boolean
+        default: false
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -99,4 +104,49 @@ jobs:
             app/build/test-results/testDebugUnitTest/
             app/build/test-artifacts/
             app/build/reports/tests/
+          retention-days: 14
+
+  native-oracles:
+    if: github.event_name == 'workflow_dispatch' && inputs.native_oracles
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v3
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - name: Install compile SDK and enable emulator acceleration
+        run: |
+          sdkmanager "platforms;android-37.0" "build-tools;36.0.0"
+          sudo chmod 666 /dev/kvm
+      - name: Baseline behavior and oracle mutations on Android
+        uses: reactivecircus/android-emulator-runner@v2
+        env:
+          HOARD_VERIFY_ORACLES: 'true'
+        with:
+          api-level: 35
+          arch: x86_64
+          profile: pixel_2
+          ram-size: 2048M
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/run-native-smoke.sh
+      - name: Upload native behavior and oracle evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hoard-native-oracles
+          path: |
+            app/build/native-smoke/
+            !app/build/native-smoke/browser-fixture/profile/**
+            !app/build/native-smoke/browser-fixture/client-key
+            !app/build/native-smoke/browser-fixture/host-key
+            !app/build/native-smoke/browser-fixture/vnc.auth
+            app/build/reports/androidTests/
+            app/build/outputs/androidTest-results/
           retention-days: 14

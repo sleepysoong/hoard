@@ -1,6 +1,5 @@
 package com.sleepysoong.hoard.engine
 
-import com.sleepysoong.hoard.data.StepKind
 import com.sleepysoong.hoard.data.ThinkingStep
 import com.sleepysoong.hoard.data.estimateTokens
 
