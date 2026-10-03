@@ -138,9 +138,9 @@ internal fun BrowserDesktopSurface(
                             if (mouse) { pointer(event.buttons.desktopMask()); captured = event.buttons.desktopMask() != 0 }
                             else {
                                 if (touchStart != null && !scrolled) { pointer(1); pointer(0) }
-                                // Sub-half-notch remainders are rounding, not intent: a tiny
-                                // drag must not end with an extra wheel click per axis.
-                                else if (touchStart != null && (kotlin.math.abs(touchX) >= 40f || kotlin.math.abs(touchY) >= 40f)) {
+                                // Flush the sub-notch remainder: it becomes exactly one wheel click.
+                                // A short swipe scrolls once, never one tick per pixel.
+                                else if (touchStart != null && (touchX != 0f || touchY != 0f)) {
                                     currentSend(DesktopInput.Scroll(point.first, point.second, touchX.toInt(), touchY.toInt()))
                                 }
                                 touchStart = null
