@@ -66,6 +66,10 @@ class NativeBrowserControlTest {
             try {
                 val queued = async { runCatching { manager.execute(BrowserAction.Click(inputId(first))) } }
                 delay(200); assertFalse("AI cannot change the browser during manual control", queued.isCompleted)
+                // A desktop may initially focus its window manager rather than
+                // Chrome. Use the real viewer's mouse path before keyboard input.
+                control.input(DesktopInput.Pointer(140, topInset + 160, 1))
+                control.input(DesktopInput.Pointer(140, topInset + 160, 0))
                 key(control, 0xffe3, 'l'.code)
                 control.input(DesktopInput.Text("http://127.0.0.1:18080/second.html")); key(control, 0xff0d)
                 val deadline = System.currentTimeMillis() + 10_000

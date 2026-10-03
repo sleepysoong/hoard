@@ -40,7 +40,7 @@ for i in {1..40}; do xprop -root _NET_SUPPORTING_WM_CHECK 2>/dev/null | grep -q 
 xprop -root _NET_SUPPORTING_WM_CHECK | grep -q 'window id #'
 x11vnc -storepasswd nativepw "$out/vnc.auth" > /dev/null 2>&1
 x11vnc -display :97 -localhost -rfbport 5900 -rfbauth "$out/vnc.auth" -shared -forever \
-    -clear_keys -clear_mods -xkb -add_keysyms -noxdamage > "$out/vnc.log" 2>&1 &
+    -clear_keys -clear_mods -xkb -add_keysyms -noxdamage -debug_keyboard > "$out/vnc.log" 2>&1 &
 echo "$!" >> "$out/pids"
 # The fixture serves only authored HTML, not the directory with ephemeral SSH keys.
 cat > "$out/site/first.html" <<'EOF'

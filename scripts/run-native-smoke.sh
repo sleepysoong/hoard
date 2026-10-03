@@ -22,6 +22,8 @@ for (name, count), chunks in images.items():
         (out / (name + '.jpg')).write_bytes(base64.b64decode(''.join(chunks[i] for i in range(count)), validate=True))
 PY
     if [[ -f "$out/browser-fixture/pids" ]]; then
+        DISPLAY=:97 xprop -root _NET_ACTIVE_WINDOW > "$out/browser-fixture/active-window.txt" 2>&1 || true
+        DISPLAY=:97 xwininfo -root -tree > "$out/browser-fixture/window-tree.txt" 2>&1 || true
         while read -r pid; do [[ "$pid" =~ ^[0-9]+$ ]] && kill "$pid" 2>/dev/null || true; done < "$out/browser-fixture/pids"
     fi
 }
