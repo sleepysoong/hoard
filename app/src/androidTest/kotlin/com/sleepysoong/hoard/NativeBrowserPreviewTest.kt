@@ -124,6 +124,11 @@ class NativeBrowserPreviewTest {
             }
             assertFitAndTab(blue = false)
 
+            // VNC keystrokes go to the X-focused window; like a person, tap the
+            // desktop first so Chrome (not the host's window manager) holds focus.
+            compose.onNodeWithTag("browser-desktop-input", useUnmergedTree = true).performTouchInput { click(center) }
+            compose.waitForIdle()
+
             // Actual press physics, not a testTag/component-name assertion.
             val address = compose.onNodeWithText("주소창")
             val rest = address.fetchSemanticsNode().boundsInRoot.width
