@@ -58,9 +58,19 @@ echo "$!" >> "$out/pids"
 "$chrome" --no-sandbox --no-first-run --no-default-browser-check --disable-dev-shm-usage \
     --remote-debugging-address=127.0.0.1 --remote-debugging-port=9222 \
     --user-data-dir="$out/profile" --start-maximized --window-position=0,0 --window-size=1000,800 about:blank > "$out/chrome.log" 2>&1 &
-echo "$!" >> "$out/pids"
-for i in {1..80}; do curl -sf http://127.0.0.1:9222/json/version > "$out/cdp-version.json" && break; sleep 0.25; done
-curl -sf http://127.0.0.1:9222/json/version > "$out/cdp-version.json"
+chrome_pid=$!
+echo "$chrome_pid" >> "$out/pids"
+# Emulator boot competes with a cold Chrome launch on the hosted runner. Wait for
+# the real endpoint, not a fixed delay, and fail with diagnostics if it never opens.
+deadline=$((SECONDS + 120))
+until curl --max-time 2 -sf http://127.0.0.1:9222/json/version > "$out/cdp-version.json"; do
+    if ! kill -0 "$chrome_pid" 2>/dev/null || (( SECONDS >= deadline )); then
+        echo 'Chrome fixture did not open CDP before the startup deadline' >&2
+        cat "$out/chrome.log" >&2
+        exit 1
+    fi
+    sleep 0.5
+done
 sudo install -m 755 scripts/vps/ensure-browser-runtime /usr/local/bin/ensure-browser-runtime
 cat > "$out/runtime.conf" <<EOF
 BROWSER_DISPLAY=":97"
