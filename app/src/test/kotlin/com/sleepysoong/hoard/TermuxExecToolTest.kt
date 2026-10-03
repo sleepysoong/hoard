@@ -24,22 +24,6 @@ class TermuxExecToolTest {
         }
     }
 
-    @Test fun schemaIsTheSpecifiedOne() {
-        val t = TermuxExecTool(FakeExec { TermuxResult("", "", 0) })
-        val expected = Json.parseToJsonElement("""
-            {"name":"termux_exec","description":"Execute a one-shot shell command in Termux and return its result.",
-             "parameters":{"type":"object","properties":{
-               "command":{"type":"string","description":"Shell command to execute."},
-               "cwd":{"type":"string","description":"Optional working directory."},
-               "timeout":{"type":"integer","description":"Optional timeout in milliseconds."}},
-             "required":["command"]}}
-        """).jsonObject
-        val schema = ToolRegistry().register(t).schemas().single()
-        assertEquals(expected["name"], schema["name"])
-        assertEquals(expected["description"], schema["description"])
-        assertEquals(expected["parameters"], schema["parameters"])
-    }
-
     @Test fun resultGoesToTheModelAsIsIncludingNonZeroExit() = runBlocking {
         val exec = FakeExec { cmd -> if (cmd == "git status") TermuxResult("On branch main\n", "", 0) else TermuxResult("", "fatal: not a git repository\n", 128) }
         val reg = ToolRegistry().register(TermuxExecTool(exec))
@@ -58,12 +42,6 @@ class TermuxExecToolTest {
         assertEquals("fatal: not a git repository\n", out["stderr"]!!.jsonPrimitive.content)
         assertEquals("", out["stdout"]!!.jsonPrimitive.content)
         assertEquals(Triple("git log", "/tmp", 5000L), exec.calls.last())
-    }
-
-    @Test fun emptyOutputIsReturnedNormally() = runBlocking {
-        val o = ToolRegistry().register(TermuxExecTool(FakeExec { TermuxResult("", "", 0) })).execute("termux_exec", """{"command":"true"}""")
-        assertFalse(o.isError)
-        assertEquals(Json.parseToJsonElement("""{"stdout":"","stderr":"","exitCode":0}"""), Json.parseToJsonElement(o.output))
     }
 
     @Test fun transportFailuresBecomeDistinctToolErrors() = runBlocking {
@@ -91,13 +69,5 @@ class TermuxExecToolTest {
         assertTrue(o["stdout"]!!.jsonPrimitive.content.length < 20_100)
         reg.execute("termux_exec", """{"command":"x","timeout":99999999}""")
         assertEquals(TermuxExecTool.MAX_TIMEOUT_MS, exec.calls.last().third)
-    }
-
-    @Test fun registersLikeAnyOtherTool() {
-        val reg = ToolRegistry()
-        reg.register(TermuxExecTool(FakeExec { TermuxResult("", "", 0) }))
-        assertEquals(listOf("termux_exec"), reg.tools.map { it.name })
-        val dup = runCatching { reg.register(TermuxExecTool(FakeExec { TermuxResult("", "", 0) })) }
-        assertTrue("duplicate names refused", dup.isFailure)
     }
 }

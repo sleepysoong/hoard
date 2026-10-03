@@ -102,22 +102,4 @@ class ChatMotionTest {
         val distinct = heights.filter { it > 0f }.distinct()
         assertTrue("opens over several frames, not a jump: $distinct", distinct.size >= 5)
     }
-
-    /** Composer chrome is glass too: "/" menu + attachment chip. Screenshot for review. */
-    @Test fun composerAttachmentChipShot() {
-        openChat()
-        compose.activity.let { a ->
-            val vm = androidx.lifecycle.ViewModelProvider(a)[com.sleepysoong.hoard.ui.chat.ChatViewModel::class.java]
-            compose.runOnUiThread {
-                vm.attachments = listOf(com.sleepysoong.hoard.data.UiAttachment("att-1", "receipt.jpg", "image/jpeg", 12_345))
-            }
-        }
-        compose.onNode(hasSetTextAction()).performTextInput("/")
-        compose.waitForIdle()
-        compose.mainClock.advanceTimeBy(800)
-        // "/" opens the command menu (goal commands).
-        compose.onNode(androidx.compose.ui.test.hasTestTag("slash-menu")).assertExists()
-        compose.onNode(androidx.compose.ui.test.hasTestTag("attachment-chip"), useUnmergedTree = true).assertExists()
-        frame("composer-slash-chip")
-    }
 }

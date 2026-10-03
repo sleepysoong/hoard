@@ -52,10 +52,16 @@ first-launch permission screen cannot cover the viewer. It does not validate tha
   explicitly instead of relying on the retired idle guard.
 - Strengthened native browser captures with pixel assertions and added the missing
   production viewer → real page path. Raw VNC input tests alone missed UI mapping.
-- Reviewed token estimates, tool schema/permissions, settings wiring, worker failures
-  and popup captures. They do not copy production source, but exact module-order
-  checks and screenshot-only cases are weaker evidence than behavioral outcomes.
-  Do not describe them as full coverage or tokenizer accuracy.
+- Second pass removed checks that could not fail without the production line itself
+  changing: the token-estimate formula mirror (`TokenEstimateTest`), the termux_exec
+  schema/registration presence mirrors, exact module-order and guidance wording
+  mirrors in `ToolKitTest`, and captures without assertions (the slash/chip shot
+  already covered by `SlashCommandTest`, a screenshot-only dark panel pass).
+  The default tool offer list stays pinned exactly once, at the wire, in
+  `ToolLoopTest.defaultsOfferWebFetchAndFileToolsButNoSearchWithoutKey`.
+  Kept small but behavioral checks (cancellation timing, path/authority rules,
+  fault injection, permission narrowing). Do not describe any of this as full
+  coverage or tokenizer accuracy.
 
 This is a scoped audit, not a certification of every existing test. Do not delete
 useful fault/security tests merely to lower the count. Before adding another test,

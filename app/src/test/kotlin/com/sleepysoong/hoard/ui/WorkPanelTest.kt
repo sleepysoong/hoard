@@ -103,10 +103,4 @@ class WorkPanelTest {
         assertEquals("model name no longer in the footer", 0, compose.onAllNodesWithTag("footer-model", useUnmergedTree = true).fetchSemanticsNodes().size)
         shot("light-open")
     }
-
-    @Test fun workAndRoutingPanelsDark() {
-        render(true)
-        openBoth()
-        shot("dark-open")
-    }
 }
