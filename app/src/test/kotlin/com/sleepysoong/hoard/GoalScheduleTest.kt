@@ -10,13 +10,9 @@ import com.sleepysoong.hoard.data.RunStatus
 import com.sleepysoong.hoard.data.ScheduleStatus
 import com.sleepysoong.hoard.data.ScheduleTrigger
 import com.sleepysoong.hoard.goal.Actor
-import com.sleepysoong.hoard.goal.ContinuationDecision
-import com.sleepysoong.hoard.goal.ContinuationEvaluator
 import com.sleepysoong.hoard.goal.GoalBudget
 import com.sleepysoong.hoard.goal.GoalException
 import com.sleepysoong.hoard.goal.GoalService
-import com.sleepysoong.hoard.goal.SessionActivity
-import com.sleepysoong.hoard.goal.TurnOutcome
 import com.sleepysoong.hoard.schedule.AgentRunner
 import com.sleepysoong.hoard.schedule.CreateScheduleInput
 import com.sleepysoong.hoard.schedule.CronExpression
@@ -82,39 +78,6 @@ class GoalScheduleTest {
         assertEquals("fixture unavailable", goals.current("s1")!!.blockedReason)
         assertEquals(GoalStatus.Active, goals.resume("s1", Actor.User).status)
         assertNull(goals.current("s1")!!.blockedReason)
-    }
-
-    @Test fun budgetAndContinuationDecisions() {
-        goals.create("s1", "목표", Actor.Model)
-        val ev = ContinuationEvaluator(goals)
-        val idle = SessionActivity(workQueued = false, wakeupPending = false)
-        val progressed = TurnOutcome(succeeded = true, automatic = true, toolCalls = 1, goalChanged = false)
-        assertEquals(ContinuationDecision.Continue, ev.decide("s1", progressed, idle))
-        assertTrue(ev.decide("s1", progressed, idle.copy(workQueued = true)) is ContinuationDecision.Stop)
-        assertTrue(ev.decide("s1", progressed, idle.copy(wakeupPending = true)) is ContinuationDecision.Stop)
-        assertTrue(ev.decide("s1", progressed.copy(succeeded = false), idle) is ContinuationDecision.Stop)
-        // Spin prevention: an automatic turn with no tool call and no goal change.
-        assertEquals(ContinuationDecision.Suppress, ev.decide("s1", progressed.copy(toolCalls = 0), idle))
-        goals.suppressContinuation("s1", true)
-        assertTrue(ev.decide("s1", progressed, idle) is ContinuationDecision.Stop)
-        goals.suppressContinuation("s1", false)
-        // Budget: automatic turns, tokens, wall time.
-        repeat(3) { goals.recordTurn("s1", 10, automatic = true) }
-        assertEquals(ContinuationDecision.Continue, ev.decide("s1", progressed, idle))
-        goals.markBudgetLimited("s1")
-        assertEquals(GoalStatus.BudgetLimited, goals.current("s1")!!.status)
-        assertTrue("budget_limited is not completed", ev.decide("s1", progressed, idle) is ContinuationDecision.Stop)
-        // Resume grants a fresh budget.
-        goals.resume("s1", Actor.User)
-        assertEquals(0, goals.current("s1")!!.usedTurns)
-        goals.recordTurn("s1", 5_000, automatic = false)
-        assertEquals("tokens do not end goals", ContinuationDecision.Continue, ev.decide("s1", progressed, idle))
-    }
-
-    @Test fun wallTimeBudget() {
-        goals.create("s1", "목표", Actor.Model)
-        now += 61_000
-        assertNull("time does not end goals", goals.budgetExceeded(goals.current("s1")!!))
     }
 
     @Test fun forkSnapshotsTheOpenGoal() {

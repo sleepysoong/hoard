@@ -3,7 +3,6 @@ package com.sleepysoong.hoard.work
 import com.sleepysoong.hoard.data.Goal
 import com.sleepysoong.hoard.data.PermissionProfile
 import com.sleepysoong.hoard.data.RunStatus
-import com.sleepysoong.hoard.data.StepKind
 import com.sleepysoong.hoard.goal.ContinuationDecision
 import com.sleepysoong.hoard.goal.ContinuationEvaluator
 import com.sleepysoong.hoard.goal.GoalRuntime
@@ -564,8 +563,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     /**
      * Goal continuation engine: after a turn settles, account it against the goal and
      * decide whether the thread keeps going on its own (a hidden continuation turn
-     * queued behind anything else in the session), stops, gets suppressed (the
-     * continuation did nothing), or ran out of budget (one final summary turn).
+     * queued behind anything else in the session), or respects a stop/wakeup.
      */
     private suspend fun afterTurn(
         sessionId: String, messageId: String, mode: String, reply: ChatMessage?,
@@ -573,18 +571,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     ) {
         if (mode == MODE_BUDGET_SUMMARY) return
         val automatic = mode == MODE_CONTINUE
-        // Changed by this turn's tool calls (created, completed, blocked…) — compared before
-        // the token/turn bookkeeping below, which alone is not progress.
-        val after = goals.current(sessionId)
-        val goalChanged = before?.id != after?.id || before?.status != after?.status ||
-            before?.evidence != after?.evidence || before?.blockedReason != after?.blockedReason
         goals.recordTurn(sessionId, reply?.totalTokens ?: 0, automatic, goalId = before?.takeIf { it.status == com.sleepysoong.hoard.data.GoalStatus.Active }?.id)
-        val turn = TurnOutcome(
-            succeeded = reply != null && reply.errorText == null,
-            automatic = automatic,
-            toolCalls = reply?.thinking?.count { it.kind == StepKind.Tool } ?: 0,
-            goalChanged = goalChanged
-        )
+        val turn = TurnOutcome(succeeded = reply != null && reply.errorText == null)
         val queued = withContext(Dispatchers.IO) {
             runCatching { WorkManager.getInstance(applicationContext).getWorkInfosForUniqueWork(uniqueName(sessionId)).get() }.getOrDefault(emptyList())
         }.any { it.id != id && COMPACTION_TAG !in it.tags && (it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.BLOCKED) }
@@ -594,7 +582,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 applicationContext, sessionId, inputData.getString(KEY_MODEL).orEmpty(), "msg-" + UUID.randomUUID().toString().take(8),
                 parentId = messageId, needsNetwork = needsNetwork, mode = MODE_CONTINUE
             )
-            ContinuationDecision.Suppress -> goals.suppressContinuation(sessionId, true)
             is ContinuationDecision.Stop -> Unit
         }
     }
@@ -641,6 +628,34 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     companion object {
         private val executionLock = Any()
         private val activeJobs = mutableMapOf<UUID, Pair<String, kotlinx.coroutines.Job>>()
+
+        /** Upgrade recovery only: revive goals parked by the retired idle-turn guard.
+         * Never restart user-paused, blocked or failed work, or race an existing worker/wakeup.
+         */
+        suspend fun recoverLegacyContinuations(ctx: Context) = withContext(Dispatchers.IO) {
+            val repo = HoardRepository.get()
+            val goals = GoalService(repo)
+            val wakeups = WorkManagerScheduler.services(ctx).third
+            val settings = SettingsStore.current(ctx)
+            if (settings.routerUrl.isBlank()) return@withContext
+            repo.goals.value.filter { it.continuationSuppressed && it.autoContinue &&
+                it.status == com.sleepysoong.hoard.data.GoalStatus.Active }.forEach { goal ->
+                synchronized(executionLock) {
+                    val live = goals.current(goal.sessionId)
+                    if (live?.id != goal.id || live.status != com.sleepysoong.hoard.data.GoalStatus.Active || !live.continuationSuppressed)
+                        return@synchronized
+                    val session = repo.sessionOf(goal.sessionId) ?: return@synchronized
+                    val queued = WorkManager.getInstance(ctx).getWorkInfosForUniqueWork(uniqueName(session.id)).get().any { !it.state.isFinished }
+                    val waiting = wakeups.pending(session.id)
+                    val parent = repo.messagesOf(session.id).lastOrNull() ?: return@synchronized
+                    goals.suppressContinuation(session.id, false)
+                    if (!queued && !waiting) enqueue(ctx, session.id, session.modelId,
+                        "msg-" + UUID.randomUUID().toString().take(8), parent.id,
+                        needsNetwork = true, mode = MODE_CONTINUE)
+                }
+            }
+            repo.flush()
+        }
         // An enqueue racing stop must not start a new bubble after stop marked the
         // existing bubbles. WorkManager remains the persistent cancellation owner.
         private val generations = mutableMapOf<String, Long>()

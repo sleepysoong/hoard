@@ -76,8 +76,7 @@ object MockAiEngine : AiEngine {
             "이전 메시지 ${contextMessages - 1}개 참고" +
                 (if (droppedMessages > 0) ", 컨텍스트 한도로 오래된 메시지 ${droppedMessages}개 생략" else "") + ".",
             480
-            // Not StepKind.Tool: the mock never executed a tool, and goal continuation
-            // treats a tool-less automatic turn as "no progress" (spin guard).
+            // Not StepKind.Tool: the mock never executed a tool.
         ),
         ThinkingStep("답변 작성", "간결한 답변 구성.", 610)
     )

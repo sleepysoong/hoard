@@ -7,7 +7,7 @@ import com.sleepysoong.hoard.data.Goal
  *  - [context]: the ephemeral developer text injected into a request while a goal is
  *    active (never stored in the conversation; the repository is the source of truth)
  *  - [ContinuationEvaluator]: after a turn settles, decides whether to start a hidden
- *    continuation turn — or stop, suppress (spin), or hit the budget.
+ *    continuation turn, or respect an explicit stop/wait condition.
  */
 object GoalRuntime {
     const val CONTINUE_MESSAGE = "[Automatic continuation] Continue working toward the active goal. " +
@@ -41,10 +41,7 @@ object GoalRuntime {
 
 /** What happened in the turn that just finished. */
 data class TurnOutcome(
-    val succeeded: Boolean,
-    val automatic: Boolean,
-    val toolCalls: Int,
-    val goalChanged: Boolean
+    val succeeded: Boolean
 )
 
 /** Runtime facts the evaluator can't see from the goal alone. */
@@ -58,8 +55,6 @@ data class SessionActivity(
 sealed class ContinuationDecision {
     data class Stop(val why: String) : ContinuationDecision()
     object Continue : ContinuationDecision()
-    /** Spin prevention: the continuation did nothing observable. */
-    object Suppress : ContinuationDecision()
 }
 
 class ContinuationEvaluator(private val goals: GoalService) {
@@ -68,8 +63,6 @@ class ContinuationEvaluator(private val goals: GoalService) {
         if (g.status != com.sleepysoong.hoard.data.GoalStatus.Active) return ContinuationDecision.Stop("goal ${g.status.wire}")
         if (!g.autoContinue) return ContinuationDecision.Stop("auto-continue off")
         if (!turn.succeeded) return ContinuationDecision.Stop("turn failed")
-        if (turn.automatic && turn.toolCalls == 0 && !turn.goalChanged) return ContinuationDecision.Suppress
-        if (g.continuationSuppressed) return ContinuationDecision.Stop("suppressed")
         if (activity.workQueued) return ContinuationDecision.Stop("user input queued")
         if (activity.wakeupPending) return ContinuationDecision.Stop("waiting for wakeup")
         return ContinuationDecision.Continue

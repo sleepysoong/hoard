@@ -110,8 +110,9 @@ Still no gradients: every colour is solid.
   continuation engine (in `ChatResponseWorker.afterTurn`, outside the agent loop) queues a hidden continuation
    turn while the goal is active and the session is idle (nothing queued, no pending wakeup).
    There is **no fixed turn, token or wall-time cap**: the AI completes the goal with concrete evidence,
-   or reports a blocker; the user can stop/pause it. A continuation with no tool call and no goal change
-   waits for input (spin guard), without completing the goal. Legacy budget-limited goals can be resumed.
+    or reports a blocker; the user can stop/pause it. Tool-less automatic turns do not stop continuation.
+    Pending user work, scheduled wakeups and failed turns still prevent a duplicate/busy loop. On upgrade,
+    active goals parked by the retired idle-turn guard recover automatically. Legacy budget-limited goals can be resumed.
    Goal context is injected as ephemeral developer text, never stored in the
   conversation. Pause/resume/clear are user-only (goal bar → sheet, `/goal pause|resume|clear`); the stop
   button pauses; branching snapshots the goal (`parentGoalId`). Goals persist with the conversation store.

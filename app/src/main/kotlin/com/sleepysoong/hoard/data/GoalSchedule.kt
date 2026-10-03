@@ -36,7 +36,7 @@ data class Goal(
     /** Tokens (prompt + completion) of every turn while active. */
     val usedTokens: Int = 0,
     val autoContinue: Boolean = true,
-    /** Set by spin prevention (a continuation that did nothing); cleared by user input / resume. */
+    /** Legacy idle-turn marker: upgrade recovery clears it; never a runtime stop condition. */
     val continuationSuppressed: Boolean = false,
     val parentGoalId: String? = null
 ) {

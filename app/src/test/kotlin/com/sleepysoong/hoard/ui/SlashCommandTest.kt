@@ -79,7 +79,12 @@ class SlashCommandTest {
         compose.onNodeWithContentDescription("보내기").performClick()
         compose.waitForIdle()
         assertEquals("the menu set the goal", "문서 정리", goals.current(TestData.SESSION_ID)!!.objective)
-        // Wait for the goal's turns to settle (send becomes stop meanwhile).
+        // An active goal now keeps working; stop through the real UI, not the retired idle guard.
+        compose.waitUntil(10_000) {
+            compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("답변 중지")).fetchSemanticsNodes().isNotEmpty()
+        }
+        compose.onNodeWithContentDescription("답변 중지").performClick()
+        assertEquals(GoalStatus.Paused, goals.current(TestData.SESSION_ID)!!.status)
         val deadline = System.currentTimeMillis() + 15_000
         while (compose.onAllNodes(androidx.compose.ui.test.hasContentDescription("보내기")).fetchSemanticsNodes().isEmpty()) {
             compose.mainClock.advanceTimeBy(200); compose.waitForIdle(); Thread.sleep(20)

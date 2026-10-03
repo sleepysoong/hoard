@@ -30,6 +30,9 @@ class HoardApp : Application(), Configuration.Provider {
         // for anything due while Hoard wasn't running) and fail runs a killed process left "running".
         Thread({
             runCatching { com.sleepysoong.hoard.schedule.WorkManagerScheduler.services(this).second.reconcile() }
+            runCatching { kotlinx.coroutines.runBlocking {
+                com.sleepysoong.hoard.work.ChatResponseWorker.recoverLegacyContinuations(this@HoardApp)
+            } }.onFailure { com.sleepysoong.hoard.diagnostics.AppLog.e("Goal", "legacy continuation recovery failed", it) }
         }, "hoard-scheduler-reconcile").start()
         val channel = NotificationChannel(
             "hoard-replies",

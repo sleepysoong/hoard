@@ -105,7 +105,7 @@ class GoalService(
         transition(sessionId, by, "pause", allowedFrom = setOf(GoalStatus.Active)) { it.copy(status = GoalStatus.Paused) }
     }
 
-    /** Back to active with a fresh wall-clock window; spin suppression lifted. */
+    /** Back to active; clear any legacy idle-turn marker. */
     fun resume(sessionId: String, by: Actor): Goal = userOnly(by, "resume").let {
         transition(sessionId, by, "resume", allowedFrom = setOf(GoalStatus.Paused, GoalStatus.Blocked, GoalStatus.BudgetLimited)) {
             it.copy(
@@ -137,9 +137,6 @@ class GoalService(
             }
         }
     }
-
-    /** Which budget ran out, if any. */
-    fun budgetExceeded(g: Goal, now: Long = clock()): String? = null
 
     fun markBudgetLimited(sessionId: String): Goal? = update(sessionId) {
         if (it.status == GoalStatus.Active) it.copy(status = GoalStatus.BudgetLimited) else it

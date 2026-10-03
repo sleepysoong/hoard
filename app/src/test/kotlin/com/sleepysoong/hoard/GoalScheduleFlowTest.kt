@@ -105,22 +105,28 @@ class GoalScheduleFlowTest {
         assertEquals(listOf("auth 테스트 다 통과시켜줘", "목표를 세웠어요. 시작할게요.", "테스트 3개가 아직 실패해요. 고치는 중.", "모든 테스트가 통과했어요."), msgs.map { it.text })
     }
 
-    @Test fun continuationThatDoesNothingIsSuppressed() {
+    @Test fun toolLessAutomaticTurnsStillReachARealFileResultWithoutAnotherUserMessage() {
         start()
-        router.enqueue(sse(completed("알겠습니다.")), sse(completed("음… 계속 생각 중입니다.")))
+        val output = java.io.File(h.app.filesDir, "workspace/goal-summary.md")
+        output.delete()
+        router.enqueue(
+            sse(completed("알겠습니다.")),
+            sse(completed("자료를 정리하겠습니다.")),
+            sse(completed("형식을 결정했습니다.")),
+            sse(toolCallCompleted(Triple("write-summary", "write_file", """{"path":"goal-summary.md","content":"# Summary\nActual goal result"}"""))),
+            sse(toolCallCompleted(Triple("read-summary", "read_file", """{"path":"goal-summary.md"}"""))),
+            sse(toolCallCompleted(Triple("complete-summary", "goal", """{"action":"complete","evidence":"Read goal-summary.md and verified its Summary heading and actual goal result."}"""))),
+            sse(completed("파일 작성과 확인을 완료했습니다."))
+        )
         h.vm.send("/goal 문서 요약 파일 만들기", emptyList(), "coding")
         h.awaitReplies(timeoutMs = 20_000)
-        assertEquals("user turn + one idle continuation, then suppressed", 2, bodies().size)
+        assertEquals("# Summary\nActual goal result", output.readText())
         val g = GoalService(h.repo).current(sid)!!
-        assertEquals(GoalStatus.Active, g.status)
-        assertTrue(g.continuationSuppressed)
+        assertEquals(GoalStatus.Completed, g.status)
+        assertFalse(g.continuationSuppressed)
         assertEquals("the /goal objective became a labelled turn", "Goal: 문서 요약 파일 만들기", bodies()[0].inputTexts().last())
         assertEquals("goal", h.messages().first().trigger)
-        // The user's next message lifts the suppression.
-        router.enqueue(sse(completed("네")), sse(completed("또 아무것도 안 함")))
-        h.vm.send("계속해", emptyList(), "coding")
-        h.awaitReplies(timeoutMs = 20_000)
-        assertEquals(4, bodies().size)
+        assertEquals("no extra user prompt was needed", 1, h.messages().count { it.role == com.sleepysoong.hoard.data.MessageRole.User })
     }
 
     @Test fun legacyTurnLimitDoesNotStopWorkBeforeModelCompletes() {
@@ -140,7 +146,9 @@ class GoalScheduleFlowTest {
 
     @Test fun userControlsPauseResumeClear() {
         start()
-        router.enqueue(sse(completed("시작")), sse(completed("쉬는 중")))
+        router.enqueue(sse(completed("시작")),
+            sse(toolCallCompleted(Triple("wait", "schedule_wakeup", """{"delay_ms":60000,"prompt":"긴 작업 계속"}"""))),
+            sse(completed("예약한 시간에 이어갑니다.")))
         h.vm.send("/goal 긴 작업", emptyList(), "coding")
         h.awaitReplies(timeoutMs = 20_000)
         h.vm.goalCommand("pause", "coding")

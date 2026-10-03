@@ -187,7 +187,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             compactCommand(clean.removePrefix("/compact").trim(), modelId)
             return
         }
-        // The user said something: a spin-suppressed goal may continue again.
+        // Clear the obsolete marker if this conversation came from an older version.
         goals.suppressContinuation(session.id, false)
         val userMsg = ChatMessage(
             id = "msg-" + UUID.randomUUID().toString().take(8),
@@ -236,11 +236,11 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     /** Stop the reply being generated in the open session (keeps what arrived so far). An active goal is paused. */
     fun stopReply() {
         val session = uiState.value.session ?: return
-        ChatResponseWorker.cancel(getApplication(), session.id)
         if (goals.active(session.id) != null) {
             goals.pause(session.id, com.sleepysoong.hoard.goal.Actor.User)
             _goalNotice.value = "중지해서 목표를 일시정지했습니다 · /goal resume 으로 재개"
         }
+        ChatResponseWorker.cancel(getApplication(), session.id)
     }
 
     /**
