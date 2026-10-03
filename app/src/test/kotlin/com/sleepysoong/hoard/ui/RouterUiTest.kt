@@ -187,7 +187,12 @@ class RouterUiTest {
         compose.onNodeWithTag("tab-설정").performClick()
         compose.onNode(hasSetTextAction() and hasText("라우터 주소")).performTextReplacement(router.url)
         compose.onNodeWithText("연결").performClick()
-        waitFor("auth failure") { compose.onAllNodesWithText("인증", substring = true).fetchSemanticsNodes().isNotEmpty() }
+        // The VNC settings also describe authentication; wait for the router's
+        // result, not any explanatory text elsewhere in the settings screen.
+        waitFor("auth failure") {
+            compose.onAllNodes(hasTestTag("router-status") and hasText("인증", substring = true))
+                .fetchSemanticsNodes().isNotEmpty()
+        }
         compose.onNodeWithTag("router-status").assertTextContains("연결 실패", substring = true)
 
         compose.onNode(hasSetTextAction() and hasText("토큰 (선택)")).performTextReplacement("ui-secret-token")

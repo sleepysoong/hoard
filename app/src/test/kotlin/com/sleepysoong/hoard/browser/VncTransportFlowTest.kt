@@ -5,9 +5,12 @@ import android.graphics.BitmapFactory
 import android.graphics.Color
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import kotlinx.coroutines.async
+import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 import org.junit.Assert.*
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -22,6 +25,7 @@ import java.net.Socket
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.Executors
 import java.util.zip.Deflater
 
 /** Real RFB socket → decoder → desktop image/input. Failure paths: authentication
@@ -220,6 +224,29 @@ class VncTransportFlowTest {
             catch (e: BrowserException) { assertTrue(e.message.orEmpty().contains("비밀번호")) }
             fixture.verify()
         }
+    }
+
+    @Test fun closingBeforeTheIoWorkerStartsDoesNotStrandThePendingFrame() = runBlocking {
+        val executor = Executors.newSingleThreadExecutor()
+        val dispatcher = executor.asCoroutineDispatcher()
+        val unblock = CountDownLatch(1)
+        try {
+            Fixture { peer ->
+                peer.handshake(80, 60)
+                assertEquals("closed before any frame request", -1, peer.input.read())
+            }.use { fixture ->
+                VncConnection.open(fixture.port, ioDispatcher = dispatcher).use { client ->
+                    val occupied = CountDownLatch(1)
+                    executor.submit { occupied.countDown(); unblock.await(4, TimeUnit.SECONDS) }
+                    assertTrue(occupied.await(2, TimeUnit.SECONDS))
+                    val pending = async(start = CoroutineStart.UNDISPATCHED) { runCatching { client.frame(55) } }
+                    client.close()
+                    val failure = withTimeout(2_000) { pending.await() }.exceptionOrNull()
+                    assertTrue("external close must resolve even an unstarted frame: $failure", failure is BrowserException)
+                }
+                fixture.verify()
+            }
+        } finally { unblock.countDown(); dispatcher.close() }
     }
 
     private class Fixture(script: (Peer) -> Unit) : AutoCloseable {

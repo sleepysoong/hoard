@@ -23,7 +23,7 @@ import java.util.Base64
  */
 @RunWith(AndroidJUnit4::class)
 class NativeBrowserControlTest {
-    @Test fun wholeChromeMouseKeyboardTabHandoffAndAutomationPauseActuallyWork() = runBlocking {
+    @Test fun wholeChromeMouseKeyboardTabHandoffAndAutomationPauseActuallyWork(): Unit = runBlocking {
         val args = InstrumentationRegistry.getArguments()
         fun arg(name: String) = requireNotNull(args.getString(name)) { "Missing native browser fixture argument: $name" }
         val config = RemoteBrowserConfig(

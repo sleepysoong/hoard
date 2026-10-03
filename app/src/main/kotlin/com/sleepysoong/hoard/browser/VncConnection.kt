@@ -2,13 +2,15 @@ package com.sleepysoong.hoard.browser
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
@@ -20,8 +22,6 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.zip.Inflater
 import javax.crypto.Cipher
 import javax.crypto.spec.SecretKeySpec
-import kotlin.coroutines.resume
-import kotlin.coroutines.resumeWithException
 import kotlin.math.abs
 
 /** Bounded RFB 3.3/3.7/3.8 client for an SSH loopback forward, never an exposed VNC
@@ -29,12 +29,13 @@ import kotlin.math.abs
  * palette and gradient blocks are also supported. There is no autonomous receive
  * loop: the visible UI requests one frame at a time, at most 10fps.
  */
-class VncConnection private constructor() : AutoCloseable {
+class VncConnection private constructor(private val ioDispatcher: CoroutineDispatcher) : AutoCloseable {
     private val socket = Socket()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val closed = AtomicBoolean()
     private val frameLock = Mutex()
     private val writeLock = Any()
+    private val pendingIo = linkedSetOf<CompletableDeferred<*>>()
     private lateinit var input: DataInputStream
     private lateinit var output: DataOutputStream
     private val streams = Array(4) { Inflater() }
@@ -49,19 +50,26 @@ class VncConnection private constructor() : AutoCloseable {
     val isOpen: Boolean get() = !closed.get() && socket.isConnected && !socket.isClosed
 
     /** Cancelling a blocked read closes its socket immediately, not after a timeout. */
-    private suspend fun <T> io(block: () -> T): T = suspendCancellableCoroutine { continuation ->
-        continuation.invokeOnCancellation { close() }
-        if (closed.get()) {
-            continuation.resumeWithException(BrowserException("VNC 연결이 닫혔습니다"))
-        } else scope.launch {
+    private suspend fun <T> io(block: () -> T): T {
+        val result = CompletableDeferred<T>()
+        synchronized(pendingIo) {
+            if (closed.get()) throw BrowserException("VNC 연결이 닫혔습니다")
+            pendingIo += result
+        }
+        val worker = scope.launch(ioDispatcher) {
             try {
-                val value = block()
-                if (continuation.isActive) continuation.resume(value)
+                result.complete(block())
             } catch (e: Exception) {
-                close()
-                if (continuation.isActive) continuation.resumeWithException(
+                result.completeExceptionally(
                     if (e is BrowserException) e else BrowserException("VNC 화면 연결 실패: ${e.message}", e))
+                close()
             }
+        }
+        try { return result.await() }
+        catch (cancelled: CancellationException) { close(); throw cancelled }
+        finally {
+            synchronized(pendingIo) { pendingIo -= result }
+            worker.cancel()
         }
     }
 
@@ -332,6 +340,10 @@ class VncConnection private constructor() : AutoCloseable {
     }
     override fun close() {
         if (!closed.compareAndSet(false, true)) return
+        // Resolve callers independently of the IO dispatcher: a cancelled worker
+        // may still be queued behind unrelated work and never reach its body.
+        val pending = synchronized(pendingIo) { pendingIo.toList().also { pendingIo.clear() } }
+        pending.forEach { it.completeExceptionally(BrowserException("VNC 연결이 닫혔습니다")) }
         runCatching { socket.shutdownInput() }
         // Release held input even on a cancelled capture. A dead write path must
         // not delay disconnecting the blocked reader or block the UI thread.
@@ -358,8 +370,8 @@ class VncConnection private constructor() : AutoCloseable {
         private const val MAX_BYTES = 5 * 1024 * 1024
         private fun rgb(r: Byte, g: Byte, b: Byte) = 0xff000000.toInt() or ((r.toInt() and 255) shl 16) or ((g.toInt() and 255) shl 8) or (b.toInt() and 255)
         private fun checkFrame(condition: Boolean, message: String) { if (!condition) throw BrowserException(message) }
-        suspend fun open(localPort: Int, password: String = ""): VncConnection {
-            val client = VncConnection()
+        suspend fun open(localPort: Int, password: String = "", ioDispatcher: CoroutineDispatcher = Dispatchers.IO): VncConnection {
+            val client = VncConnection(ioDispatcher)
             try { client.io { client.connect(localPort, password) }; return client }
             catch (e: Exception) { client.close(); throw e }
         }
