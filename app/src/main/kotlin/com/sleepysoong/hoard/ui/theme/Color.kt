@@ -14,7 +14,6 @@ import androidx.compose.ui.graphics.Color
  */
 val HoardCocoa = Color(0xFF7E4E30)
 val HoardCocoaDeep = Color(0xFF4A2A14)
-val HoardEspresso = Color(0xFF411C03)
 val HoardLatte = Color(0xFFD7A57C)
 val HoardMatcha = Color(0xFF9CC054)
 val HoardMatchaLight = Color(0xFFB4D866)
@@ -32,13 +31,8 @@ val HoardSeparatorLight = Color(0xFFC6C6C8)
 val HoardSecondaryLabelLight = Color(0xFF6C6C70)
 
 // Dark: black base + elevated cards.
-val HoardGroupedBgDark = Color(0xFF000000)
-val HoardCardDark = Color(0xFF1C1C1E)
 val HoardFieldGrayDark = Color(0xFF38383A)
 val HoardSeparatorDark = Color(0xFF38383A)
 val HoardSecondaryLabelDark = Color(0xFFAEAEB2)
-val HoardSegmentThumbDark = Color(0xFF636366)
 
 // Incoming message bubbles.
-val HoardIncomingLight = Color(0xFFE5E5EA)
-val HoardIncomingDark = Color(0xFF262629)

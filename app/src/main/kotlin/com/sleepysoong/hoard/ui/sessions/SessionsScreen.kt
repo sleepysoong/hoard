@@ -116,7 +116,7 @@ fun SessionsScreen(
                             session = s,
                             previewText = state.previews[s.id]?.let { p ->
                                 // Strip markdown-ish bold so "**word**" doesn't leak into previews.
-                                val clean = p.text.replace(Regex("[*#`_~]"), "")
+                                val clean = p.text.replace(PREVIEW_MARKS, "")
                                 if (p.isUser) "나: $clean" else clean
                             },
                             onOpen = { vm.selectSession(s.id); onOpenChat() },
@@ -240,3 +240,6 @@ private fun SessionCard(
         }
     }
 }
+
+/** Marks that would leak markdown syntax into the one-line session preview. */
+private val PREVIEW_MARKS = Regex("[*#`_~]")

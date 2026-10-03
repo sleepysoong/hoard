@@ -96,26 +96,6 @@ fun SessionSettingsSheet(
 }
 
 @Composable
-fun EditMessageDialog(
-    initial: String,
-    onConfirm: (String) -> Unit,
-    onDismiss: () -> Unit
-) {
-    var text by rememberSaveable { mutableStateOf(initial) }
-    GlassPopup(
-        onDismiss = onDismiss,
-        title = "메시지 수정",
-        message = "이후 대화는 지워지고 이 메시지부터 다시 생성합니다.",
-        confirmLabel = "다시 생성",
-        confirmEnabled = text.isNotBlank(),
-        onConfirm = { onConfirm(text) },
-        bodyPadding = PaddingValues(16.dp)
-    ) {
-        GlassTextField(value = text, onValueChange = { text = it }, maxLines = 10, minLines = 3, isError = text.isBlank(), supportingText = if (text.isBlank()) { { Text("내용을 입력하세요") } } else null)
-    }
-}
-
-@Composable
 fun BranchDialog(
     onConfirm: (String) -> Unit,
     onDismiss: () -> Unit

@@ -20,8 +20,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.AttachFile
-import androidx.compose.material.icons.rounded.ExpandLess
-import androidx.compose.material.icons.rounded.ExpandMore
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -54,8 +52,7 @@ import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 import androidx.compose.ui.platform.testTag
-import com.sleepysoong.hoard.data.RouteAttempt
-import com.sleepysoong.hoard.data.RoutingInfo
+
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.shrinkVertically
@@ -86,6 +83,7 @@ fun MessageBubble(
 ) {
     val isUser = message.role == MessageRole.User
     val scheme = MaterialTheme.colorScheme
+    val timeFormat = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
     val haptics = LocalHapticFeedback.current
     var bubbleBoundsInRoot by remember { mutableStateOf(Rect.Zero) }
     // Entrance: pops out of its tail corner with a soft overshoot, once per bubble.
@@ -218,7 +216,7 @@ fun MessageBubble(
                 ) {
                     // The answering model is on the # pill inside the bubble, not repeated here.
                     Text(
-                        SimpleDateFormat("HH:mm", Locale.getDefault()).format(Date(message.createdAt)),
+                        timeFormat.format(Date(message.createdAt)),
                         style = MaterialTheme.typography.labelSmall,
                         color = scheme.onSurfaceVariant
                     )

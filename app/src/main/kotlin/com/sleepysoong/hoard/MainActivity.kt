@@ -27,9 +27,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -52,10 +50,8 @@ import androidx.compose.material3.windowsizeclass.WindowWidthSizeClass
 import androidx.compose.material3.windowsizeclass.calculateWindowSizeClass
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.compose.ui.Alignment
@@ -79,17 +75,13 @@ import com.sleepysoong.hoard.ui.settings.SettingsScreen
 import com.sleepysoong.hoard.ui.theme.HoardTheme
 import com.sleepysoong.hoard.ui.tools.ToolsScreen
 
-private data class Tab(
-    val route: String,
-    val title: String,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector
-)
+// Icon-only tabs (the title stays as the accessibility label).
+private data class Tab(val route: String, val title: String, val icon: ImageVector)
 
 private val TABS = listOf(
-    Tab("sessions", "세션", Icons.Rounded.Forum, Icons.Rounded.Forum),
-    Tab("tools", "도구", Icons.Rounded.Build, Icons.Rounded.Build),
-    Tab("settings", "설정", Icons.Rounded.Settings, Icons.Rounded.Settings)
+    Tab("sessions", "세션", Icons.Rounded.Forum),
+    Tab("tools", "도구", Icons.Rounded.Build),
+    Tab("settings", "설정", Icons.Rounded.Settings)
 )
 
 class MainActivity : ComponentActivity() {
@@ -237,7 +229,7 @@ class MainActivity : ComponentActivity() {
                             TABS.forEachIndexed { i, tab ->
                                 GlassTabItem(
                                     selected = selected == i,
-                                    icon = tab.selectedIcon,
+                                    icon = tab.icon,
                                     title = tab.title,
                                     onPressedChange = { isPressed -> pressed = if (isPressed) i else -1 },
                                     onClick = {

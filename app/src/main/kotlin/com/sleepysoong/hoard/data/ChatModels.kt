@@ -1,18 +1,8 @@
 package com.sleepysoong.hoard.data
 
 import android.net.Uri
-import kotlinx.serialization.Serializable
 
 enum class MessageRole { User, Assistant, System }
-
-@Serializable
-data class AttachmentMeta(
-    val id: String,
-    val name: String,
-    val mime: String,
-    val sizeBytes: Long,
-    val uri: String = ""
-)
 
 data class UiAttachment(
     val id: String,
