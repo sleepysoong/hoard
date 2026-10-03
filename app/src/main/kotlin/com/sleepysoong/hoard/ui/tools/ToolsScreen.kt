@@ -104,8 +104,8 @@ private fun ToolsContent(store: SkillStore, modifier: Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
     var showGithub by rememberSaveable { mutableStateOf(false) }
     var githubSource by rememberSaveable { mutableStateOf("") }
-    // Keep the document permission/URI, but do not open the archive before confirmation.
-    var pendingArchive by rememberSaveable { mutableStateOf<String?>(null) }
+    // Don't persist: OpenDocument grants are transient, so a restored URI would fail anyway.
+    var pendingArchive by remember { mutableStateOf<String?>(null) }
     var detailId by rememberSaveable { mutableStateOf<String?>(null) }
     var confirmation by rememberSaveable { mutableStateOf<String?>(null) }
     val detail = skills.firstOrNull { it.id == detailId }

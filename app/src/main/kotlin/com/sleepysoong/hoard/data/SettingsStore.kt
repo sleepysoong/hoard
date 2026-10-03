@@ -41,7 +41,7 @@ object SettingsStore {
         val theme: String = "system",
         /** Router group/model for new sessions. Blank = the router's first group. */
         val defaultModel: String = "",
-        val defaultContext: Int = 32_000,
+        val defaultContext: Int = Defaults.CONTEXT_LIMIT,
         /** sleepyrouter base URL, e.g. http://192.168.0.10:4567. Blank = offline mock engine. */
         val routerUrl: String = "",
         /** sleepyrouter inbound token ([server] auth_token_env). Blank = router has no auth. */
@@ -88,7 +88,7 @@ object SettingsStore {
         Settings(
             theme = p[THEME] ?: "system",
             defaultModel = p[DEFAULT_MODEL] ?: "",
-            defaultContext = p[DEFAULT_CONTEXT] ?: 32_000,
+            defaultContext = p[DEFAULT_CONTEXT] ?: Defaults.CONTEXT_LIMIT,
             routerUrl = p[ROUTER_URL] ?: "",
             routerToken = p[ROUTER_TOKEN] ?: "",
             braveApiKey = p[BRAVE_KEY] ?: "",

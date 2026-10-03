@@ -78,7 +78,9 @@ class AttachmentEncoder(private val read: (UiAttachment) -> ByteArray?) {
         val bmp = BitmapFactory.decodeByteArray(bytes, 0, bytes.size, BitmapFactory.Options().apply { inSampleSize = sample })
             ?: return mime to bytes
         val scale = MAX_IMAGE_SIDE.toFloat() / maxOf(bmp.width, bmp.height)
-        val out = if (scale < 1f) Bitmap.createScaledBitmap(bmp, (bmp.width * scale).toInt(), (bmp.height * scale).toInt(), true) else bmp
+        // Extreme panoramas can scale a dimension to 0 px; clamp instead of crashing.
+        val out = if (scale < 1f) Bitmap.createScaledBitmap(bmp,
+            (bmp.width * scale).toInt().coerceAtLeast(1), (bmp.height * scale).toInt().coerceAtLeast(1), true) else bmp
         val buf = ByteArrayOutputStream()
         out.compress(Bitmap.CompressFormat.JPEG, 85, buf)
         return "image/jpeg" to buf.toByteArray()

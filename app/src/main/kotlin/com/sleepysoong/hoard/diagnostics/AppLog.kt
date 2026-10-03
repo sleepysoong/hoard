@@ -71,7 +71,7 @@ object AppLog {
         var out = text
         out = out.replace(Regex("(?i)bearer\\s+\\S+"), "Bearer [redacted]")
         out = out.replace(Regex("(?s)-----BEGIN [^-]*PRIVATE KEY-----.*?-----END [^-]*PRIVATE KEY-----"), "[private key redacted]")
-        out = out.replace(Regex("(?i)(token|password|api[_-]?key)\\s*[=:]\\s*\"?[^\\s\",}]+\"?"), "$1=[redacted]")
+        out = out.replace(Regex("(?i)(token|password|api[_-]?key)\"?\\s*[=:]\\s*\"?[^\\s\",}]+\"?"), "$1=[redacted]")
         return out
     }
 }

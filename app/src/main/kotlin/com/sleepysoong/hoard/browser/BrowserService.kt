@@ -1,6 +1,7 @@
 package com.sleepysoong.hoard.browser
 
 import com.sleepysoong.hoard.browser.CdpConnection.Companion.str
+import com.sleepysoong.hoard.diagnostics.AppLog
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -81,8 +82,10 @@ class BrowserService {
         sessions.clear()
         connection.onEvent(::onEvent)
         runCatching { cdp.send("Target.setDiscoverTargets", buildJsonObject { put("discover", true) }) }
+            .onFailure { AppLog.w("Browser", "target discovery setup failed: popup tabs won't be followed", it) }
         // Chrome's own download folder on the VPS (~/Downloads), with progress events.
         runCatching { cdp.send("Browser.setDownloadBehavior", buildJsonObject { put("behavior", "default"); put("eventsEnabled", true) }) }
+            .onFailure { AppLog.w("Browser", "download reporting setup failed", it) }
     }
 
     /** Chrome was restarted: every target id is new. */
@@ -90,6 +93,7 @@ class BrowserService {
         synchronized(tabIds) { tabIds.clear(); nextTab = 1 }
         current = null
         sessions.clear(); docTokens.clear(); openedBy.clear()
+        downloads.clear(); dialog = null
     }
 
     /** Re-read the real foreground tab after a person uses Chrome's desktop UI. */
@@ -187,7 +191,13 @@ class BrowserService {
         }
         settle(s)
         // A link that opened a new tab: continue there (like a person would).
-        val opened = openedBy.entries.firstOrNull { it.key !in before && it.value == s.targetId }?.key
+        // Target.targetCreated arrives asynchronously: a fast settle can beat it.
+        var opened: String? = null
+        repeat(10) {
+            opened = openedBy.entries.firstOrNull { it.key !in before && it.value == s.targetId }?.key
+            if (opened != null) return@repeat
+            delay(100)
+        }
         if (opened != null) {
             current = opened
             val ns = session(opened)
@@ -213,6 +223,11 @@ class BrowserService {
             r.str("error")?.let { throw elementError(a.elementId, it) }
             note = "selected \"${r.str("chosen")}\" in element ${a.elementId}"
         } else {
+            // Focus failures are rare (shadow DOM detachment) but silent typing into
+            // the wrong field is worse: report instead of pretending.
+            if (a.text.isNotEmpty() || a.clear) {
+                if (!focus.flag("focused")) throw elementError(a.elementId, "focus_refused")
+            }
             if (a.text.isNotEmpty()) {
                 cdp.send("Input.insertText", buildJsonObject { put("text", a.text) }, s.sessionId)
             } else if (a.clear && (focus["had"] as? JsonPrimitive)?.booleanOrNull == true) {
@@ -429,7 +444,7 @@ class BrowserService {
                 val opener = info.str("openerId")
                 if (info.str("type") == "page" && opener != null) openedBy[info.str("targetId").orEmpty()] = opener
             }
-            "Target.targetDestroyed" -> params.str("targetId")?.let { id -> sessions.remove(id); docTokens.remove(id) }
+            "Target.targetDestroyed" -> params.str("targetId")?.let { id -> sessions.remove(id); docTokens.remove(id); openedBy.remove(id) }
             "Target.detachedFromTarget" -> params.str("sessionId")?.let { sid -> sessions.values.removeIf { it.sessionId == sid } }
             "Page.frameStartedLoading", "Page.frameStoppedLoading" -> {
                 val s = sessions.values.firstOrNull { it.sessionId == sessionId } ?: return
@@ -525,6 +540,7 @@ class BrowserService {
             "hidden" -> "element $id is not visible now: call state (it may be collapsed or scrolled away)"
             "not_editable" -> "element $id is not a text field: pick an input/textarea/editable element"
             "readonly" -> "element $id is disabled or read-only"
+            "focus_refused" -> "element $id did not take keyboard focus (covered or detached): call state and use the new ids"
             else -> "element $id: $code"
         }
     )
@@ -564,12 +580,44 @@ class BrowserService {
         const val MAX_ELEMENTS = 150
         const val MAX_TEXT = 6_000
 
-        /** Loopback / link-local / cloud metadata: the VPS itself, never a web page. */
-        // Also numeric forms Chrome accepts for 127.0.0.1 (2130706433, 0x7f000001, 127.1).
+        /** Loopback / link-local / cloud metadata by name: the VPS itself, never a web page. */
+        // Numeric IPv4 in every form Chrome accepts (dotted decimal/octal/hex parts,
+        // or one large number: 2130706433, 0x7f000001, 127.1, 0177.0.0.1) is parsed
+        // below instead — a regex can't cover canonicalization.
         private val BLOCKED_HOSTS = Regex(
-            "^(localhost|.*\\.localhost|127\\..*|0(\\..*)?|\\d+|0x[0-9a-f]+|\\[?::1?]?|\\[?::ffff:127\\..*|169\\.254\\..*|metadata\\.google\\.internal)$",
+            "^(localhost|.*\\.localhost|metadata\\.google\\.internal|\\[?::1?]?|\\[?::ffff:127\\..*)$",
             RegexOption.IGNORE_CASE
         )
+
+        /** WHATWG numeric IPv4 parse; null = not a numeric IPv4 literal (a DNS name). */
+        private fun numericIpv4(host: String): Long? {
+            if (host.any { it !in '0'..'9' && it !in 'a'..'f' && it !in 'A'..'F' && it != 'x' && it != 'X' && it != '.' }) return null
+            val parts = host.split('.')
+            if (parts.size > 4 || parts.any { it.isEmpty() }) return null
+            val nums = parts.map { part ->
+                val radix = when {
+                    part.length > 2 && part.startsWith("0x", true) -> 16
+                    part.length > 1 && part.startsWith("0") -> 8
+                    else -> 10
+                }
+                val digits = if (radix == 16) part.substring(2) else part
+                if (digits.isEmpty() || digits.any { it.digitToIntOrNull(radix) == null }) return null
+                digits.toLongOrNull(radix) ?: return null
+            }
+            if (nums.dropLast(1).any { it > 255 }) return null
+            val last = nums.last()
+            if (last >= (1L shl (8 * (5 - parts.size)))) return null
+            var value = last
+            for (i in 0 until parts.size - 1) value += nums[i] shl (8 * (3 - i))
+            return value
+        }
+
+        /** Loopback ("this server") and link-local (cloud metadata) IPv4 ranges. */
+        private fun isBlockedIpv4(value: Long): Boolean {
+            val b0 = value ushr 24
+            val b1 = (value ushr 16) and 255
+            return b0 == 0L || b0 == 127L || (b0 == 169L && b1 == 254L)
+        }
 
         /**
          * Normalizes a model-supplied URL for `open`: bare domains get https://, only
@@ -584,8 +632,10 @@ class BrowserService {
             val uri = runCatching { URI(withScheme) }.getOrNull() ?: throw BrowserException("invalid url: $raw")
             val scheme = uri.scheme?.lowercase()
             if (scheme != "http" && scheme != "https") throw BrowserException("only http(s) pages can be opened (got ${uri.scheme}:)")
-            val host = uri.host ?: throw BrowserException("invalid url (no host): $raw")
-            if (BLOCKED_HOSTS.matches(host)) throw BrowserException("$host is the server itself (loopback/metadata): not allowed")
+            // DNS ignores a single trailing dot ("localhost." == localhost): strip before matching.
+            val host = (uri.host ?: throw BrowserException("invalid url (no host): $raw")).lowercase().removeSuffix(".")
+            if (BLOCKED_HOSTS.matches(host) || numericIpv4(host)?.let(::isBlockedIpv4) == true)
+                throw BrowserException("$host is the server itself (loopback/metadata): not allowed")
             return uri.toString()
         }
     }

@@ -221,6 +221,15 @@ class GoalScheduleTest {
         engine.reconcile()
         assertEquals(RunStatus.Failed, service.runs(s.id).single().status)
         assertTrue(service.runs(s.id).single().error!!.contains("stale"))
+
+        // But the sweep can only see the clock: if the run's worker was merely
+        // network-queued (not dead), its late start must revive the run instead of
+        // leaving a false "stale" failure while a reply actually arrives.
+        engine.onRunStarted(run.id)
+        assertEquals(RunStatus.Running, service.runs(s.id).single().status)
+        engine.onRunFinished(run.id, RunStatus.Succeeded, summary = "late reply arrived")
+        assertEquals(RunStatus.Succeeded, service.runs(s.id).single().status)
+        assertEquals("late reply arrived", service.runs(s.id).single().outputSummary)
     }
 
     companion object {

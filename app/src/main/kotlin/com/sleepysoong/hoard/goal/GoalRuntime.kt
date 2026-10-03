@@ -14,9 +14,6 @@ object GoalRuntime {
         "Take the next useful action. If it is verified complete, call goal with action \"complete\" and the evidence; " +
         "if it is impossible under the constraints, call goal with action \"block\"."
 
-    const val BUDGET_SUMMARY_MESSAGE = "[Goal budget exhausted] Stop working on the goal now. Do not call tools. Summarize: " +
-        "current progress, evidence gathered, unresolved blockers, and the best next action."
-
     const val SYSTEM_RULES = "Goals: a goal is a persistent objective that may take several turns. Create one (goal tool, " +
         "action \"create\") only when the user wants work to continue toward a clear, verifiable outcome — not for simple " +
         "questions or one-step changes. While a goal is active: make concrete progress instead of restating it; never mark it " +

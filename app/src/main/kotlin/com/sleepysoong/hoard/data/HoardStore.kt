@@ -60,13 +60,20 @@ class HoardStore(private val file: File) {
     fun load(): Snapshot? {
         // A non-regular target (e.g. a directory) is never renamed away by recovery.
         if (!file.isFile) return null
-        return try {
+        val snapshot = try {
             json.decodeFromString(Snapshot.serializer(), file.readText())
         } catch (e: Exception) {
             // Keep the bytes for recovery; start fresh rather than crash on every launch.
             runCatching { file.renameTo(File(file.parentFile, file.name + ".corrupt-" + System.currentTimeMillis())) }
-            null
+            return null
         }
+        if (snapshot.version > VERSION) {
+            // Written by a newer build; decoding would drop its fields and the next
+            // save would destroy them. Set the file aside instead.
+            runCatching { file.renameTo(File(file.parentFile, file.name + ".unsupported-" + System.currentTimeMillis())) }
+            return null
+        }
+        return snapshot
     }
 
     @Synchronized

@@ -241,6 +241,8 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
             _goalNotice.value = "중지해서 목표를 일시정지했습니다 · /goal resume 으로 재개"
         }
         ChatResponseWorker.cancel(getApplication(), session.id)
+        // A wakeup armed before the stop must not make the session talk again later.
+        com.sleepysoong.hoard.schedule.WorkManagerWakeups(getApplication()).cancel(session.id)
     }
 
     /**
@@ -254,7 +256,10 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
         try {
             when (arg.lowercase()) {
                 "" -> goalSheetOpen = true
-                "pause" -> goals.pause(session.id, com.sleepysoong.hoard.goal.Actor.User)
+                "pause" -> {
+                    goals.pause(session.id, com.sleepysoong.hoard.goal.Actor.User)
+                    com.sleepysoong.hoard.schedule.WorkManagerWakeups(getApplication()).cancel(session.id)
+                }
                 "resume" -> {
                     goals.resume(session.id, com.sleepysoong.hoard.goal.Actor.User)
                     continueGoal(session.id, modelId)
@@ -357,6 +362,7 @@ class ChatViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteSession(id: String) {
         if (editingSessionId == id) cancelEditing()
         ChatResponseWorker.cancel(getApplication(), id)
+        com.sleepysoong.hoard.schedule.WorkManagerWakeups(getApplication()).cancel(id)
         // Stale/corrupt skill storage must never block (or crash) session deletion.
         runCatching { SkillRuntime.clearSession(SkillStore.get(getApplication()), id) }
             .onFailure { android.util.Log.w("ChatViewModel", "cannot clear skill state for $id", it) }

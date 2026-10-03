@@ -52,10 +52,7 @@ class TodoException(message: String) : IllegalArgumentException(message)
  * at most one active task even when callers race. Flows publish only AFTER commit.
  * The session registry also prevents a late worker from recreating a deleted session. */
 class TodoService(file: File? = null) : Closeable {
-    private val db = if (file == null) SQLiteDatabase.create(null) else {
-        file.parentFile?.mkdirs()
-        SQLiteDatabase.openOrCreateDatabase(file, null)
-    }
+    private val db = openDatabase(file)
     private val mutableState = MutableStateFlow<Map<String, List<TodoItem>>>(emptyMap())
     val state = mutableState.asStateFlow()
     private val mutableEvents = MutableSharedFlow<TodoUpdatedEvent>(extraBufferCapacity = 64, onBufferOverflow = BufferOverflow.DROP_OLDEST)
@@ -64,7 +61,7 @@ class TodoService(file: File? = null) : Closeable {
     init {
         db.setForeignKeyConstraintsEnabled(true)
         transaction {
-            check(db.version <= 1) { "Unsupported Todo database version ${db.version}" }
+            check(db.version <= SCHEMA_VERSION) { "Unsupported Todo database version ${db.version}" }
             db.execSQL("CREATE TABLE IF NOT EXISTS todo_sessions (id TEXT PRIMARY KEY NOT NULL)")
             db.execSQL("""CREATE TABLE IF NOT EXISTS todos (
                 id TEXT PRIMARY KEY NOT NULL,
@@ -76,7 +73,7 @@ class TodoService(file: File? = null) : Closeable {
                 UNIQUE(session_id, position)
             )""")
             db.execSQL("CREATE UNIQUE INDEX IF NOT EXISTS todo_one_active ON todos(session_id) WHERE status = 'in_progress'")
-            db.version = 1
+            db.version = SCHEMA_VERSION
         }
         val sessions = db.rawQuery("SELECT id FROM todo_sessions", null).use { c ->
             buildList { while (c.moveToNext()) add(c.getString(0)) }
@@ -200,9 +197,24 @@ class TodoService(file: File? = null) : Closeable {
     companion object {
         const val MAX_ITEMS = 100
         const val MAX_CONTENT_LENGTH = 500
+        private const val SCHEMA_VERSION = 1
         private fun newId() = "todo_" + UUID.randomUUID()
         private fun validateContent(content: String): String = content.trim().also {
             if (it.isEmpty() || it.length > MAX_CONTENT_LENGTH) throw TodoException("content must contain 1-$MAX_CONTENT_LENGTH characters")
+        }
+
+        private fun openDatabase(file: File?): SQLiteDatabase {
+            if (file == null) return SQLiteDatabase.create(null)
+            file.parentFile?.mkdirs()
+            val existing = SQLiteDatabase.openOrCreateDatabase(file, null)
+            if (existing.version <= SCHEMA_VERSION) return existing
+            // A DB written by a newer build (downgrade): never brick launch — set it
+            // aside and start fresh, like the chat store's corrupt-file recovery.
+            com.sleepysoong.hoard.diagnostics.AppLog.w("TodoService", "todo DB version ${existing.version} > $SCHEMA_VERSION; moving it aside")
+            existing.close()
+            val aside = File(file.parentFile, file.name + ".unsupported-" + System.currentTimeMillis())
+            if (!file.renameTo(aside)) file.delete()
+            return SQLiteDatabase.openOrCreateDatabase(file, null)
         }
     }
 }

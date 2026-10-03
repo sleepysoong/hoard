@@ -304,9 +304,12 @@ class SkillStore(
     }
 
     private fun readRegistry() {
-        if (!registryFile.baseFile.exists()) return
-        // Do not turn a corrupt private registry into an empty one and overwrite trust/source records.
-        val (bytes, truncated) = registryFile.openRead().use { it.readCapped(4 * 1024 * 1024) }
+        // Do not turn a corrupt private registry into an empty one and overwrite
+        // trust/source records. `openRead` (not an exists() check) so AtomicFile's
+        // legacy .bak recovery still applies after a mid-write crash.
+        val (bytes, truncated) = try {
+            registryFile.openRead().use { it.readCapped(4 * 1024 * 1024) }
+        } catch (_: java.io.FileNotFoundException) { return }
         require(!truncated) { "Skill registry exceeds 4 MiB" }
         val json = JSONObject(bytes.decodeToString(throwOnInvalidSequence = true))
         val entries = json.optJSONArray("skills") ?: JSONArray()

@@ -10,9 +10,10 @@ import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
 /**
- * Encrypts secrets (the SSH private key) with an AES-256-GCM key that lives in the
- * Android Keystore and never leaves it: only `iv:ciphertext` (Base64) is persisted.
- * Removing the app (or the Keystore key) makes the blob unreadable, never plain text.
+ * Encrypts secrets (SSH private key, SSH/VNC passwords) with an AES-256-GCM key
+ * that lives in the Android Keystore and never leaves it: only `iv:ciphertext`
+ * (Base64) is persisted. Removing the app (or the Keystore key) makes the blob
+ * unreadable, never plain text.
  */
 object SecretStore {
     private const val ALIAS = "hoard-browser-ssh-key"
@@ -30,6 +31,9 @@ object SecretStore {
         return cipher.doFinal(unb64(ct)).toString(Charsets.UTF_8)
     }
 
+    // Concurrent first-time callers must not race to generate under the same alias:
+    // the loser would overwrite it and orphan the winner's ciphertext.
+    @Synchronized
     private fun key(): SecretKey {
         val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
         (ks.getKey(ALIAS, null) as? SecretKey)?.let { return it }

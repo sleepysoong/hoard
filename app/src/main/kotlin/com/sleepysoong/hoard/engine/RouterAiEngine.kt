@@ -282,6 +282,10 @@ class RouterAiEngine(
                 if (!response.isSuccessful) throw errorFromJsonBody(response.code, body)
                 parseModelList(body)
             }
+        } catch (e: RouterException) {
+            // HTTP-level failures (e.g. 401 wrong token) keep their meaning: they are
+            // misconfiguration, not connectivity.
+            throw e
         } catch (e: IOException) {
             throw RouterException.Transient("라우터에 연결할 수 없습니다 (${e.message})", null, e)
         }
@@ -632,8 +636,6 @@ class RouterAiEngine(
 
         /** Start of the note appended to a reply cut off by `response.incomplete` (followed by the reason and ")"). */
         const val INCOMPLETE_PREFIX = "(응답이 잘렸습니다: "
-
-        fun hasToolCall(resp: JsonObject): Boolean = functionCalls(resp).isNotEmpty()
 
         /** `function_call` items of a completed Responses object. */
         fun functionCalls(resp: JsonObject): List<ToolCall> =

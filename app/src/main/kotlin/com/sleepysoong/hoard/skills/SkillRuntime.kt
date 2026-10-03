@@ -1,7 +1,6 @@
 package com.sleepysoong.hoard.skills
 
 import com.sleepysoong.hoard.termux.TermuxExecutor
-import com.sleepysoong.hoard.diagnostics.AppLog
 import com.sleepysoong.hoard.tools.ToolException
 import com.sleepysoong.hoard.tools.SkillToolPolicy
 import kotlinx.coroutines.Dispatchers
@@ -179,19 +178,21 @@ class SkillRuntime(
         }
     }
 
-    fun modelOverride(): String? = turnSkills.toList().asReversed().firstNotNullOfOrNull { id ->
+    // Tool batches run in parallel coroutines while activation mutates these:
+    // every read of turnSkills/loaded goes through storageLock.
+    fun modelOverride(): String? = synchronized(storageLock) { turnSkills.toList().asReversed().firstNotNullOfOrNull { id ->
         if (live(id) != null) loaded[id]?.string("resolved_model") else null
-    }
-    fun effortOverride(): String? = turnSkills.toList().asReversed().firstNotNullOfOrNull { id ->
+    } }
+    fun effortOverride(): String? = synchronized(storageLock) { turnSkills.toList().asReversed().firstNotNullOfOrNull { id ->
         if (live(id) != null) loaded[id]?.string("effort") else null
-    }
-    fun disallowedTools(): List<String> = turnSkills.filter { live(it) != null }.flatMap { id ->
+    } }
+    fun disallowedTools(): List<String> = synchronized(storageLock) { turnSkills.filter { live(it) != null }.flatMap { id ->
         (loaded[id]?.get("disallowed_tools") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
-    }.distinct()
-    fun allowedTools(): List<String> = turnSkills.filter { live(it) != null }.flatMap { id ->
+    }.distinct() }
+    fun allowedTools(): List<String> = synchronized(storageLock) { turnSkills.filter { live(it) != null }.flatMap { id ->
         (loaded[id]?.get("allowed_tools") as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.content }.orEmpty()
-    }.distinct()
-    fun finishTurn() { turnSkills.clear() }
+    }.distinct() }
+    private fun finishTurn() = synchronized(storageLock) { turnSkills.clear() }
     /** Call only when resuming a queued fork's first turn, never for an ordinary later user message. */
     fun resumeTurn() {
         store.refresh()
@@ -658,10 +659,8 @@ class SkillRuntime(
             return File(directory, "${SkillShell.hash(sessionId.toByteArray())}.json")
         }
         private fun readSession(store: SkillStore, sessionId: String): LinkedHashMap<String, JsonObject> = synchronized(storageLock) {
-            AppLog.d("SkillRuntime", "readSession lock")
             val file = sessionFile(store, sessionId)
             if (!file.exists()) return@synchronized linkedMapOf()
-            AppLog.d("SkillRuntime", "readSession exists ${file.length()}b")
             if (file.length() > 4L * MAX_TOTAL) throw ToolException("Stored skill session exceeds its size limit; clear loaded skills for this conversation.")
             val entries = try { Json.parseToJsonElement(file.readText()).jsonObject["skills"]!!.jsonArray } catch (e: Exception) {
                 throw ToolException("Cannot load persisted skill context: ${e.message}. Clear loaded skills for this conversation.")
@@ -677,7 +676,6 @@ class SkillRuntime(
                 if (body.length > MAX_BODY || size > MAX_TOTAL) throw ToolException("Stored skill content exceeds its context limit.")
                 result[id] = entry
             }
-            AppLog.d("SkillRuntime", "readSession done ${result.size}")
             result
         }
         private fun writeSession(store: SkillStore, sessionId: String, entries: Map<String, JsonObject>) {

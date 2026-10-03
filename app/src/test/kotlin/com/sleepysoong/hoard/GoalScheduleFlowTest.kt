@@ -153,6 +153,9 @@ class GoalScheduleFlowTest {
         h.awaitReplies(timeoutMs = 20_000)
         h.vm.goalCommand("pause", "coding")
         assertEquals(GoalStatus.Paused, GoalService(h.repo).current(sid)!!.status)
+        assertTrue("pausing disarms the scheduled wakeup too (a paused goal must not talk later)",
+            h.workManager.getWorkInfos(WorkQuery.Builder.fromTags(listOf("hoard-wakeup"))
+                .addStates(listOf(WorkInfo.State.ENQUEUED, WorkInfo.State.BLOCKED)).build()).get().isEmpty())
         h.vm.send("/goal 다른 목표", emptyList(), "coding")
         assertTrue("one open goal: explained, not replaced", h.vm.goalNotice.value!!.contains("already has"))
         router.enqueue(sse(toolCallCompleted(Triple("c", "goal", """{"action":"complete","evidence":"file written: summary.md (2 KB)"}"""))), sse(completed("끝")))

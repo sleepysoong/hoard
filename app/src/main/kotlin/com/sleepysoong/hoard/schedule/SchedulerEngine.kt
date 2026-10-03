@@ -116,7 +116,9 @@ class SchedulerEngine(
         repo.updateScheduleRuns { list ->
             list.map { r ->
                 val since = r.startedAt ?: r.queuedAt ?: r.createdAt
-                if (!r.status.finished && now - since > STALE_MS) r.copy(status = RunStatus.Failed, error = "stale: Hoard stopped during the run", finishedAt = now) else r
+                // A run queued on a network constraint past this mark may still execute
+                // (the worker revives it in [onRunStarted]); a truly dead one never does.
+                if (!r.status.finished && now - since > STALE_MS) r.copy(status = RunStatus.Failed, error = "$STALE_ERROR_PREFIX Hoard stopped during the run", finishedAt = now) else r
             }
         }
         for (s in repo.schedules.value.filter { it.status == ScheduleStatus.Active }) {
@@ -127,7 +129,17 @@ class SchedulerEngine(
 
     // ---- run lifecycle (from the agent side) ------------------------------------
 
-    fun onRunStarted(runId: String) = updateRun(runId) { if (it.status == RunStatus.Queued) it.copy(status = RunStatus.Running, startedAt = clock()) else it }
+    fun onRunStarted(runId: String) = updateRun(runId) {
+        // reconcile() can only see the clock: a reply still queued on a network
+        // constraint past STALE_MS is marked failed while its worker still lives.
+        // When that worker finally starts, revive the run instead of falsifying history.
+        when {
+            it.status == RunStatus.Queued -> it.copy(status = RunStatus.Running, startedAt = clock())
+            it.status == RunStatus.Failed && it.error?.startsWith(STALE_ERROR_PREFIX) == true ->
+                it.copy(status = RunStatus.Running, startedAt = it.startedAt ?: clock(), error = null, finishedAt = null)
+            else -> it
+        }
+    }
 
     fun onRunFinished(runId: String, status: RunStatus, summary: String? = null, error: String? = null, tokens: Int? = null) =
         updateRun(runId) {
@@ -174,5 +186,6 @@ class SchedulerEngine(
         const val MAX_CATCH_UP = 3
         const val QUEUE_RETRY_MS = 60_000L
         const val STALE_MS = 60 * 60_000L
+        const val STALE_ERROR_PREFIX = "stale:"
     }
 }

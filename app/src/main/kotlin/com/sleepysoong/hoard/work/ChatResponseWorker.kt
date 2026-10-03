@@ -217,7 +217,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             return Result.success()
         }
         // A continuation queued before the user paused/cleared the goal: nothing to do.
-        val goal = if (mode == MODE_BUDGET_SUMMARY) goals.current(sessionId) else goals.active(sessionId)
+        val goal = goals.active(sessionId)
         if (mode == MODE_CONTINUE && goal == null) return Result.success()
 
         // The next turn would carry more than the auto-compact share of the session's limit:
@@ -245,12 +245,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             modelId = model
         ).copy(
             goalContext = goal?.let(GoalRuntime::context),
-            hiddenUserMessage = when (mode) {
-                MODE_CONTINUE -> GoalRuntime.CONTINUE_MESSAGE
-                MODE_BUDGET_SUMMARY -> GoalRuntime.BUDGET_SUMMARY_MESSAGE
-                else -> null
-            },
-            forbidTools = mode == MODE_BUDGET_SUMMARY
+            hiddenUserMessage = if (mode == MODE_CONTINUE) GoalRuntime.CONTINUE_MESSAGE else null
         )
         val goalBefore = goals.current(sessionId)
 
@@ -352,7 +347,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             val registry = ToolKit.registry(
                 ToolContext(
                     sessionId = sessionId,
-                    modelId = session.modelId,
+                    modelId = model,
                     services = AndroidToolServices(applicationContext, cfg.braveApiKey, repo, RemoteBrowserConfig.from(cfg), skills = runtime),
                     permissions = allowed,
                     scheduledRun = runId != null || skillFork
@@ -429,10 +424,8 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             Result.failure()
         } catch (e: CancellationException) {
             runId?.let { scheduler.onRunFinished(it, RunStatus.Cancelled, error = "stopped") }
-            // Cancelled or stopped by the system: never leave a spinning bubble,
-            // and let the coroutine machinery see the cancellation.
             // Stopped by the user (stop button / regenerate) or the system: keep whatever
-            // text arrived, never leave a spinner.
+            // text arrived, never leave a spinner, and let the machinery see cancellation.
             repo.updateMessage(sessionId, messageId) {
                 it.copy(isStreaming = false, errorText = it.errorText ?: USER_STOPPED,
                     thinking = it.thinking.map { step -> step.copy(running = false) })
@@ -569,7 +562,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         sessionId: String, messageId: String, mode: String, reply: ChatMessage?,
         goals: GoalService, before: Goal?, wakeups: WakeupService, needsNetwork: Boolean
     ) {
-        if (mode == MODE_BUDGET_SUMMARY) return
         val automatic = mode == MODE_CONTINUE
         goals.recordTurn(sessionId, reply?.totalTokens ?: 0, automatic, goalId = before?.takeIf { it.status == com.sleepysoong.hoard.data.GoalStatus.Active }?.id)
         val turn = TurnOutcome(succeeded = reply != null && reply.errorText == null)
@@ -582,7 +574,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 applicationContext, sessionId, inputData.getString(KEY_MODEL).orEmpty(), "msg-" + UUID.randomUUID().toString().take(8),
                 parentId = messageId, needsNetwork = needsNetwork, mode = MODE_CONTINUE
             )
-            is ContinuationDecision.Stop -> Unit
+            is ContinuationDecision.Stop -> AppLog.d(TAG, "continuation stop: ${decision.why} session=${sessionId.takeLast(6)}")
         }
     }
 
@@ -676,7 +668,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
         const val KEY_FOCUS = "focus"
         const val MODE_REPLY = "reply"
         const val MODE_CONTINUE = "continue"
-        const val MODE_BUDGET_SUMMARY = "budget_summary"
         const val MODE_COMPACT = "compact"
         private const val COMPACTION_TAG = "hoard-compaction"
 
@@ -692,7 +683,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             replacePending: Boolean = false,
             /** Router mode: wait for a network instead of burning retries offline. */
             needsNetwork: Boolean = false,
-            /** [MODE_REPLY] (answer [parentId]), [MODE_CONTINUE] (goal continuation), [MODE_BUDGET_SUMMARY], [MODE_COMPACT] (/compact). */
+            /** [MODE_REPLY] (answer [parentId]), [MODE_CONTINUE] (goal continuation), [MODE_COMPACT] (/compact). */
             mode: String = MODE_REPLY,
             /** Set when this reply is a scheduled run. */
             scheduleRunId: String? = null,
@@ -705,7 +696,11 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
             /** [MODE_COMPACT] only: the `/compact <focus>` the user typed (capped in [Compaction]). */
             focus: String? = null
         ) {
-            val generation = synchronized(executionLock) { generations.getOrPut(sessionId) { 0L } }
+            synchronized(executionLock) {
+            // Generation read AND WorkManager submission must be atomic against
+            // cancel(): a reply enqueued after the user's stop must not slip in
+            // behind cancelUniqueWork and spring a brand-new spinner.
+            val generation = generations.getOrPut(sessionId) { 0L }
             val req = OneTimeWorkRequestBuilder<ChatResponseWorker>()
                 .setInputData(
                     workDataOf(
@@ -738,6 +733,7 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 if (replacePending) ExistingWorkPolicy.REPLACE else ExistingWorkPolicy.APPEND_OR_REPLACE,
                 req
             )
+            }
         }
 
         fun cancel(ctx: Context, sessionId: String) {
@@ -747,8 +743,12 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 add(sessionId)
                 com.sleepysoong.hoard.skills.SkillForkExecutor.activeInline[sessionId]?.let(::add)
             }
+            val wm = WorkManager.getInstance(ctx)
             val jobs = synchronized(executionLock) {
                 targets.forEach { generations[it] = (generations[it] ?: 0L) + 1L }
+                // The generation bump and the queue wipe stay in this order for any
+                // racing enqueue (which submits under the same lock).
+                targets.forEach { wm.cancelUniqueWork(uniqueName(it)) }
                 activeJobs.values.filter { it.first in targets }.map { it.second }
             }
             // Show the stop immediately, even if a platform/tool call takes time to
@@ -763,8 +763,6 @@ class ChatResponseWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
                 }
             }
             jobs.forEach { it.cancel(CancellationException(USER_STOPPED)) }
-            val wm = WorkManager.getInstance(ctx)
-            targets.forEach { wm.cancelUniqueWork(uniqueName(it)) }
             AppLog.i(TAG, "cancel: targets=${targets.map { it.takeLast(6) }} liveJobs=${jobs.size}")
         }
 

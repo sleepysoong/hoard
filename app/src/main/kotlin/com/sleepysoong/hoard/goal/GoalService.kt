@@ -138,10 +138,6 @@ class GoalService(
         }
     }
 
-    fun markBudgetLimited(sessionId: String): Goal? = update(sessionId) {
-        if (it.status == GoalStatus.Active) it.copy(status = GoalStatus.BudgetLimited) else it
-    }
-
     fun suppressContinuation(sessionId: String, suppressed: Boolean) {
         update(sessionId) { if (it.isOpen) it.copy(continuationSuppressed = suppressed) else it }
     }

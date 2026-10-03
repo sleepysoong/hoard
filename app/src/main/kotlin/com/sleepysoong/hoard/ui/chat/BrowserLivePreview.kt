@@ -116,6 +116,7 @@ internal fun BrowserLivePreview(
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             target.browser.startPreview()
             try {
+                var failures = 0
                 while (isActive) {
                     try {
                         val jpegQuality = PREVIEW_JPEG_QUALITIES[currentQuality - 1]
@@ -128,15 +129,19 @@ internal fun BrowserLivePreview(
                             remoteHeight = frame?.height ?: 0
                         }
                         problem = null
+                        failures = 0
                     } catch (cancelled: CancellationException) {
                         throw cancelled
                     } catch (error: Exception) {
+                        failures++
                         image = null
                         problem = error.message ?: "전체 Chrome 화면에 연결하지 못했습니다"
                     }
                     // At most ten updates a second. Keep one request in flight:
                     // slow links lower the rate rather than building a frame backlog.
-                    delay(100)
+                    // A persistent failure (SSH/VNC down) backs off instead of
+                    // hammering the tunnel with reconnects.
+                    delay(if (failures == 0) 100L else minOf(100L shl minOf(failures, 4), 2_000L))
                 }
             } finally {
                 image = null

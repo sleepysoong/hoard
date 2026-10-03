@@ -98,14 +98,15 @@ data class RemoteBrowserConfig(
  *   RemoteBrowserManager
  *   ├─ SshClient              (connection, commands)
  *   ├─ BrowserRuntimeManager  (ensure-browser-runtime)
- *   ├─ SshTunnelManager       (127.0.0.1:<port> → VPS 127.0.0.1:9222)
- *   └─ BrowserService         (CDP browser control)
+ *   ├─ SshTunnelManager ×2    (127.0.0.1:<port> → VPS 127.0.0.1:9222 CDP / :5900 VNC)
+ *   ├─ BrowserService         (CDP browser control)
+ *   └─ VncConnection          (whole-desktop preview + manual input)
  */
 class RemoteBrowserManager(
     val config: RemoteBrowserConfig
 ) : RemoteBrowser {
     private val lock = Mutex()
-    private var ssh: SshClient? = null
+    @Volatile private var ssh: SshClient? = null
     private val runtime = BrowserRuntimeManager()
     private val tunnel = SshTunnelManager()
     private val vncTunnel = SshTunnelManager(config.vncPort)
@@ -115,6 +116,8 @@ class RemoteBrowserManager(
     private var previewActive = false
     private var previewGeneration = 0L
     @Volatile private var disposed = false
+    /** VNC "down" is re-probed at most this often from the preview path (never rebuilt there). */
+    @Volatile private var vncDownProbeAt = 0L
     @Volatile private var cdp: CdpConnection? = null
     private val browser = BrowserService()
     private val geometryLock = Mutex()
@@ -167,7 +170,16 @@ class RemoteBrowserManager(
         desktop?.takeIf { it.isOpen }?.let { return@withLock it }
         val client = ssh?.takeIf { it.isConnected } ?: return@withLock null
         if (cdp?.isOpen != true) return@withLock null
-        if (runtime.last?.vnc == "down") throw BrowserException("VNC가 내려가 전체 Chrome 화면을 볼 수 없습니다. VPS의 VNC 서비스를 확인하세요")
+        if (runtime.last?.vnc == "down") {
+            // A healed VNC must not stay "down" until some unrelated AI action runs:
+            // re-probe (and repair) at most once per 30 s from the preview path.
+            if (System.currentTimeMillis() - vncDownProbeAt < 30_000)
+                throw BrowserException("VNC가 내려가 전체 Chrome 화면을 볼 수 없습니다. VPS의 VNC 서비스를 확인하세요")
+            vncDownProbeAt = System.currentTimeMillis()
+            runtime.ensure(client)
+            if (runtime.last?.vnc == "down")
+                throw BrowserException("VNC가 내려가 전체 Chrome 화면을 볼 수 없습니다. VPS의 VNC 서비스를 확인하세요")
+        }
         val connection = VncConnection.open(vncTunnel.ensure(client), config.vncPassword())
         val accepted = synchronized(desktopState) {
             if (previewActive && !disposed && previewGeneration == generation && ssh === client) {
@@ -260,9 +272,18 @@ class RemoteBrowserManager(
 
     /** One pass of the flow up to a live CDP connection. */
     private suspend fun prepare(): RuntimeStatus {
+        if (disposed) throw BrowserException("브라우저 설정이 바뀌어 연결이 닫혔습니다")
         val client = ssh?.takeIf { it.isConnected } ?: run {
             teardown()
-            SshClient(config.target(), config.hostKey).also { it.connect(); ssh = it }
+            val connected = SshClient(config.target(), config.hostKey).also { it.connect() }
+            // close() doesn't hold [lock]: it may have run while connect() was in
+            // flight. Never leave its freshly made session behind.
+            if (disposed) {
+                runCatching { connected.disconnect() }
+                throw BrowserException("브라우저 설정이 바뀌어 연결이 닫혔습니다")
+            }
+            ssh = connected
+            connected
         }
         val status = runtime.ensure(client)
         if (status.chromeRestarted) {

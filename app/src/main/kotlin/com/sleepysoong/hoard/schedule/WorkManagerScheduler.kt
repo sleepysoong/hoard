@@ -12,6 +12,7 @@ import com.sleepysoong.hoard.data.ChatMessage
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.MessageRole
 import com.sleepysoong.hoard.data.SettingsStore
+import com.sleepysoong.hoard.diagnostics.AppLog
 import com.sleepysoong.hoard.work.ChatResponseWorker
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -63,9 +64,16 @@ class ScheduleFireWorker(ctx: Context, params: WorkerParameters) : CoroutineWork
     override suspend fun doWork(): Result {
         val id = inputData.getString(WorkManagerScheduler.KEY_SCHEDULE) ?: return Result.success()
         val planned = inputData.getLong(WorkManagerScheduler.KEY_PLANNED, -1).takeIf { it > 0 } ?: return Result.success()
-        WorkManagerScheduler.services(applicationContext).second.fire(id, planned)
-        HoardRepository.get().flush()
-        return Result.success()
+        // A throwing fire() (transient DB/store error) must not lose the firing until
+        // the next app start: retry with WorkManager backoff instead.
+        return try {
+            WorkManagerScheduler.services(applicationContext).second.fire(id, planned)
+            HoardRepository.get().flush()
+            Result.success()
+        } catch (e: Exception) {
+            AppLog.e("ScheduleFire", "fire failed for $id", e)
+            if (runAttemptCount < 5) Result.retry() else Result.failure()
+        }
     }
 }
 

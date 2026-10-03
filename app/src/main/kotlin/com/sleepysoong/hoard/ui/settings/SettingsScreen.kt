@@ -129,7 +129,8 @@ fun SettingsScreen(modifier: Modifier = Modifier) {
         GlassSectionHeader("웹 검색")
         GlassGroupedSection {
             // The user's own Brave Search key (web_search); stored on this device only.
-            var key by rememberSaveable(settings.braveApiKey) { mutableStateOf(settings.braveApiKey) }
+            // Secrets stay in memory only: never into the saved-state bundle.
+            var key by remember(settings.braveApiKey) { mutableStateOf(settings.braveApiKey) }
             GlassTextField(
                 value = key,
                 onValueChange = { v -> key = v; scope.launch { SettingsStore.setBraveApiKey(ctx, v) } },
@@ -268,7 +269,8 @@ private fun RouterSection(savedUrl: String, savedToken: String) {
     val scheme = MaterialTheme.colorScheme
     val status by RouterConnection.status.collectAsState()
     var url by rememberSaveable(savedUrl) { mutableStateOf(savedUrl) }
-    var token by rememberSaveable(savedToken) { mutableStateOf(savedToken) }
+    // Secrets stay in memory only: never into the saved-state bundle.
+    var token by remember(savedToken) { mutableStateOf(savedToken) }
     // Bare "host:port" is fine (→ http://); only reject other schemes.
     val normalized = RouterAiEngine.normalizeBaseUrl(url)
     val valid = url.isBlank() || normalized.startsWith("http://") || normalized.startsWith("https://")

@@ -163,6 +163,14 @@ class PersistenceTest {
         assertEquals("죽기 직전 질문", r.messagesOf(sid)[r.messagesOf(sid).size - 2].text)
     }
 
+    @Test fun newerVersionIsKeptAsideAndAppStarts() {
+        // A store written by a newer build must not be decoded-then-overwritten empty.
+        file.writeText("""{"version":999,"sessions":[],"messages":{}}""")
+        val r = restart()
+        assertTrue("starts empty (no downgrade), no crash", r.sessions.value.isEmpty())
+        assertTrue(tmp.root.listFiles()!!.any { it.name.startsWith("hoard-store.json.unsupported-") && it.readText().contains("\"version\":999") })
+    }
+
     @Test fun corruptFileIsKeptAsideAndAppStarts() {
         file.writeText("{ this is not json")
         val r = restart()

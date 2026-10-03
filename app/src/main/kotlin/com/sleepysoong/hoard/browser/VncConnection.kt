@@ -76,7 +76,9 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
 
     private fun connect(port: Int, password: String) {
         socket.connect(InetSocketAddress("127.0.0.1", port), 5_000)
-        socket.soTimeout = 5_000
+        // Also the mid-frame read budget: a busy desktop can take seconds to pack a
+        // full update. Cancellation never relies on this (close() tears the socket).
+        socket.soTimeout = 15_000
         socket.tcpNoDelay = true
         input = DataInputStream(socket.getInputStream().buffered())
         output = DataOutputStream(socket.getOutputStream().buffered())
