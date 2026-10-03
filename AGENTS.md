@@ -39,8 +39,9 @@ The dev box is small (3 cores / 6 GB) and **freezes when a build or test run tak
   now unpacks into `app/build/test-tmp` (not tmpfs `/tmp`, which is RAM on this box and OOM-killed sessions).
 
 - This box is an Incus container: 6 GB hard limit, **no swap possible**. Other agents (e.g. codex running
-  `make test -race` in sleepyrouter) may build at the same time. `gradlew-lowspec.sh` waits for 1.5 GB free and
-  marks Gradle `oom_score_adj=1000` so an OOM kills the build, not the session. For the whole suite, run it in
+  `make test -race` in sleepyrouter) may build at the same time. `gradlew-lowspec.sh` requires 3 GB free,
+  serializes local launchers, and refuses to start after a low-memory timeout.
+  It marks Gradle `oom_score_adj=1000` so an OOM favors killing the build, not the session. For the whole suite, run it in
   chunks (a few test classes per Gradle run) instead of one big run.
 
 ## Backend contract (sleepyrouter)

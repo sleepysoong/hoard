@@ -59,6 +59,11 @@ jobs:
           sudo apt-get install -y libicu-dev
           python3 scripts/check-skill-regex.py
 
+      - name: Verify low-spec launcher safety
+        run: |
+          mkdir -p app/build/test-artifacts/low-spec
+          python3 scripts/test-gradlew-lowspec.py 2>&1 | tee app/build/test-artifacts/low-spec/launcher-tests.txt
+
       - name: Run tests (incl. real sleepyrouter)
         env:
           SLEEPYROUTER_BIN: ${{ runner.temp }}/sleepyrouter
