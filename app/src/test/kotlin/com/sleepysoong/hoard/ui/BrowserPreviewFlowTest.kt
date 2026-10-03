@@ -12,12 +12,20 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performTouchInput
+import androidx.compose.ui.test.performMouseInput
+import androidx.compose.ui.test.performKeyInput
+import androidx.compose.ui.test.performTextInput
+import androidx.compose.ui.test.click
+import androidx.compose.ui.test.pressKey
+import androidx.compose.ui.input.key.Key
 import androidx.lifecycle.Lifecycle
 import com.sleepysoong.hoard.MainActivity
 import com.sleepysoong.hoard.browser.BrowserAction
 import com.sleepysoong.hoard.browser.BrowserException
 import com.sleepysoong.hoard.browser.BrowserPreviews
 import com.sleepysoong.hoard.browser.BrowserResult
+import com.sleepysoong.hoard.browser.BrowserControl
+import com.sleepysoong.hoard.browser.DesktopInput
 import com.sleepysoong.hoard.browser.RemoteBrowser
 import com.sleepysoong.hoard.data.HoardRepository
 import com.sleepysoong.hoard.data.SettingsStore
@@ -166,8 +174,81 @@ class BrowserPreviewFlowTest {
         screenshot("browser-preview-fullscreen", "fullscreen-recovered")
     }
 
+    @Test fun fullscreenMapsLetterboxedTouchMouseAndKeyboardAndReleasesControlOnBackgroundAndContinue() {
+        openPreview()
+        compose.onNodeWithText("누르면 전체화면").performClick()
+        await { browser.owners.get() == 1 }
+        compose.onNodeWithText("직접 조작 · AI 브라우저 대기").assertExists()
+        val desktop = compose.onNodeWithTag("browser-desktop-input", useUnmergedTree = true)
+        desktop.performTouchInput { click(center) }
+        await { browser.inputs.filterIsInstance<DesktopInput.Pointer>().any { it.buttons == 1 } }
+        val tap = browser.inputs.filterIsInstance<DesktopInput.Pointer>().first { it.buttons == 1 }
+        assertTrue("fit coordinates use the remote desktop, not the Android view: $tap", tap.x in 158..162 && tap.y in 88..92)
+        val count = browser.inputs.size
+        desktop.performTouchInput { click(Offset(centerX, 1f)) }
+        assertEquals("letterbox is not sent as desktop input", count, browser.inputs.size)
+        desktop.performMouseInput { moveTo(center); press(); moveTo(center + Offset(30f, 15f)); release() }
+        await { browser.inputs.filterIsInstance<DesktopInput.Pointer>().count { it.buttons == 1 } >= 3 }
+        desktop.performKeyInput { pressKey(Key.Tab) }
+        await { browser.inputs.filterIsInstance<DesktopInput.Key>().any { it.keysym == 0xff09 && it.down } }
+        compose.onNodeWithTag("browser-control-text").performTextInput("직접 입력한 주소")
+        compose.onNodeWithText("입력", substring = false).performClick()
+        await { browser.inputs.contains(DesktopInput.Text("직접 입력한 주소")) }
+        screenshot("browser-preview-fullscreen", "manual-desktop-input")
+        compose.activityRule.scenario.moveToState(Lifecycle.State.STARTED)
+        await { browser.owners.get() == 0 }
+        compose.activityRule.scenario.moveToState(Lifecycle.State.RESUMED)
+        await { browser.owners.get() == 1 }
+        compose.onNodeWithText("AI 계속").performClick()
+        await { browser.owners.get() == 0 }
+        compose.onNodeWithTag("browser-preview-fullscreen").assertDoesNotExist()
+        assertEquals("one capture loop while the dialog is open", 1, browser.maxConcurrent.get())
+    }
+
+    @Test fun closingWhileControlIsPendingCancelsAcquisitionAndNeverLeavesAiPaused() {
+        browser.controlDelay = 5_000
+        openPreview()
+        compose.onNodeWithText("누르면 전체화면").performClick()
+        compose.onNodeWithText("AI 작업 마무리 대기").assertExists()
+        compose.onNodeWithContentDescription("전체화면 닫기").performClick()
+        compose.waitForIdle()
+        assertEquals(0, browser.owners.get())
+        browser.controlDelay = 0
+        compose.onNodeWithText("누르면 전체화면").performClick()
+        await { browser.owners.get() == 1 }
+        compose.onNodeWithContentDescription("전체화면 닫기").performClick()
+        await { browser.owners.get() == 0 }
+    }
+
+    @Test fun touchSwipeAccumulatesSmallMovesInsteadOfSendingOneWheelTickPerPixel() {
+        openPreview()
+        compose.onNodeWithText("누르면 전체화면").performClick()
+        await { browser.owners.get() == 1 }
+        compose.onNodeWithTag("browser-desktop-input", useUnmergedTree = true).performTouchInput {
+            down(center + Offset(0f, 40f))
+            for (i in 1..8) moveTo(center + Offset(0f, 40f - i * 10f))
+            up()
+        }
+        await { browser.inputs.any { it is DesktopInput.Scroll } }
+        val scrolls = browser.inputs.filterIsInstance<DesktopInput.Scroll>()
+        assertTrue("short swipe must not jump several screens: $scrolls", scrolls.size <= 2)
+        assertTrue("swiping upward scrolls down", scrolls.all { it.dy > 0 })
+    }
+
     private class ObservedBrowser : RemoteBrowser {
         override val supportsPreview = true
+        override val supportsInput = true
+        @Volatile var controlDelay = 0L
+        val owners = AtomicInteger()
+        val inputs = CopyOnWriteArrayList<DesktopInput>()
+        override suspend fun acquireControl(): BrowserControl {
+            delay(controlDelay)
+            owners.incrementAndGet()
+            return object : BrowserControl {
+                override suspend fun input(event: DesktopInput) { inputs += event }
+                override suspend fun release() { owners.decrementAndGet() }
+            }
+        }
         @Volatile var mode = "ready"
         @Volatile var latencyMs = 0L
         val requests = CopyOnWriteArrayList<Pair<Long, Int>>()

@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 45
     permissions:
       contents: write
+      actions: read
 
     steps:
       - name: Checkout Repository
@@ -71,12 +72,12 @@ jobs:
       - name: Build Signed Release APK
         run: ./gradlew :app:assembleRelease --no-daemon
 
-      # A green Robolectric run is not sufficient: it uses OpenJDK regex, not ICU.
-      # Gate publishing on the actual Android worker/network/skill startup flow.
+      # A host-JVM run cannot verify Android ICU, Keystore, input or SSH/VNC.
+      # Gate publishing on native chat and real headful Chrome desktop flows.
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
 
-      - name: Run native Android chat smoke test
+      - name: Run native Android chat and real browser smoke tests
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -94,6 +95,10 @@ jobs:
           name: hoard-native-smoke
           path: |
             app/build/native-smoke/
+            !app/build/native-smoke/browser-fixture/profile/**
+            !app/build/native-smoke/browser-fixture/client-key
+            !app/build/native-smoke/browser-fixture/host-key
+            !app/build/native-smoke/browser-fixture/vnc.auth
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
           retention-days: 14
@@ -103,6 +108,27 @@ jobs:
           apk="hoard-${{ steps.version_bump.outputs.version_name }}.apk"
           cp app/build/outputs/apk/release/app-release.apk "app/build/outputs/apk/release/$apk"
           echo "Built $apk"
+
+      - name: Require full test suite success before publishing
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # The release bot's one-file version bumps intentionally do not start
+          # another CI run. Gate on the latest source change in this checkout.
+          source_sha=$(git log -1 --format=%H -- . ':!version.properties')
+          deadline=$((SECONDS + 1200))
+          while (( SECONDS < deadline )); do
+            state=$(gh run list --repo "$GITHUB_REPOSITORY" --workflow=Tests --commit "$source_sha" --limit=1 --json status,conclusion --jq '.[0] | [.status, .conclusion] | @tsv')
+            read -r status conclusion <<< "$state"
+            if [[ "$status" == "completed" ]]; then
+              [[ "$conclusion" == "success" ]] || { echo "Full suite did not pass: $conclusion ($source_sha)" >&2; exit 1; }
+              echo "Full suite passed for $source_sha"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "Timed out waiting for the full test suite ($source_sha)" >&2
+          exit 1
 
       - name: Commit and Push Version Bump
         run: |

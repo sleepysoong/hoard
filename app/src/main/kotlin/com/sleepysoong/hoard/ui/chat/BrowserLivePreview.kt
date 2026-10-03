@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
@@ -26,8 +27,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,12 +57,16 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.repeatOnLifecycle
 import com.sleepysoong.hoard.browser.BrowserPreviewTarget
 import com.sleepysoong.hoard.browser.BrowserPreviews
+import com.sleepysoong.hoard.browser.BrowserControl
+import com.sleepysoong.hoard.browser.DesktopInput
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.liquidClickable
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.withContext
@@ -79,28 +86,39 @@ internal fun BrowserLivePreview(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val keyboard = LocalSoftwareKeyboardController.current
     var image by remember(target) { mutableStateOf<ImageBitmap?>(null) }
+    var remoteWidth by remember(target) { mutableIntStateOf(0) }
+    var remoteHeight by remember(target) { mutableIntStateOf(0) }
     var problem by remember(target) { mutableStateOf<String?>(null) }
+    var inputProblem by remember(target) { mutableStateOf<String?>(null) }
+    var control by remember(target) { mutableStateOf<BrowserControl?>(null) }
+    val inputs = remember(target) { Channel<DesktopInput>(64) }
     var expanded by rememberSaveable(target) { mutableStateOf(false) }
     var quality by remember(target, qualityLevel) { mutableIntStateOf(qualityLevel.coerceIn(1, 5)) }
     val currentQuality by rememberUpdatedState(quality)
+
+    DisposableEffect(target) { onDispose { target.browser.stopPreview() } }
 
     LaunchedEffect(target, lifecycle) {
         // Hidden chats, a dismissed preview and background activities have no
         // capture loop. The preview never starts a second SSH/Chrome connection.
         lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            target.browser.startPreview()
             try {
                 while (isActive) {
                     try {
                         val jpegQuality = PREVIEW_JPEG_QUALITIES[currentQuality - 1]
-                        image = withContext(Dispatchers.IO) {
+                        val frame = withContext(Dispatchers.IO) {
                             target.browser.previewFrame(jpegQuality)?.let(::decodePreview)
                         }
+                        image = frame?.image
+                        remoteWidth = frame?.width ?: 0
+                        remoteHeight = frame?.height ?: 0
                         problem = null
                     } catch (cancelled: CancellationException) {
                         throw cancelled
-                    } catch (_: Exception) {
+                    } catch (error: Exception) {
                         image = null
-                        problem = "미리보기 연결을 기다리는 중"
+                        problem = error.message ?: "전체 Chrome 화면에 연결하지 못했습니다"
                     }
                     // At most ten updates a second. Keep one request in flight:
                     // slow links lower the rate rather than building a frame backlog.
@@ -108,7 +126,38 @@ internal fun BrowserLivePreview(
                 }
             } finally {
                 image = null
+                target.browser.stopPreview()
             }
+        }
+    }
+
+    LaunchedEffect(target, expanded, lifecycle) {
+        if (expanded && target.browser.supportsInput) lifecycle.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var lease: BrowserControl? = null
+            try {
+                lease = target.browser.acquireControl()
+                control = lease
+                for (event in inputs) {
+                    try { lease.input(event); inputProblem = null }
+                    catch (cancelled: CancellationException) { throw cancelled }
+                    catch (error: Exception) {
+                        inputProblem = error.message ?: "직접 조작 연결이 끊겼습니다"
+                        while (inputs.tryReceive().isSuccess) { /* Never replay stale input after reconnecting. */ }
+                    }
+                }
+            } catch (cancelled: CancellationException) { throw cancelled }
+            catch (error: Exception) { inputProblem = error.message ?: "직접 조작을 시작하지 못했습니다" }
+            finally {
+                control = null
+                while (inputs.tryReceive().isSuccess) { /* Closing discards pending UI-only events. */ }
+                withContext(NonCancellable) { lease?.release() }
+            }
+        }
+    }
+    val send: (DesktopInput) -> Unit = { event ->
+        if (control != null && image != null && inputs.trySend(event).isFailure) {
+            inputProblem = "입력 연결이 느려 직접 조작을 중지했습니다"
+            expanded = false // release all held keys/buttons rather than losing an up event
         }
     }
 
@@ -150,20 +199,24 @@ internal fun BrowserLivePreview(
             // A dialog owns another window: keep it opaque and do not use the
             // activity window's glass backdrop shader here.
             Surface(Modifier.fillMaxSize().testTag("browser-preview-fullscreen"), color = MaterialTheme.colorScheme.surface) {
-                Column(Modifier.fillMaxSize().safeDrawingPadding()) {
+                Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                         Column(Modifier.weight(1f)) {
                             Text("브라우저 실시간", style = MaterialTheme.typography.titleMedium)
-                            Text("보기 전용", style = MaterialTheme.typography.bodySmall,
+                            Text(if (!target.browser.supportsInput) "전체 Chrome 화면" else if (control == null) "AI 작업 마무리 대기" else "직접 조작 · AI 브라우저 대기", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
+                        if (target.browser.supportsInput) TextButton(onClick = { expanded = false }) { Text("AI 계속") }
                         IconButton(onClick = { expanded = false }) {
                             Icon(Icons.Rounded.Close, contentDescription = "전체화면 닫기")
                         }
                     }
-                    PreviewImage(image, Modifier.weight(1f).fillMaxWidth(), compact = false,
-                        waiting = problem ?: "브라우저 화면을 기다리는 중")
+                    BrowserDesktopSurface(image, remoteWidth, remoteHeight, control != null, send,
+                        Modifier.weight(1f).fillMaxWidth(), waiting = problem ?: "전체 Chrome 화면을 기다리는 중")
+                    inputProblem?.let { Text(it, color = MaterialTheme.colorScheme.error,
+                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp)) }
+                    if (target.browser.supportsInput) BrowserInputControls(control != null && image != null, send)
                     PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) }, glass = false,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                 }
@@ -220,7 +273,9 @@ private fun PreviewImage(image: ImageBitmap?, modifier: Modifier, compact: Boole
 }
 
 /** Decode off the UI thread, bound even a large VPS viewport to a modest bitmap. */
-private fun decodePreview(bytes: ByteArray): ImageBitmap {
+private data class DecodedPreview(val image: ImageBitmap, val width: Int, val height: Int)
+
+private fun decodePreview(bytes: ByteArray): DecodedPreview {
     require(bytes.size in 1..5 * 1024 * 1024) { "미리보기 이미지 크기 제한 초과" }
     val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
     BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
@@ -230,6 +285,7 @@ private fun decodePreview(bytes: ByteArray): ImageBitmap {
     var sample = 1
     while (bounds.outWidth / sample > 1_600 || bounds.outHeight / sample > 1_600) sample *= 2
     val options = BitmapFactory.Options().apply { inSampleSize = sample }
-    return (BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+    val image = (BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
         ?: error("미리보기 화면을 읽을 수 없습니다")).asImageBitmap()
+    return DecodedPreview(image, bounds.outWidth, bounds.outHeight)
 }

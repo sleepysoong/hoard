@@ -67,13 +67,16 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
     var user by rememberSaveable(settings.browserUser) { mutableStateOf(settings.browserUser) }
     var pastedKey by remember { mutableStateOf("") }
     var typedPassword by remember { mutableStateOf("") }
+    var vncPort by rememberSaveable(settings.browserVncPort) { mutableStateOf(settings.browserVncPort.toString()) }
+    var vncPassword by remember { mutableStateOf("") }
     var busy by remember { mutableStateOf<String?>(null) }
     var message by remember { mutableStateOf<Pair<String, Boolean>?>(null) } // text, isError
     // A host key read from the server, waiting for the user to trust it.
     var offered by remember { mutableStateOf<PinnedKey?>(null) }
 
     val portNumber = port.trim().toIntOrNull()?.takeIf { it in 1..65535 }
-    val targetValid = host.isNotBlank() && user.isNotBlank() && portNumber != null
+    val vncPortNumber = vncPort.trim().toIntOrNull()?.takeIf { it in 1..65535 }
+    val targetValid = host.isNotBlank() && user.isNotBlank() && portNumber != null && vncPortNumber != null
     val pinned = PinnedKey.parse(settings.browserHostKey)
     val hasKey = settings.browserKeyEncrypted.isNotBlank()
 
@@ -93,12 +96,13 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
 
     suspend fun saveTarget() {
         SettingsStore.setBrowserTarget(ctx, host, portNumber ?: 22, user)
+        SettingsStore.setBrowserVncPort(ctx, vncPortNumber ?: 5900)
         RemoteBrowsers.reset()
     }
 
     Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Text(
-            "VPS의 Chrome을 SSH로 조작합니다 (browser_use). 화면은 VNC로 볼 수 있습니다.",
+            "AI는 SSH/CDP로 Chrome을 조작합니다. 앱의 전체 창 화면과 직접 입력은 같은 SSH 안의 VNC를 사용합니다.",
             style = MaterialTheme.typography.bodySmall, color = scheme.onSurfaceVariant
         )
         GlassTextField(
@@ -235,6 +239,38 @@ fun RemoteBrowserSection(settings: SettingsStore.Settings) {
             }
         }
 
+        GlassRowDivider()
+        Text("전체 창 화면 · 직접 조작 (VNC)", style = MaterialTheme.typography.labelLarge)
+        GlassTextField(value = vncPort, onValueChange = { vncPort = it.filter(Char::isDigit).take(5) },
+            label = { Text("VNC 포트") }, singleLine = true, isError = vncPortNumber == null,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            supportingText = { Text("VPS의 127.0.0.1로만 SSH 포워딩 · 기본 5900 · 연결 확인 시 저장") },
+            modifier = Modifier.testTag("browser-vnc-port"))
+        if (settings.browserVncPasswordEncrypted.isNotBlank()) {
+            Text("VNC 비밀번호 저장됨 (Keystore로 암호화)", style = MaterialTheme.typography.bodySmall)
+            GlassPillButton(label = "VNC 비밀번호 지우기", tint = GlassPillTint.Destructive, enabled = busy == null, onClick = {
+                scope.launch {
+                    SettingsStore.setBrowserVncPasswordEncrypted(ctx, "")
+                    RemoteBrowsers.reset()
+                }
+            })
+        } else {
+            GlassTextField(value = vncPassword, onValueChange = { vncPassword = it },
+                label = { Text("VNC 비밀번호 (서버에 설정된 경우)") }, singleLine = true,
+                visualTransformation = PasswordVisualTransformation(),
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                supportingText = { Text("기존 VNC 인증은 처음 8바이트 사용 · 인증이 없으면 비워 두세요") },
+                modifier = Modifier.testTag("browser-vnc-password"))
+            GlassPillButton(label = "VNC 비밀번호 저장", enabled = busy == null && vncPassword.isNotEmpty(), onClick = {
+                run("저장 중…") {
+                    val encrypted = withContext(Dispatchers.IO) { SecretStore.encrypt(vncPassword) }
+                    SettingsStore.setBrowserVncPasswordEncrypted(ctx, encrypted)
+                    vncPassword = ""
+                    RemoteBrowsers.reset()
+                    message = "VNC 비밀번호를 저장했습니다" to false
+                }
+            })
+        }
         GlassRowDivider()
         // ---- host key + connection check
         val loginWhat = if (settings.browserAuthMethod == "password") "비밀번호" else "SSH 키"

@@ -2,6 +2,7 @@ package com.sleepysoong.hoard.browser
 
 import com.sleepysoong.hoard.data.SettingsStore
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
@@ -9,13 +10,18 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
+import java.util.concurrent.atomic.AtomicBoolean
 
 /** What the browser_use tool talks to (the tool knows nothing about SSH or CDP). */
 interface RemoteBrowser {
     suspend fun execute(action: BrowserAction): BrowserResult
     val supportsPreview: Boolean get() = false
-    /** Read-only JPEG of the current tab; null until a real connection/page is ready. */
+    /** Full desktop JPEG, including Chrome's tab/address bars; UI-only. */
     suspend fun previewFrame(quality: Int = 55): ByteArray? = null
+    fun startPreview() {}
+    fun stopPreview() {}
+    val supportsInput: Boolean get() = false
+    suspend fun acquireControl(): BrowserControl = throw BrowserException("직접 조작을 지원하지 않습니다")
 }
 
 /**
@@ -31,7 +37,9 @@ data class RemoteBrowserConfig(
     val authMethod: String,
     val keyEncrypted: String = "",
     val passwordEncrypted: String = "",
-    val hostKey: PinnedKey
+    val hostKey: PinnedKey,
+    val vncPort: Int = 5900,
+    val vncPasswordEncrypted: String = ""
 ) {
     /** Host + user + the chosen method's secret. */
     val hasLogin: Boolean
@@ -50,6 +58,10 @@ data class RemoteBrowserConfig(
         return SshTarget(host, port, user, auth)
     }
 
+    fun vncPassword(decrypt: (String) -> String = SecretStore::decrypt): String =
+        if (vncPasswordEncrypted.isBlank()) "" else try { decrypt(vncPasswordEncrypted) }
+        catch (_: Exception) { throw BrowserException("저장된 VNC 비밀번호를 풀 수 없습니다. 설정 → 원격 브라우저에서 다시 저장하세요") }
+
     override fun toString() = "RemoteBrowserConfig($user@$host:$port, auth=$authMethod, hostKey=${hostKey.fingerprint})"
 
     companion object {
@@ -61,7 +73,8 @@ data class RemoteBrowserConfig(
             val config = RemoteBrowserConfig(
                 s.browserHost.trim(), s.browserPort, s.browserUser.trim(),
                 s.browserAuthMethod, s.browserKeyEncrypted, s.browserPasswordEncrypted,
-                PinnedKey.parse(s.browserHostKey) ?: return null
+                PinnedKey.parse(s.browserHostKey) ?: return null,
+                s.browserVncPort, s.browserVncPasswordEncrypted
             )
             return config.takeIf { it.hasLogin }
         }
@@ -93,19 +106,81 @@ class RemoteBrowserManager(
     private var ssh: SshClient? = null
     private val runtime = BrowserRuntimeManager()
     private val tunnel = SshTunnelManager()
+    private val vncTunnel = SshTunnelManager(config.vncPort)
+    private val vncLock = Mutex()
+    private val desktopState = Any()
+    @Volatile private var desktop: VncConnection? = null
+    private var previewActive = false
+    private var previewGeneration = 0L
+    @Volatile private var disposed = false
     @Volatile private var cdp: CdpConnection? = null
     private val browser = BrowserService()
 
     override val supportsPreview = true
+    override val supportsInput = true
+
+    override fun startPreview() { synchronized(desktopState) { previewActive = true; previewGeneration++ } }
+    override fun stopPreview() {
+        synchronized(desktopState) { previewActive = false }
+        closeDesktop()
+    }
+
+    private fun closeDesktop() {
+        val old = synchronized(desktopState) { previewGeneration++; desktop.also { desktop = null } }
+        old?.close()
+    }
+
+    private suspend fun desktopConnection(): VncConnection? = vncLock.withLock {
+        val generation = synchronized(desktopState) { if (!previewActive || disposed) return@withLock null; previewGeneration }
+        desktop?.takeIf { it.isOpen }?.let { return@withLock it }
+        val client = ssh?.takeIf { it.isConnected } ?: return@withLock null
+        if (cdp?.isOpen != true) return@withLock null
+        if (runtime.last?.vnc == "down") throw BrowserException("VNC가 내려가 전체 Chrome 화면을 볼 수 없습니다. VPS의 VNC 서비스를 확인하세요")
+        val connection = VncConnection.open(vncTunnel.ensure(client), config.vncPassword())
+        val accepted = synchronized(desktopState) {
+            if (previewActive && !disposed && previewGeneration == generation && ssh === client) {
+                desktop = connection; true
+            } else false
+        }
+        if (accepted) connection else { connection.close(); null }
+    }
 
     override suspend fun previewFrame(quality: Int): ByteArray? = withContext(Dispatchers.IO) {
-        if (cdp?.isOpen != true) return@withContext null
         // Deliberately outside the action lock: long navigation/settling must not
-        // freeze the view. Never reconnect, restart Chrome or create a tab here.
-        browser.previewFrame(quality)
+        // freeze the view. Never reconnect SSH, restart Chrome or create a tab here.
+        try { desktopConnection()?.frame(quality) }
+        catch (e: Exception) { closeDesktop(); throw e }
+    }
+
+    override suspend fun acquireControl(): BrowserControl {
+        val owner = Any()
+        lock.lock(owner) // cancellable while an existing AI action finishes
+        if (disposed) { lock.unlock(owner); throw BrowserException("브라우저 설정이 바뀌어 연결이 닫혔습니다") }
+        return object : BrowserControl {
+            private val released = AtomicBoolean()
+            override suspend fun input(event: DesktopInput) {
+                if (released.get() || disposed) throw BrowserException("직접 조작이 끝났습니다")
+                val connection = desktop?.takeIf { it.isOpen } ?: throw BrowserException("VNC 화면 연결을 기다리는 중입니다")
+                connection.input(event)
+            }
+            override suspend fun release() {
+                if (!released.compareAndSet(false, true)) return
+                withContext(NonCancellable + Dispatchers.IO) {
+                    try { desktop?.takeIf { it.isOpen }?.releaseInputs() }
+                    catch (_: Exception) { closeDesktop() }
+                    finally {
+                        // A person may have navigated or switched Chrome tabs. Do
+                        // not apply the AI's pre-handoff element ids to a new page.
+                        browser.afterManualControl()
+                        lock.unlock(owner)
+                    }
+                }
+            }
+        }
     }
 
     override suspend fun execute(action: BrowserAction): BrowserResult = lock.withLock {
+        if (disposed) throw BrowserException("브라우저 설정이 바뀌어 연결이 닫혔습니다")
         withContext(Dispatchers.IO) {
             val status = try {
                 prepare()
@@ -159,6 +234,8 @@ class RemoteBrowserManager(
     }
 
     private fun teardown() {
+        closeDesktop()
+        vncTunnel.reset(ssh)
         closeCdp()
         tunnel.reset(ssh)
         ssh?.disconnect()
@@ -166,6 +243,8 @@ class RemoteBrowserManager(
     }
 
     fun close() {
+        disposed = true
+        stopPreview()
         BrowserPreviews.clear(this)
         teardown()
     }
@@ -193,13 +272,17 @@ object RemoteBrowsers {
         current = null
     }
 
-    /** Settings "연결 확인": connect with the pinned key and run the runtime check once. */
+    /** Settings "연결 확인": pinned SSH, runtime, then actual VNC authentication/frame. */
     suspend fun check(config: RemoteBrowserConfig): RuntimeStatus = withContext(Dispatchers.IO) {
         reset()
         val client = SshClient(config.target(), config.hostKey)
         try {
             client.connect()
-            BrowserRuntimeManager().ensure(client)
+            val status = BrowserRuntimeManager().ensure(client)
+            val port = client.forwardLocal(config.vncPort)
+            try { VncConnection.open(port, config.vncPassword()).use { it.frame(20) } }
+            finally { client.removeForward(port) }
+            status
         } finally {
             client.disconnect()
         }

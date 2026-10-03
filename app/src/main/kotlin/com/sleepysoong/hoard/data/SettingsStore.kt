@@ -33,6 +33,8 @@ object SettingsStore {
     /** Pinned SSH host key ("type base64"), set when the user verifies the host in Settings. */
     private val BROWSER_HOST_KEY = stringPreferencesKey("browser_ssh_host_key")
     private val BROWSER_PREVIEW_QUALITY = intPreferencesKey("browser_preview_quality")
+    private val BROWSER_VNC_PORT = intPreferencesKey("browser_vnc_port")
+    private val BROWSER_VNC_PASSWORD_ENC = stringPreferencesKey("browser_vnc_password_enc")
     private val AUTO_COMPACT = intPreferencesKey("auto_compact_percent")
 
     data class Settings(
@@ -62,6 +64,9 @@ object SettingsStore {
         val browserHostKey: String = "",
         /** Live preview quality: five levels (1 = smallest JPEG, 5 = highest quality). */
         val browserPreviewQuality: Int = 3,
+        val browserVncPort: Int = 5900,
+        /** Optional existing VNC password, stored only as a Keystore blob. SSH remains mandatory. */
+        val browserVncPasswordEncrypted: String = "",
         /** Compact a conversation before a reply once its context reaches this % of the session's limit. */
         val autoCompactPercent: Int = Defaults.AUTO_COMPACT_PERCENT
     ) {
@@ -75,7 +80,8 @@ object SettingsStore {
             "braveApiKey=${if (braveApiKey.isBlank()) "none" else "set"}, browser=${if (browserConfigured) "$browserUser@$browserHost:$browserPort" else "none"}, " +
             "browserAuth=$browserAuthMethod, browserKey=${if (browserKeyEncrypted.isBlank()) "none" else "set"}, " +
             "browserPassword=${if (browserPasswordEncrypted.isBlank()) "none" else "set"}, browserHostKey=${if (browserHostKey.isBlank()) "unverified" else "pinned"}, " +
-            "browserPreviewQuality=$browserPreviewQuality, autoCompactPercent=$autoCompactPercent)"
+            "browserPreviewQuality=$browserPreviewQuality, browserVncPort=$browserVncPort, " +
+            "browserVncPassword=${if (browserVncPasswordEncrypted.isBlank()) "none" else "set"}, autoCompactPercent=$autoCompactPercent)"
     }
 
     fun flow(ctx: Context): Flow<Settings> = ctx.prefs.data.map { p ->
@@ -95,6 +101,8 @@ object SettingsStore {
             browserPublicKey = p[BROWSER_PUB] ?: "",
             browserHostKey = p[BROWSER_HOST_KEY] ?: "",
             browserPreviewQuality = (p[BROWSER_PREVIEW_QUALITY] ?: 3).coerceIn(1, 5),
+            browserVncPort = (p[BROWSER_VNC_PORT] ?: 5900).coerceIn(1, 65535),
+            browserVncPasswordEncrypted = p[BROWSER_VNC_PASSWORD_ENC] ?: "",
             autoCompactPercent = (p[AUTO_COMPACT] ?: Defaults.AUTO_COMPACT_PERCENT).coerceIn(Defaults.AUTO_COMPACT_RANGE)
         )
     }
@@ -107,6 +115,13 @@ object SettingsStore {
     suspend fun setBraveApiKey(ctx: Context, v: String) { ctx.prefs.edit { it[BRAVE_KEY] = v.trim() } }
     suspend fun setBrowserPreviewQuality(ctx: Context, level: Int) {
         ctx.prefs.edit { it[BROWSER_PREVIEW_QUALITY] = level.coerceIn(1, 5) }
+    }
+    suspend fun setBrowserVncPort(ctx: Context, port: Int) {
+        require(port in 1..65535) { "invalid VNC port" }
+        ctx.prefs.edit { it[BROWSER_VNC_PORT] = port }
+    }
+    suspend fun setBrowserVncPasswordEncrypted(ctx: Context, blob: String) {
+        ctx.prefs.edit { if (blob.isBlank()) it.remove(BROWSER_VNC_PASSWORD_ENC) else it[BROWSER_VNC_PASSWORD_ENC] = blob }
     }
     suspend fun setAutoCompactPercent(ctx: Context, v: Int) {
         ctx.prefs.edit { it[AUTO_COMPACT] = v.coerceIn(Defaults.AUTO_COMPACT_RANGE) }

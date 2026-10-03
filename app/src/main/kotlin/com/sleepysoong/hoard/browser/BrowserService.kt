@@ -2,6 +2,7 @@ package com.sleepysoong.hoard.browser
 
 import com.sleepysoong.hoard.browser.CdpConnection.Companion.str
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
@@ -91,25 +92,8 @@ class BrowserService {
         sessions.clear(); docTokens.clear(); openedBy.clear()
     }
 
-    /** Observe the already attached current tab without changing focus or element ids. */
-    suspend fun previewFrame(quality: Int = 55): ByteArray? {
-        if (!::cdp.isInitialized) return null
-        val connection = cdp
-        if (!connection.isOpen) return null
-        val target = current ?: return null
-        val page = sessions[target] ?: return null
-        val result = connection.send("Page.captureScreenshot", buildJsonObject {
-            put("format", "jpeg")
-            put("quality", quality.coerceIn(1, 100))
-            put("captureBeyondViewport", false)
-        }, page.sessionId, timeoutMs = 3_000)
-        // A switch/reconnect can race capture. Never label the previous tab's frame
-        // as the newly active page, and keep the image payload bounded in memory.
-        if (current != target || cdp !== connection || !connection.isOpen) return null
-        val encoded = result.str("data") ?: return null
-        if (encoded.length > 6 * 1024 * 1024) throw BrowserException("미리보기 화면이 너무 큽니다")
-        return Base64.getDecoder().decode(encoded)
-    }
+    /** Re-read the real foreground tab after a person uses Chrome's desktop UI. */
+    fun afterManualControl() { current = null; docTokens.clear() }
 
     suspend fun perform(action: BrowserAction): BrowserResult = when (action) {
         is BrowserAction.Open -> open(action)
@@ -338,7 +322,7 @@ class BrowserService {
 
     private suspend fun tabsJson(): JsonObject {
         val all = pages()
-        val cur = current?.takeIf { id -> all.any { it.id == id } } ?: all.firstOrNull()?.id
+        val cur = foreground(all) ?: current?.takeIf { id -> all.any { it.id == id } } ?: all.firstOrNull()?.id
         return buildJsonObject {
             put("action", "tabs")
             put("tabs", buildJsonArray {
@@ -362,14 +346,30 @@ class BrowserService {
 
     private fun tabId(targetId: String): Int = synchronized(tabIds) { tabIds.getOrPut(targetId) { nextTab++ } }
 
+    private suspend fun foreground(all: List<Target>): String? {
+        var visible: String? = null
+        for (target in all) {
+            val state = try { eval(session(target.id), "({visible:document.visibilityState==='visible',focused:document.hasFocus()})") as? JsonObject }
+            catch (cancelled: CancellationException) { throw cancelled }
+            catch (_: BrowserException) { null }
+            if (state?.flag("visible") == true) {
+                if (state.flag("focused")) return target.id
+                if (visible == null) visible = target.id
+            }
+        }
+        return visible
+    }
+
     /** The current tab's session (first tab, or a new blank one, when there is none). */
     private suspend fun page(): PageSession {
         val all = pages()
-        val id = current?.takeIf { c -> all.any { it.id == c } } ?: all.firstOrNull()?.id
+        val id = current?.takeIf { c -> all.any { it.id == c } } ?: foreground(all) ?: all.firstOrNull()?.id
             ?: cdp.send("Target.createTarget", buildJsonObject { put("url", "about:blank") }).str("targetId")
             ?: throw BrowserException("열린 탭이 없고 새 탭도 만들 수 없습니다")
         current = id
-        return session(id)
+        val page = session(id)
+        activate(id)
+        return page
     }
 
     private suspend fun session(targetId: String): PageSession {
@@ -380,13 +380,14 @@ class BrowserService {
         sessions[targetId] = s
         // Page events: loading state and JavaScript dialogs (which would block every script).
         runCatching { cdp.send("Page.enable", sessionId = sid) }
-        // The VPS window may not have OS focus: pages still behave as focused (typing, focus events).
-        runCatching { cdp.send("Emulation.setFocusEmulationEnabled", buildJsonObject { put("enabled", true) }, sid) }
+        // Do not emulate foreground focus: it would make hidden tabs report as
+        // visible and disagree with the actual Chrome window shown over VNC.
         return s
     }
 
     private suspend fun activate(targetId: String) {
-        runCatching { cdp.send("Target.activateTarget", buildJsonObject { put("targetId", targetId) }) }
+        cdp.send("Target.activateTarget", buildJsonObject { put("targetId", targetId) })
+        cdp.send("Page.bringToFront", sessionId = session(targetId).sessionId)
     }
 
     private fun onEvent(method: String, params: JsonObject, sessionId: String?) {

@@ -270,7 +270,7 @@ Android (Hoard)                                    Ubuntu VPS
 │       ├─ SshTunnelManager    │ 127.0.0.1:<port> ─► 127.0.0.1:9222                  │
 │       └─ BrowserService (CDP)│                   │                                 │
 └──────────────────────────────┘                   └─────────────────────────────────┘
-SSH = control + secure transport · CDP = browser control + in-app preview · VNC = desktop viewing/help
+SSH = verified secure transport · CDP = AI browser control · VNC = full desktop preview and manual input
 ```
 
 **Every action** runs the same flow (`browser/RemoteBrowserManager.kt`): SSH connected? (else connect) →
@@ -281,7 +281,7 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 
 ### VPS setup
 
-1. X display + XFCE + VNC (VNC is only for watching/helping, never on the control path) and Google Chrome or
+1. X display + XFCE + VNC (the in-app desktop view/manual input) and Google Chrome or
    Chromium.
 2. Install the runtime script (from this repo):
 
@@ -327,25 +327,38 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 3. **연결 확인**: the first time, the app only reads the server's host key and shows its SHA256 fingerprint.
    Compare it with `ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub` on the VPS, then **신뢰하고 연결** pins it
    and runs `ensure-browser-runtime`. Every later connection must present exactly that key (another key
-   aborts before authentication; changing host/port un-pins it).
+    aborts before authentication; changing host/port un-pins it).
+4. VNC port (default 5900) and its existing password, if required. The VNC password is also stored only
+   Keystore-encrypted. VNC must be on the **same display** as the CDP Chrome and reachable at VPS
+   `127.0.0.1:<VNC port>`; the app forwards it through that same pinned SSH connection, never a public
+   VNC endpoint. Use x11vnc's shared mode and key/modifier cleanup (`-shared -forever -clear_keys -clear_mods`).
+   Connection checking verifies the runtime **and an actual VNC frame/authentication**, not just a process name.
 
 `browser_use` is offered once host, user, key and the pinned host key are all set.
 
 ### Live preview in chat
 
 Calling `browser_use` opens a compact live browser view above the chat input in the invoking session.
-Tap it to open a full-screen, read-only viewer; close the full-screen viewer to return to chat, or close
-the compact view to stop previewing. The current tab continues updating while the preview is visible,
+Tap it to open full-screen **direct control**; close it or tap **AI 계속** to return control to the AI,
+or close the compact view to stop previewing. The complete desktop/Chrome window updates while visible,
 including during navigation and between tool calls.
 
-- JPEG frames refresh at most ten times per second over the **existing SSH/CDP connection**. Slow links
+- Full-desktop frames (including Chrome's tab strip, address bar and dialogs) refresh at most ten times
+  per second over **VNC in the existing pinned SSH connection**. Slow links
   lower the rate naturally; only one frame request runs at a time, with no queued stale frames. There is no
   extension, exposed CDP port, new HTTP relay, or separate login.
-- A five-level quality slider is available in both the compact preview and full-screen viewer. It changes
-  Chrome's actual JPEG compression (20 / 35 / 55 / 75 / 90), not just the displayed image. Default: level 3
+- A five-level quality slider is available in both views. It negotiates the VNC server's Tight/JPEG quality
+  and the output JPEG compression (20 / 35 / 55 / 75 / 90), not just display size. Default: level 3
   (55); lower levels reduce transmission size. The selected level is saved across sessions/app restarts.
-- Observation never creates tabs, changes focus, runs page scripts, restarts Chrome, or blocks the
-  browser action queue. Until a connected tab is ready, the UI shows a connection/waiting state.
+- Observation never creates tabs, changes focus, runs page scripts or restarts Chrome. A VNC failure is
+  shown as a desktop/authentication error; it is **never hidden by falling back to a tab-only capture**.
+- Full-screen control supports touch click/swipe scroll, mouse buttons/drag/wheel, hardware keyboard
+  and a UI-only text entry with address-bar/Tab/Enter/Esc/delete/select-all buttons. Coordinates account
+  for letterboxing and original desktop size, including downsampled images; gutters do not send clicks.
+- Manual control waits for the current AI browser action, then exclusively owns the action lock.
+  Queued AI browser actions wait without blocking capture and can be cancelled normally. Closing,
+  continuing, leaving the chat, or backgrounding releases ownership and held keys/buttons. After handoff,
+  CDP re-reads Chrome's actual visible tab and invalidates old element ids before any further input.
 - Capture and image decoding stop when the chat is hidden, the app is backgrounded, or the preview is
   dismissed. Image decoding runs off the UI thread and the bitmap size is bounded.
 - Preview frames are ephemeral UI data: never saved as chat attachments or sent to the model. The
@@ -390,8 +403,8 @@ Every action except `tabs`/`screenshot` returns a fresh state, so the model alwa
   and to hand logins/CAPTCHAs it can't finish to the user (VNC).
 
 Code: `browser/` (`SshClient`, `BrowserRuntimeManager` + `SshTunnelManager`, `CdpConnection`, `BrowserService`,
-`PageScripts`, `RemoteBrowserManager`, `SecretStore`, `SshKeys`), `tools/BrowserUseTool.kt`,
-`ui/settings/RemoteBrowserSection.kt`, `scripts/vps/ensure-browser-runtime`. Libraries: JSch (mwiede) for SSH,
+`PageScripts`, `RemoteBrowserManager`, `VncConnection`, `DesktopInput`, `SecretStore`, `SshKeys`), `tools/BrowserUseTool.kt`,
+`ui/chat/BrowserDesktopControls.kt`, `ui/settings/RemoteBrowserSection.kt`, `scripts/vps/ensure-browser-runtime`. Libraries: JSch (mwiede) for SSH,
 OkHttp for the CDP WebSocket, Bouncy Castle for Ed25519/X25519 on Android.
 
 ## Backend: sleepyrouter

@@ -93,7 +93,7 @@ if ! display_ok; then
     wait_for "$DISPLAY_WAIT_SECONDS" display_ok || { display_state="down"; fail "failed_to_start_display"; }
 fi
 
-# 2. VNC (human viewing only) — independent of Chrome
+# 2. VNC (human viewing and direct input) — independent of Chrome
 if ! vnc_ok; then
     vnc_state="restarted"; restarted+=("vnc")
     sh -c "$VNC_RESTART_CMD" >/dev/null 2>&1
