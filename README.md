@@ -341,13 +341,21 @@ SSH/tunnel/CDP is rebuilt once, in that order. SSH, tunnel and CDP session stay 
 
 Calling `browser_use` opens a compact live browser view above the chat input in the invoking session.
 Tap it to open full-screen **direct control**; close it or tap **AI 계속** to return control to the AI,
-or close the compact view to stop previewing. The complete desktop/Chrome window updates while visible,
+or close the compact view to stop previewing. The complete Chrome window updates while visible,
 including during navigation and between tool calls.
 
-- Full-desktop frames (including Chrome's tab strip, address bar and dialogs) refresh at most ten times
+- Full-window frames (including Chrome's tab strip, address bar and dialogs) refresh at most ten times
   per second over **VNC in the existing pinned SSH connection**. Slow links
   lower the rate naturally; only one frame request runs at a time, with no queued stale frames. There is no
   extension, exposed CDP port, new HTTP relay, or separate login.
+- The chat supplies the preview aspect before the first navigation. CDP resizes the **real outer Chrome
+  window**, not an emulated page; full-screen control refines it to its measured image area after rotation.
+  VNC requests that outer window, retaining tabs/address bar while excluding unrelated desktop space.
+  Input translates back to the window's original desktop coordinates. Chrome's native minimum size and
+  the server's available display bound the fit; a phone keyboard does not keep resizing the browser.
+- All viewer buttons, text input and both quality sliders use the shared liquid controls. The full-screen
+  dialog records its own opaque backdrop (never a shader from another Android window). Landscape places
+  controls beside the image instead of squeezing the browser into a thin strip.
 - A five-level quality slider is available in both views. It negotiates the VNC server's Tight/JPEG quality
   and the output JPEG compression (20 / 35 / 55 / 75 / 90), not just display size. Default: level 3
   (55); lower levels reduce transmission size. The selected level is saved across sessions/app restarts.
@@ -355,7 +363,7 @@ including during navigation and between tool calls.
   shown as a desktop/authentication error; it is **never hidden by falling back to a tab-only capture**.
 - Full-screen control supports touch click/swipe scroll, mouse buttons/drag/wheel, hardware keyboard
   and a UI-only text entry with address-bar/Tab/Enter/Esc/delete/select-all buttons. Coordinates account
-  for letterboxing and original desktop size, including downsampled images; gutters do not send clicks.
+  for letterboxing and original window size, including downsampled images; gutters do not send clicks.
 - Manual control waits for the current AI browser action, then exclusively owns the action lock.
   Queued AI browser actions wait without blocking capture and can be cancelled normally. Closing,
   continuing, leaving the chat, or backgrounding releases ownership and held keys/buttons. After handoff,

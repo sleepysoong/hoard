@@ -20,6 +20,8 @@ interface RemoteBrowser {
     suspend fun previewFrame(quality: Int = 55): ByteArray? = null
     fun startPreview() {}
     fun stopPreview() {}
+    /** Remember a viewer's geometry even before Chrome connects/opens its first page. */
+    fun setPreviewViewport(width: Int, height: Int) {}
     val supportsInput: Boolean get() = false
     suspend fun acquireControl(): BrowserControl = throw BrowserException("직접 조작을 지원하지 않습니다")
 }
@@ -115,9 +117,39 @@ class RemoteBrowserManager(
     @Volatile private var disposed = false
     @Volatile private var cdp: CdpConnection? = null
     private val browser = BrowserService()
+    private val geometryLock = Mutex()
+    private val controlInputLock = Mutex()
+    @Volatile private var requestedViewport: BrowserViewport? = RemoteBrowsers.previewViewport
+    @Volatile private var fittedViewport: BrowserViewport? = null
+    @Volatile private var previewWindow: BrowserWindow? = null
+    @Volatile private var fitProblem: String? = null
 
     override val supportsPreview = true
     override val supportsInput = true
+
+    override fun setPreviewViewport(width: Int, height: Int) {
+        if (width > 0 && height > 0) requestedViewport = BrowserViewport(width, height)
+    }
+
+    /** Caller holds the AI/manual ownership lock; frame/input never resize on their own. */
+    private suspend fun fitPreviewWindow() {
+        val viewport = requestedViewport ?: return
+        if (fittedViewport == viewport && previewWindow != null) return
+        geometryLock.withLock {
+            if (fittedViewport == viewport && previewWindow != null) return@withLock
+            try {
+                previewWindow = browser.fitPreviewWindow(viewport)
+                fittedViewport = viewport
+                fitProblem = null
+            } catch (cancelled: kotlinx.coroutines.CancellationException) { throw cancelled }
+            catch (error: BrowserException) {
+                // Automation remains available, but never pretend an unfitted desktop
+                // is the requested Chrome window or send cropped input to wrong pixels.
+                previewWindow = null
+                fitProblem = error.message ?: "Chrome 창 크기를 맞추지 못했습니다"
+            }
+        }
+    }
 
     override fun startPreview() { synchronized(desktopState) { previewActive = true; previewGeneration++ } }
     override fun stopPreview() {
@@ -148,7 +180,10 @@ class RemoteBrowserManager(
     override suspend fun previewFrame(quality: Int): ByteArray? = withContext(Dispatchers.IO) {
         // Deliberately outside the action lock: long navigation/settling must not
         // freeze the view. Never reconnect SSH, restart Chrome or create a tab here.
-        try { desktopConnection()?.frame(quality) }
+        try { geometryLock.withLock {
+            fitProblem?.let { throw BrowserException(it) }
+            desktopConnection()?.frame(quality, previewWindow)
+        } }
         catch (e: Exception) { closeDesktop(); throw e }
     }
 
@@ -156,12 +191,29 @@ class RemoteBrowserManager(
         val owner = Any()
         lock.lock(owner) // cancellable while an existing AI action finishes
         if (disposed) { lock.unlock(owner); throw BrowserException("브라우저 설정이 바뀌어 연결이 닫혔습니다") }
+        try { withContext(Dispatchers.IO) { if (cdp?.isOpen == true) fitPreviewWindow() } }
+        catch (error: Throwable) { lock.unlock(owner); throw error }
         return object : BrowserControl {
             private val released = AtomicBoolean()
-            override suspend fun input(event: DesktopInput) {
+            override suspend fun resizeViewport(width: Int, height: Int) = controlInputLock.withLock {
+                if (released.get() || disposed) return@withLock
+                setPreviewViewport(width, height)
+                withContext(Dispatchers.IO) {
+                    desktop?.takeIf { it.isOpen }?.releaseInputs()
+                    fitPreviewWindow()
+                }
+            }
+            override suspend fun input(event: DesktopInput) = controlInputLock.withLock {
                 if (released.get() || disposed) throw BrowserException("직접 조작이 끝났습니다")
+                fitProblem?.let { throw BrowserException(it) }
                 val connection = desktop?.takeIf { it.isOpen } ?: throw BrowserException("VNC 화면 연결을 기다리는 중입니다")
-                connection.input(event)
+                val window = previewWindow
+                val translated = when (event) {
+                    is DesktopInput.Pointer -> event.copy(x = event.x + (window?.left ?: 0), y = event.y + (window?.top ?: 0))
+                    is DesktopInput.Scroll -> event.copy(x = event.x + (window?.left ?: 0), y = event.y + (window?.top ?: 0))
+                    else -> event
+                }
+                connection.input(translated)
             }
             override suspend fun release() {
                 if (!released.compareAndSet(false, true)) return
@@ -172,6 +224,7 @@ class RemoteBrowserManager(
                         // A person may have navigated or switched Chrome tabs. Do
                         // not apply the AI's pre-handoff element ids to a new page.
                         browser.afterManualControl()
+                        fittedViewport = null
                         lock.unlock(owner)
                     }
                 }
@@ -192,6 +245,7 @@ class RemoteBrowserManager(
                 prepare()
             }
             val result = try {
+                fitPreviewWindow()
                 browser.perform(action)
             } catch (e: CdpClosedException) {
                 closeCdp()
@@ -229,6 +283,9 @@ class RemoteBrowserManager(
     }
 
     private fun closeCdp() {
+        fittedViewport = null
+        previewWindow = null
+        fitProblem = null
         cdp?.close()
         cdp = null
     }
@@ -257,6 +314,15 @@ class RemoteBrowserManager(
  */
 object RemoteBrowsers {
     private var current: RemoteBrowserManager? = null
+    @Volatile var previewViewport: BrowserViewport? = null
+        private set
+
+    /** Chat geometry arrives before a browser tool creates the process-wide connection. */
+    @Synchronized fun setPreviewViewport(width: Int, height: Int) {
+        if (width <= 0 || height <= 0) return
+        previewViewport = BrowserViewport(width, height)
+        current?.setPreviewViewport(width, height)
+    }
 
     @Synchronized
     fun get(config: RemoteBrowserConfig): RemoteBrowserManager {

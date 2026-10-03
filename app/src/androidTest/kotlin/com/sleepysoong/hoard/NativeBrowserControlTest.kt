@@ -110,7 +110,12 @@ class NativeBrowserControlTest {
             val typed = manager.execute(BrowserAction.SwitchTab(tabId(newTab)))
             note("mouse-input=${typed.json}")
             assertTrue("desktop-pixel click focused the real page field", typed.json.toString().contains("manual mouse 한국"))
-            frame("ai-visible-tab")
+            val visibleBytes = frame("ai-visible-tab")
+            val visiblePixels = BitmapFactory.decodeByteArray(visibleBytes, 0, visibleBytes.size)
+            try {
+                val pixel = visiblePixels.getPixel(visiblePixels.width / 2, visiblePixels.height * 2 / 3)
+                assertTrue("VNC actually displays the red tab selected by CDP, not just a saved capture", Color.red(pixel) > Color.blue(pixel) + 60)
+            } finally { visiblePixels.recycle() }
             val paused = manager.acquireControl()
             try {
                 val waiting = async { manager.execute(BrowserAction.State) }

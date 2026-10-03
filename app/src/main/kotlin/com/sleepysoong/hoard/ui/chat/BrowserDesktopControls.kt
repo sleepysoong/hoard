@@ -6,10 +6,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,9 +16,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,9 +41,17 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.sleepysoong.hoard.browser.DesktopInput
+import com.sleepysoong.hoard.ui.glass.GlassPillButton
+import com.sleepysoong.hoard.ui.glass.GlassPillTint
+import com.sleepysoong.hoard.ui.glass.GlassTextField
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.semantics
 import kotlin.math.min
 
 /** Fit/letterbox coordinates use the original remote framebuffer, never a
@@ -161,20 +166,25 @@ internal fun BrowserDesktopSurface(
 private fun PointerButtons.desktopMask(): Int =
     (if (isPrimaryPressed) 1 else 0) or (if (isTertiaryPressed) 2 else 0) or (if (isSecondaryPressed) 4 else 0)
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun BrowserInputControls(enabled: Boolean, send: (DesktopInput) -> Unit) {
+internal fun BrowserInputControls(enabled: Boolean, send: (DesktopInput) -> Unit, showShortcuts: Boolean = true) {
     var text by remember { mutableStateOf("") } // UI-only, deliberately not saved or logged
+    val keyboard = LocalSoftwareKeyboardController.current
+    val focus = LocalFocusManager.current
     Column(Modifier.fillMaxWidth().padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedTextField(text, { text = it.take(2000) }, enabled = enabled, singleLine = true,
+            GlassTextField(text, { text = it.take(2000) }, enabled = enabled, singleLine = true,
                 placeholder = { Text("입력할 텍스트") }, modifier = Modifier.weight(1f).testTag("browser-control-text"))
-            TextButton(enabled = enabled && text.isNotEmpty(), onClick = { send(DesktopInput.Text(text)); text = "" }) { Text("입력") }
+            GlassPillButton("입력", enabled = enabled && text.isNotEmpty(), tint = GlassPillTint.Accent,
+                modifier = Modifier.semantics { role = Role.Button },
+                onClick = { send(DesktopInput.Text(text)); text = ""; keyboard?.hide(); focus.clearFocus() })
         }
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (showShortcuts) Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             listOf("주소창" to listOf(0xffe3, 'l'.code), "Tab" to listOf(0xff09), "Enter" to listOf(0xff0d),
                 "Esc" to listOf(0xff1b), "삭제" to listOf(0xff08), "전체 선택" to listOf(0xffe3, 'a'.code)).forEach { (label, keys) ->
-                TextButton(enabled = enabled, onClick = { send(DesktopInput.Chord(keys)) }, contentPadding = PaddingValues(horizontal = 8.dp)) { Text(label) }
+                GlassPillButton(label, enabled = enabled, modifier = Modifier.semantics { role = Role.Button },
+                    onClick = { send(DesktopInput.Chord(keys)) })
             }
         }
     }

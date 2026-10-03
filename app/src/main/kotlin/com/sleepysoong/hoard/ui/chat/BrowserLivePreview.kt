@@ -16,18 +16,18 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.isImeVisible
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Close
 import androidx.compose.material.icons.rounded.Fullscreen
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.DisposableEffect
@@ -44,12 +44,17 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.role
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -60,6 +65,9 @@ import com.sleepysoong.hoard.browser.BrowserPreviews
 import com.sleepysoong.hoard.browser.BrowserControl
 import com.sleepysoong.hoard.browser.DesktopInput
 import com.sleepysoong.hoard.ui.glass.GlassIconButton
+import com.sleepysoong.hoard.ui.glass.GlassHost
+import com.sleepysoong.hoard.ui.glass.GlassPillButton
+import com.sleepysoong.hoard.ui.glass.GlassPillTint
 import com.sleepysoong.hoard.ui.glass.GlassSurface
 import com.sleepysoong.hoard.ui.glass.GlassSlider
 import com.sleepysoong.hoard.ui.glass.liquidClickable
@@ -76,6 +84,7 @@ private val PREVIEW_JPEG_QUALITIES = listOf(20, 35, 55, 75, 90)
 private val PREVIEW_QUALITY_LABELS = listOf("매우 낮음", "낮음", "보통", "높음", "매우 높음")
 
 /** One bounded live frame shared by the compact view and its full-window viewer. */
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 internal fun BrowserLivePreview(
     target: BrowserPreviewTarget,
@@ -95,6 +104,9 @@ internal fun BrowserLivePreview(
     var expanded by rememberSaveable(target) { mutableStateOf(false) }
     var quality by remember(target, qualityLevel) { mutableIntStateOf(qualityLevel.coerceIn(1, 5)) }
     val currentQuality by rememberUpdatedState(quality)
+    var viewport by remember(target) { mutableStateOf(IntSize.Zero) }
+    var resizing by remember(target) { mutableStateOf(false) }
+    val currentResizing by rememberUpdatedState(resizing)
 
     DisposableEffect(target) { onDispose { target.browser.stopPreview() } }
 
@@ -110,9 +122,11 @@ internal fun BrowserLivePreview(
                         val frame = withContext(Dispatchers.IO) {
                             target.browser.previewFrame(jpegQuality)?.let(::decodePreview)
                         }
-                        image = frame?.image
-                        remoteWidth = frame?.width ?: 0
-                        remoteHeight = frame?.height ?: 0
+                        if (!currentResizing) {
+                            image = frame?.image
+                            remoteWidth = frame?.width ?: 0
+                            remoteHeight = frame?.height ?: 0
+                        }
                         problem = null
                     } catch (cancelled: CancellationException) {
                         throw cancelled
@@ -129,6 +143,18 @@ internal fun BrowserLivePreview(
                 target.browser.stopPreview()
             }
         }
+    }
+    LaunchedEffect(target, control, viewport) {
+        val lease = control ?: return@LaunchedEffect
+        if (viewport.width <= 0 || viewport.height <= 0) return@LaunchedEffect
+        resizing = true
+        image = null
+        while (inputs.tryReceive().isSuccess) { /* Old geometry must not replay on the resized window. */ }
+        try {
+            lease.resizeViewport(viewport.width, viewport.height)
+        } catch (cancelled: CancellationException) { throw cancelled }
+        catch (error: Exception) { inputProblem = error.message ?: "Chrome 창 크기를 맞추지 못했습니다" }
+        finally { resizing = false }
     }
 
     LaunchedEffect(target, expanded, lifecycle) {
@@ -155,7 +181,7 @@ internal fun BrowserLivePreview(
         }
     }
     val send: (DesktopInput) -> Unit = { event ->
-        if (control != null && image != null && inputs.trySend(event).isFailure) {
+        if (control != null && image != null && !resizing && inputs.trySend(event).isFailure) {
             inputProblem = "입력 연결이 느려 직접 조작을 중지했습니다"
             expanded = false // release all held keys/buttons rather than losing an up event
         }
@@ -187,7 +213,7 @@ internal fun BrowserLivePreview(
                     }
                 }
             }
-            PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) }, glass = true)
+            PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) })
         }
     }
 
@@ -196,9 +222,12 @@ internal fun BrowserLivePreview(
             onDismissRequest = { expanded = false },
             properties = DialogProperties(usePlatformDefaultWidth = false, decorFitsSystemWindows = false)
         ) {
-            // A dialog owns another window: keep it opaque and do not use the
-            // activity window's glass backdrop shader here.
-            Surface(Modifier.fillMaxSize().testTag("browser-preview-fullscreen"), color = MaterialTheme.colorScheme.surface) {
+            // Record an opaque, dialog-local sibling. Cross-window backdrop
+            // sampling is invalid; local recording keeps every control liquid.
+            GlassHost(Modifier.testTag("browser-preview-fullscreen")) {
+                val window = LocalWindowInfo.current.containerSize
+                val landscape = window.width > window.height
+                val imeVisible = WindowInsets.isImeVisible
                 Column(Modifier.fillMaxSize().safeDrawingPadding().imePadding()) {
                     Row(Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -207,18 +236,34 @@ internal fun BrowserLivePreview(
                             Text(if (!target.browser.supportsInput) "전체 Chrome 화면" else if (control == null) "AI 작업 마무리 대기" else "직접 조작 · AI 브라우저 대기", style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
-                        if (target.browser.supportsInput) TextButton(onClick = { expanded = false }) { Text("AI 계속") }
-                        IconButton(onClick = { expanded = false }) {
+                        if (target.browser.supportsInput) GlassPillButton("AI 계속", onClick = { expanded = false }, tint = GlassPillTint.Accent,
+                            modifier = Modifier.semantics { role = Role.Button })
+                        GlassIconButton(onClick = { expanded = false }) {
                             Icon(Icons.Rounded.Close, contentDescription = "전체화면 닫기")
                         }
                     }
-                    BrowserDesktopSurface(image, remoteWidth, remoteHeight, control != null, send,
-                        Modifier.weight(1f).fillMaxWidth(), waiting = problem ?: "전체 Chrome 화면을 기다리는 중")
-                    inputProblem?.let { Text(it, color = MaterialTheme.colorScheme.error,
-                        style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp)) }
-                    if (target.browser.supportsInput) BrowserInputControls(control != null && image != null, send)
-                    PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) }, glass = false,
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    val desktop: @Composable (Modifier) -> Unit = { area ->
+                        BrowserDesktopSurface(image, remoteWidth, remoteHeight, control != null && !resizing, send,
+                            area.onSizeChanged {
+                                // Do not rearrange Chrome while typing into the phone's IME.
+                                if (!imeVisible && it.width > 0 && it.height > 0) viewport = it
+                            }, waiting = problem ?: "전체 Chrome 화면을 기다리는 중")
+                    }
+                    val controls: @Composable () -> Unit = {
+                        inputProblem?.let { Text(it, color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(horizontal = 12.dp)) }
+                        if (target.browser.supportsInput) BrowserInputControls(control != null && image != null && !resizing, send,
+                            showShortcuts = !imeVisible)
+                        if (!imeVisible) PreviewQualityControl(quality, { quality = it }, { onQualityChange(quality) },
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
+                    }
+                    if (landscape) Row(Modifier.weight(1f).fillMaxWidth()) {
+                        desktop(Modifier.weight(1f).fillMaxSize())
+                        Column(Modifier.width(280.dp).verticalScroll(rememberScrollState())) { controls() }
+                    } else {
+                        desktop(Modifier.weight(1f).fillMaxWidth())
+                        controls()
+                    }
                 }
             }
         }
@@ -230,7 +275,6 @@ private fun PreviewQualityControl(
     level: Int,
     onLevelChange: (Int) -> Unit,
     onFinished: () -> Unit,
-    glass: Boolean,
     modifier: Modifier = Modifier
 ) {
     Column(modifier.fillMaxWidth()) {
@@ -243,14 +287,8 @@ private fun PreviewQualityControl(
             .semantics { contentDescription = "브라우저 미리보기 화질, 5단계" }
         val change: (Float) -> Unit = { onLevelChange(it.roundToInt().coerceIn(1, 5)) }
         // Three intermediate stops + both endpoints = exactly five quality levels.
-        if (glass) {
-            GlassSlider(value = level.toFloat(), onValueChange = change, valueRange = 1f..5f, steps = 3,
-                onValueChangeFinished = onFinished, modifier = sliderModifier)
-        } else {
-            // The full-screen dialog cannot use the activity's glass backdrop.
-            Slider(value = level.toFloat(), onValueChange = change, valueRange = 1f..5f, steps = 3,
-                onValueChangeFinished = onFinished, modifier = sliderModifier)
-        }
+        GlassSlider(value = level.toFloat(), onValueChange = change, valueRange = 1f..5f, steps = 3,
+            onValueChangeFinished = onFinished, modifier = sliderModifier)
         Text("낮출수록 전송량 감소", style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
     }

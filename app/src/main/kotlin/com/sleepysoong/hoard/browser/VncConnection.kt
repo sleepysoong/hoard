@@ -127,8 +127,13 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
         }
     }
 
-    suspend fun frame(quality: Int = 55): ByteArray = frameLock.withLock {
+    suspend fun frame(quality: Int = 55, window: BrowserWindow? = null): ByteArray = frameLock.withLock {
         io {
+            fun region(): BrowserWindow = (window ?: BrowserWindow(0, 0, width, height)).also {
+                checkFrame(it.left >= 0 && it.top >= 0 && it.width > 0 && it.height > 0 &&
+                    it.left.toLong() + it.width <= width && it.top.toLong() + it.height <= height,
+                    "Chrome 창이 VNC 화면 범위를 벗어났습니다")
+            }
             synchronized(writeLock) {
                 val q = quality.coerceIn(1, 100)
                 if (lastQuality != q) {
@@ -137,7 +142,8 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
                     encodings.forEach(output::writeInt); lastQuality = q
                 }
                 output.writeByte(3); output.writeByte(0) // full update: static pages cannot stall forever
-                output.writeShort(0); output.writeShort(0); output.writeShort(width); output.writeShort(height)
+                val crop = region()
+                output.writeShort(crop.left); output.writeShort(crop.top); output.writeShort(crop.width); output.writeShort(crop.height)
                 output.flush()
             }
             var received = false
@@ -150,7 +156,8 @@ class VncConnection private constructor(private val ioDispatcher: CoroutineDispa
                 }
             }
             checkFrame(received, "VNC 화면 업데이트를 받지 못했습니다")
-            val bitmap = Bitmap.createBitmap(pixels, width, height, Bitmap.Config.ARGB_8888)
+            val crop = region()
+            val bitmap = Bitmap.createBitmap(pixels, crop.top * width + crop.left, width, crop.width, crop.height, Bitmap.Config.ARGB_8888)
             try {
                 ByteArrayOutputStream().also { bitmap.compress(Bitmap.CompressFormat.JPEG, quality.coerceIn(1, 100), it) }
                     .toByteArray().also { checkFrame(it.size <= MAX_BYTES, "VNC 이미지 크기 제한 초과") }

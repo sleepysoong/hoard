@@ -13,5 +13,7 @@ sealed interface DesktopInput {
 /** Exclusive, cancellable manual ownership. Release before allowing any queued AI action. */
 interface BrowserControl {
     suspend fun input(event: DesktopInput)
+    /** Resize the real Chrome while this lease owns it, never race an AI action. */
+    suspend fun resizeViewport(width: Int, height: Int) {}
     suspend fun release()
 }

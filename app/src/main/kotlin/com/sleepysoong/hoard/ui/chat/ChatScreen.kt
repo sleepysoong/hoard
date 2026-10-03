@@ -76,6 +76,7 @@ fun ChatScreen(
     onBack: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
+    BrowserPreviewWindowHints()
     val state by vm.uiState.collectAsState()
     val settings by vm.settings.collectAsState()
     val routerReady by vm.routerReady.collectAsState()

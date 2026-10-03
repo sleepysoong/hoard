@@ -95,6 +95,38 @@ class BrowserService {
     /** Re-read the real foreground tab after a person uses Chrome's desktop UI. */
     fun afterManualControl() { current = null; docTokens.clear() }
 
+    /** Resize the real outer window, not Emulation.setDeviceMetricsOverride: CDP,
+     * Chrome toolbar and VNC must all agree about the same headful browser.
+     */
+    suspend fun fitPreviewWindow(viewport: BrowserViewport): BrowserWindow {
+        val page = page()
+        val screen = eval(page, "({w:screen.availWidth,h:screen.availHeight})") as? JsonObject
+            ?: throw BrowserException("원격 화면 크기를 확인하지 못했습니다")
+        val maxWidth = screen.num("w").toInt().coerceIn(500, 8192)
+        val maxHeight = screen.num("h").toInt().coerceIn(300, 8192)
+        val scale = minOf(maxWidth.toDouble() / viewport.width, maxHeight.toDouble() / viewport.height)
+        // Native Chrome has a minimum window size. Keep its toolbar usable when
+        // a very small server display cannot exactly reproduce a phone's ratio.
+        val width = (viewport.width * scale).toInt().coerceIn(500, maxWidth)
+        val height = (viewport.height * scale).toInt().coerceIn(300, maxHeight)
+        val window = cdp.send("Browser.getWindowForTarget", buildJsonObject { put("targetId", page.targetId) })
+        val id = window["windowId"] ?: throw BrowserException("Chrome 창을 확인하지 못했습니다")
+        cdp.send("Browser.setWindowBounds", buildJsonObject {
+            put("windowId", id); putJsonObject("bounds") { put("windowState", "normal") }
+        })
+        cdp.send("Browser.setWindowBounds", buildJsonObject {
+            put("windowId", id); putJsonObject("bounds") {
+                put("left", 0); put("top", 0); put("width", width); put("height", height)
+            }
+        })
+        delay(150) // window-manager configure events are asynchronous to the CDP reply
+        val actual = cdp.send("Browser.getWindowBounds", buildJsonObject { put("windowId", id) })["bounds"] as? JsonObject
+            ?: throw BrowserException("Chrome 창 크기를 확인하지 못했습니다")
+        docTokens.clear() // responsive layout may have moved every previous element
+        return BrowserWindow(actual.num("left").toInt(), actual.num("top").toInt(),
+            actual.num("width").toInt(), actual.num("height").toInt())
+    }
+
     suspend fun perform(action: BrowserAction): BrowserResult = when (action) {
         is BrowserAction.Open -> open(action)
         BrowserAction.State -> BrowserResult(state(page(), "state"))
